@@ -36,7 +36,7 @@ import SongContextMenu from './SongContextMenu'
 import EqualizerPanel from './EqualizerPanel'
 import {
   attachAudioElement, applyAudioEffects, resumeEffectsContext,
-  setEffectsOutputDevice, getCurrentPeak,
+  setEffectsOutputDevice, getCurrentPeak, setEffectsChainWanted,
 } from '../lib/audioEffects'
 import { LibraryTrack } from '../types'
 
@@ -54,6 +54,22 @@ const PAUSE_FADE_MS = 400
 // How much of a song counts as having played it (or half its length, for
 // anything shorter). See creditPlayIfListened.
 const PLAYCOUNT_THRESHOLD_SECONDS = 30
+
+// ── Stream recovery tuning ───────────────────────────────────────────────────
+// How many times a single track may be reloaded before the player gives up and
+// admits it isn't playing.
+const MAX_RECOVERY_ATTEMPTS = 4
+// How long playback may sit with the clock not advancing before that counts as
+// a dead stream rather than ordinary rebuffering. Generous, because a phone on
+// a weak connection legitimately stalls for a while and re-fetching costs data.
+const STALL_TIMEOUT_MS = 20000
+// Grace period after a reload before healthy playback is allowed to reset the
+// attempt counter — otherwise a stream that plays half a second and dies each
+// time would retry forever.
+const RECOVERY_SETTLE_MS = 10000
+// Ceiling on consecutively skipped unplayable tracks, so an API outage that
+// 404s everything stops the queue instead of racing through it.
+const MAX_CONSECUTIVE_SKIPS = 3
 
 let _seek: ((t: number) => void) | null = null
 let _getAudioDuration: (() => number) | null = null
@@ -304,10 +320,18 @@ export default function Player(): JSX.Element {
 
   // Route both slots through the shared Web Audio effects chain (EQ, balance,
   // mono, silence detection). Elements keep their own volume/rate handling.
+  //
+  // On mobile the chain only gets built once an effect is actually switched on
+  // (see setEffectsChainWanted): routing a media element through Web Audio is
+  // what makes background playback fragile there, and the overwhelming
+  // majority of listeners never touch the EQ — no reason to make them pay for
+  // it. Desktop attaches on mount as it always has.
+  const effectsInUse = eqEnabled || eqBalance !== 0 || eqMono || reverbEnabled || skipSilence
   useEffect(() => {
+    if (effectsInUse) setEffectsChainWanted(true)
     attachAudioElement(slotA.current)
     attachAudioElement(slotB.current)
-  }, [])
+  }, [effectsInUse])
 
   // Push effect settings into the chain whenever they change.
   useEffect(() => {
@@ -442,6 +466,15 @@ export default function Player(): JSX.Element {
     if (isPlaying) audio.play().catch(console.error)
   }, [currentTrack?.id])
 
+  // Rotate suggested covers (when the setting is on and the song has no cover
+  // the user set). Keyed on the track id rather than the play-credit threshold
+  // so the cover is picked as the song starts and then holds for the whole
+  // play — advancing mid-song would swap the art out from under the user.
+  useEffect(() => {
+    if (currentSongId == null) return
+    useStore.getState()._maybeRotateCover(currentSongId)
+  }, [currentSongId])
+
   // Play / pause
   useEffect(() => {
     const audio = getActive()
@@ -533,6 +566,157 @@ export default function Player(): JSX.Element {
     }
   }, [isPlaying])
 
+  // ── Stream recovery ────────────────────────────────────────────────────────
+  // Mobile networks drop connections mid-song constantly — a wifi/cellular
+  // handoff, a dead spot on a train, the radio powering down behind a lock
+  // screen. When that happens the element either fires 'error' or simply stops
+  // advancing, and neither state fixes itself: play() on an errored element
+  // rejects, so playback stayed dead for the rest of the session while the UI
+  // cheerfully showed a playing state. That is what "it randomly stops" is.
+  //
+  // Reload the same URL and resume from where it died instead, on a bounded
+  // backoff. Everything here is event- or wall-clock-driven rather than
+  // tick-counted, because a hidden mobile tab has its timers throttled to a
+  // fraction of their nominal rate.
+  const recoveryAttempts   = useRef(0)
+  const recoveryTimer      = useRef<number | null>(null)
+  const lastRecoveryAt     = useRef(0)
+  // Last observed playhead position and when it was observed — the pair that
+  // distinguishes "buffering" from "the stream is gone".
+  const lastProgressTime   = useRef(0)
+  const lastProgressAt     = useRef(Date.now())
+  // Pauses the app didn't ask for (audio focus lost to a call or another app).
+  const unexpectedPauses   = useRef(0)
+  // Tracks skipped in a row for being unplayable.
+  const consecutiveSkips   = useRef(0)
+
+  const clearRecoveryTimer = (): void => {
+    if (recoveryTimer.current != null) { clearTimeout(recoveryTimer.current); recoveryTimer.current = null }
+  }
+
+  useEffect(() => {
+    recoveryAttempts.current = 0
+    unexpectedPauses.current = 0
+    lastProgressTime.current = 0
+    lastProgressAt.current = Date.now()
+    clearRecoveryTimer()
+  }, [currentTrack?.id])
+  useEffect(() => clearRecoveryTimer, [])
+
+  // Reloads the active slot and picks up where it stopped. Reads everything
+  // from the store/refs so a stale closure (the watchdog interval holds one)
+  // can still call it safely.
+  const recoverPlayback = (reason: string): void => {
+    const audio = getActive()
+    const track = useStore.getState().currentTrack
+    if (!audio || !track || !useStore.getState().isPlaying) return
+    // A crossfade deliberately drives one slot to silence — never reload
+    // through one. (A pending seek is filtered by the caller, not here: a
+    // stream that dies mid-seek leaves `seeking` stuck true, and that case
+    // still has to be recoverable.)
+    if (cfActive.current) return
+    if (recoveryTimer.current != null) return  // a retry is already queued
+
+    const url = resolvePlaybackUrl(track)
+    // Nothing to retry into while the device is offline — don't burn attempts;
+    // the 'online' listener in the watchdog retries the moment it's back.
+    // Downloaded and local files are unaffected by connectivity.
+    if (url.startsWith('http') && navigator.onLine === false) return
+
+    if (recoveryAttempts.current >= MAX_RECOVERY_ATTEMPTS) {
+      // Out of retries. Stop pretending — a paused player the user can tap is
+      // far better than a play button that lies.
+      console.error(`Playback recovery gave up on "${track.title}" after ${MAX_RECOVERY_ATTEMPTS} attempts (${reason})`)
+      setIsPlaying(false)
+      return
+    }
+
+    const attempt = recoveryAttempts.current++
+    lastRecoveryAt.current = Date.now()
+    const resumeAt = audio.currentTime > 0 ? audio.currentTime : lastProgressTime.current
+    console.warn(`Playback ${reason} — reloading "${track.title}" at ${resumeAt.toFixed(1)}s (attempt ${attempt + 1}/${MAX_RECOVERY_ATTEMPTS})`)
+
+    recoveryTimer.current = window.setTimeout(() => {
+      recoveryTimer.current = null
+      const a = getActive()
+      const s = useStore.getState()
+      // The user may have paused, skipped, or seeked away while we waited.
+      if (!a || !s.isPlaying || s.currentTrack?.id !== track.id) return
+      const onReady = (): void => {
+        a.removeEventListener('loadedmetadata', onReady)
+        // Streamed audio reports Infinity duration until the server has sent
+        // enough to know the length; seeking then silently no-ops, and the
+        // stall detector picks that up as another round.
+        if (resumeAt > 0 && isFinite(a.duration) && resumeAt < a.duration) {
+          try { a.currentTime = resumeAt } catch { /* not seekable yet */ }
+        }
+        applyRate(a)
+        a.volume = volumeRef.current
+        a.play().catch(() => {})
+      }
+      a.addEventListener('loadedmetadata', onReady)
+      a.src = url
+      a.load()
+      // Fresh stall budget so the reload itself isn't immediately judged.
+      lastProgressAt.current = Date.now()
+    }, Math.min(1000 * 2 ** attempt, 8000))
+  }
+
+  // A source the browser can't play at all — a 404, a codec it doesn't
+  // support — will never come back on retry, and stopping dead in the middle
+  // of a queue is the same complaint from the user's side. Move past it.
+  const skipUnplayableTrack = (): void => {
+    if (consecutiveSkips.current >= MAX_CONSECUTIVE_SKIPS) {
+      console.error('Too many unplayable tracks in a row — stopping playback')
+      setIsPlaying(false)
+      return
+    }
+    consecutiveSkips.current++
+    if (!nextTrack()) setIsPlaying(false)
+  }
+
+  const handleAudioError = (audio: HTMLAudioElement, slot: string): void => {
+    // The inactive slot gets its src blanked by cancelCF(), which fires an
+    // error of its own, and a preload dying is harmless either way.
+    if (audio !== getActive()) return
+    const err = audio.error
+    if (!err || err.code === MediaError.MEDIA_ERR_ABORTED) return
+    console.error(`Audio error (${slot}): code ${err.code}`, err.message)
+    if (!useStore.getState().isPlaying) return
+    // Unsupported before a single frame played = the file itself is the
+    // problem. Mid-song it means the connection died, which is recoverable.
+    if (err.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED && lastProgressTime.current === 0) {
+      skipUnplayableTrack()
+      return
+    }
+    recoverPlayback('error')
+  }
+
+  // Something outside the app paused us: audio focus went to a phone call or
+  // another player, or the browser dropped the media session. One nudge back
+  // is worth trying (hidden tabs do get spuriously paused, which is what the
+  // watchdog below was built for), but if it happens again straight away the
+  // OS means it — stop fighting and let the UI say so.
+  const handleAudioPause = (audio: HTMLAudioElement): void => {
+    if (audio !== getActive()) return
+    if (!useStore.getState().isPlaying) return   // our own pause; already in sync
+    if (audio.ended || audio.error) return       // handled by ended/error paths
+    if (cfActive.current || pauseFadeRaf.current != null) return
+    // Assigning .src fires a pause of its own (the media load algorithm pauses
+    // the element before tearing down the old resource), and it resets
+    // readyState to HAVE_NOTHING. Without this, every track change — and every
+    // recovery reload — would read as the OS taking playback away, so a quick
+    // triple-tap on skip was enough to stop the player outright.
+    if (audio.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return
+    unexpectedPauses.current++
+    if (unexpectedPauses.current > 2) {
+      console.warn('Playback paused externally — yielding')
+      setIsPlaying(false)
+      return
+    }
+    audio.play().catch(() => {})
+  }
+
   // Mobile background watchdog — browsers can silently pause an audio
   // element (or never finish a play() call) while the tab is hidden, with
   // no event firing to tell the app. Periodically nudge it back, and
@@ -545,8 +729,14 @@ export default function Player(): JSX.Element {
   // .play() on an already-ended element only replays it from 0, so that
   // case needs to go through the real advance-to-next-track logic instead.
   useEffect(() => {
+    // The "last advanced" stamp goes stale while paused — a five-minute pause
+    // would otherwise read as a five-minute stall the instant playback resumes.
+    lastProgressAt.current = Date.now()
+
     const check = (): void => {
       if (!isPlaying) return
+      // A reload is already queued — let it land before judging anything.
+      if (recoveryTimer.current != null) return
       // The audio graph can be suspended by the OS (screen off / Android doze)
       // while the element still reports as playing — that silences output since
       // audio routes through the graph, and the checks below wouldn't catch it.
@@ -556,7 +746,15 @@ export default function Player(): JSX.Element {
       const audio = getActive()
       if (!audio) return
       if (audio.ended) { onAudioEnded(audio); return }
-      if (audio.paused) audio.play().catch(() => {})
+      if (audio.error) { recoverPlayback('error'); return }
+      if (audio.paused) { audio.play().catch(() => recoverPlayback('play-rejected')); return }
+      // Playing on paper, but the clock isn't moving. Very common on mobile:
+      // the connection goes away without the element ever firing 'error', so it
+      // sits in a rebuffer that will never finish. Nothing else detects this.
+      if (!audio.seeking && !cfActive.current
+        && Date.now() - lastProgressAt.current > STALL_TIMEOUT_MS) {
+        recoverPlayback('stalled')
+      }
     }
     const id = setInterval(check, 8000)
     const onVisibility = (): void => {
@@ -566,10 +764,19 @@ export default function Player(): JSX.Element {
       // resume, paused on a pause) rather than leaving it stuck partway.
       pauseFadeFinalize.current?.()
     }
+    // Connectivity came back — retry immediately with a clean slate instead of
+    // waiting out a backoff that was scheduled against a dead network.
+    const onOnline = (): void => {
+      recoveryAttempts.current = 0
+      lastProgressAt.current = Date.now()
+      check()
+    }
     document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('online', onOnline)
     return () => {
       clearInterval(id)
       document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('online', onOnline)
     }
   }, [isPlaying])
 
@@ -783,6 +990,21 @@ export default function Player(): JSX.Element {
   const handleTimeUpdate = (e: React.SyntheticEvent<HTMLAudioElement>): void => {
     const audio = e.currentTarget
     if (audio !== getActive()) return  // ignore pre-loading slot's events
+
+    // Liveness signal for the stall detector. Compared for *any* change, not
+    // just forward motion, so a seek backwards doesn't look like a frozen
+    // clock. Sustained healthy playback also clears the recovery counters —
+    // after a settle window, so a stream that plays half a second and dies on
+    // every reload still runs out of attempts instead of retrying forever.
+    if (audio.currentTime !== lastProgressTime.current) {
+      lastProgressTime.current = audio.currentTime
+      lastProgressAt.current = Date.now()
+      if (Date.now() - lastRecoveryAt.current > RECOVERY_SETTLE_MS) {
+        recoveryAttempts.current = 0
+        unexpectedPauses.current = 0
+        consecutiveSkips.current = 0
+      }
+    }
 
     setCurrentTime(audio.currentTime)
     // audio.duration reads as Infinity for streamed audio until the server's
@@ -1359,7 +1581,8 @@ export default function Player(): JSX.Element {
         onLoadedMetadata={handleLoadedMetadata}
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleEnded}
-        onError={(e) => console.error('Audio error (slotA):', e)}
+        onPause={(e) => handleAudioPause(e.currentTarget)}
+        onError={(e) => handleAudioError(e.currentTarget, 'slotA')}
       />
       <audio
         ref={slotB}
@@ -1368,7 +1591,8 @@ export default function Player(): JSX.Element {
         onLoadedMetadata={handleLoadedMetadata}
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleEnded}
-        onError={(e) => console.error('Audio error (slotB):', e)}
+        onPause={(e) => handleAudioPause(e.currentTarget)}
+        onError={(e) => handleAudioError(e.currentTarget, 'slotB')}
       />
 
       {/* Equalizer popover — outside the WRLD-page conditional below so the

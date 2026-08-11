@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Download } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
-import { parseLrc, getCurrentLineIndex, isLrcFormat, downloadSyncedLyrics } from '../lib/lyrics'
+import { parseLrc, getCurrentLineIndex, isLrcFormat, downloadSyncedLyrics, splitAdLibs, ADLIB_FONT_SCALE } from '../lib/lyrics'
 import { useStore } from '../store/useStore'
 import { seekAudio, getAudioCurrentTime } from './Player'
 
@@ -22,14 +22,21 @@ interface LyricsDisplayProps {
 }
 
 export default function LyricsDisplay({ getTime, onSeek, compact, override }: LyricsDisplayProps = {}): JSX.Element {
-  const { currentTrackFull, account, lyricsOffset, lyricsScale, lyricsAlign, lyricsBlur } = useStore(useShallow(s => ({
+  const { currentTrackFull, account, lyricsOffset, lyricsScale, lyricsAlign, lyricsBlur, lyricsBlurAmount, lyricsColorActive, lyricsColorInactive } = useStore(useShallow(s => ({
     currentTrackFull: s.currentTrackFull,
     account: s.account,
     lyricsOffset: s.lyricsOffset,
     lyricsScale: s.lyricsScale,
     lyricsAlign: s.lyricsAlign,
     lyricsBlur: s.lyricsBlur,
+    lyricsBlurAmount: s.lyricsBlurAmount,
+    lyricsColorActive: s.lyricsColorActive,
+    lyricsColorInactive: s.lyricsColorInactive,
   })))
+
+  // null = auto, i.e. the theme's own text colors.
+  const activeColor = lyricsColorActive ?? 'var(--text-primary)'
+  const inactiveColor = lyricsColorInactive ?? 'var(--text-muted)'
 
   const containerRef = useRef<HTMLDivElement>(null)
   const activeRef = useRef<HTMLDivElement>(null)
@@ -150,8 +157,9 @@ export default function LyricsDisplay({ getTime, onSeek, compact, override }: Ly
 
           const lineStyle: React.CSSProperties = {
             opacity: isActive ? 1 : isPast ? 0.35 : 0.2,
-            color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
-            filter: (!isActive && !isPast && lyricsBlur) ? 'blur(1px)' : 'blur(0px)',
+            color: isActive ? activeColor : inactiveColor,
+            // Every line except the one playing — played and upcoming alike.
+            filter: (!isActive && lyricsBlur) ? `blur(${lyricsBlurAmount.toFixed(2)}px)` : 'blur(0px)',
             transition: 'opacity 0.35s ease, color 0.35s ease, filter 0.35s ease',
             fontSize: `${(compact ? 1.125 : 1.5) * lyricsScale}rem`,
             textAlign: lyricsAlign,
@@ -166,7 +174,9 @@ export default function LyricsDisplay({ getTime, onSeek, compact, override }: Ly
               className="lyric-line leading-snug cursor-pointer font-bold"
               style={lineStyle}
             >
-              {line.text}
+              {splitAdLibs(line.text).map((seg, si) => (
+                <span key={si} style={seg.adLib ? { fontSize: `${ADLIB_FONT_SCALE}em` } : undefined}>{seg.text}</span>
+              ))}
             </div>
           )
         })}
@@ -179,8 +189,11 @@ export default function LyricsDisplay({ getTime, onSeek, compact, override }: Ly
   return (
     <div className={`h-full overflow-y-auto ${compact ? 'py-6 px-5' : 'py-8 px-8'}`}>
       <pre
-        className="text-text-secondary whitespace-pre-wrap"
+        className="whitespace-pre-wrap"
         style={{
+          // Unsynced lyrics have no "sung yet" state, so they follow the
+          // upcoming/played color (auto keeps the old secondary text tone).
+          color: lyricsColorInactive ?? 'var(--text-secondary)',
           fontFamily: 'var(--font-lyrics)',
           fontSize: `${(compact ? 0.75 : 0.875) * lyricsScale}rem`,
           // Unitless so line spacing tracks the chosen size (the old fixed
@@ -189,7 +202,9 @@ export default function LyricsDisplay({ getTime, onSeek, compact, override }: Ly
           textAlign: lyricsAlign,
         }}
       >
-        {rawLyrics}
+        {splitAdLibs(rawLyrics).map((seg, si) => (
+          <span key={si} style={seg.adLib ? { fontSize: `${ADLIB_FONT_SCALE}em` } : undefined}>{seg.text}</span>
+        ))}
       </pre>
     </div>
   )

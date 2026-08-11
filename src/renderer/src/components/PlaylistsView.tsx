@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo, useLayoutEffe
 import { createPortal } from 'react-dom'
 import {
   ListMusic, Play, Loader2, Plus, Trash2, Pencil, ArrowLeft,
-  X, Check, Heart, Shuffle, Music2, Clock, GripVertical,
+  X, Check, Heart, Shuffle, Music2, Clock, GripVertical, Rss,
   ListPlus, Download, Archive, Info, FolderInput, MoreHorizontal,
   Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ImageOff, Globe, Lock, Link, ListEnd, HardDrive, CircleArrowDown, Layers,
   CheckSquare2, Square, FileUp, FileDown, FileText,
@@ -10,7 +10,7 @@ import {
 import { useStore, useStorePick } from '../store/useStore'
 import * as userApi from '../lib/userApi'
 import type { PlaylistDetail, PlaylistSummary } from '../lib/userApi'
-import { Track, LocalPlaylist, LibraryTrack } from '../types'
+import { Track, LocalPlaylist, LibraryTrack, FollowedPlaylist } from '../types'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { ProgressiveCover } from './ProgressiveCover'
 import { buildImageUrl, buildStreamUrl, JWAPI_BASE, apiFetch, JWApiSong, playlistCoverUrl, smallCoverUrl, resolveTitleToSong } from '../lib/juicewrldApi'
@@ -269,7 +269,8 @@ export default function PlaylistsView(): JSX.Element {
     playlistsSelectedId: selectedId, setPlaylistsSelectedId: setSelectedId,
     playlistsSelectedLocalId: localSelectedId, setPlaylistsSelectedLocalId: setLocalSelectedId,
     offlinePlaylists, offlineSync, offlineTracks, downloadPlaylistOffline, removePlaylistOffline,
-    playlistFolders, createFolder, renameFolder, deleteFolder, movePlaylistsToFolder, appTextScale } = useStorePick('account', 'playlists', 'refreshPlaylists', 'playTrack', 'playCollection', 'addToQueue', 'setShowUserAuth', 'likedTrackIds', 'toggleLike', 'setActiveView', 'setPendingEditorSongId', 'localPlaylists', 'libraryTracks', 'libraryArt', 'loadLibrary', 'deleteLocalPlaylist', 'renameLocalPlaylist', 'updateLocalPlaylist', 'addToLocalPlaylist', 'importM3uEntriesLocal', 'exportLocalPlaylistM3u', 'pendingPlaylistId', 'setPendingPlaylistId', 'playlistsSelectedId', 'setPlaylistsSelectedId', 'playlistsSelectedLocalId', 'setPlaylistsSelectedLocalId', 'offlinePlaylists', 'offlineSync', 'offlineTracks', 'downloadPlaylistOffline', 'removePlaylistOffline', 'playlistFolders', 'createFolder', 'renameFolder', 'deleteFolder', 'movePlaylistsToFolder', 'appTextScale')
+    followedPlaylists, followPlaylist, unfollowPlaylist, updateFollowedPlaylistMeta,
+    playlistFolders, createFolder, renameFolder, deleteFolder, movePlaylistsToFolder, appTextScale } = useStorePick('account', 'playlists', 'refreshPlaylists', 'playTrack', 'playCollection', 'addToQueue', 'setShowUserAuth', 'likedTrackIds', 'toggleLike', 'setActiveView', 'setPendingEditorSongId', 'localPlaylists', 'libraryTracks', 'libraryArt', 'loadLibrary', 'deleteLocalPlaylist', 'renameLocalPlaylist', 'updateLocalPlaylist', 'addToLocalPlaylist', 'importM3uEntriesLocal', 'exportLocalPlaylistM3u', 'pendingPlaylistId', 'setPendingPlaylistId', 'playlistsSelectedId', 'setPlaylistsSelectedId', 'playlistsSelectedLocalId', 'setPlaylistsSelectedLocalId', 'offlinePlaylists', 'offlineSync', 'offlineTracks', 'downloadPlaylistOffline', 'removePlaylistOffline', 'followedPlaylists', 'followPlaylist', 'unfollowPlaylist', 'updateFollowedPlaylistMeta', 'playlistFolders', 'createFolder', 'renameFolder', 'deleteFolder', 'movePlaylistsToFolder', 'appTextScale')
   const canEdit = !!(account?.is_editor || account?.is_administrator)
 
   const [showLiked, setShowLiked] = useState(false)
@@ -576,6 +577,7 @@ export default function PlaylistsView(): JSX.Element {
     [detail]
   )
   const otherPlaylists = useMemo(() => playlists.filter(p => p.id !== selectedId), [playlists, selectedId])
+  const isFollowingCurrent = useMemo(() => selectedId != null && followedPlaylists.some(f => f.id === selectedId), [followedPlaylists, selectedId])
   const dragEnabled = sort.field === 'default' && !search.trim()
 
   const displayTracks = useMemo(() => {
@@ -746,6 +748,21 @@ export default function PlaylistsView(): JSX.Element {
     if (selectedId != null) loadDetail(selectedId, isSharedView)
     else setDetail(null)
   }, [selectedId, loadDetail, isSharedView])
+
+  // Keep a followed playlist's cached display fields (the grid card's name/
+  // cover/track count) reasonably fresh. The detail view above already
+  // re-fetches live on every open — this just makes sure the summary shown
+  // before that fetch resolves next time isn't stuck on whatever it looked
+  // like the moment it was followed.
+  useEffect(() => {
+    if (!isSharedView || selectedId == null || !detail) return
+    if (!followedPlaylists.some(f => f.id === selectedId)) return
+    updateFollowedPlaylistMeta(selectedId, {
+      name: detail.name,
+      trackCount: detail.items.length,
+      coverUrl: coverData?.cover_image_url ?? coverData?.cover_image ?? null,
+    })
+  }, [isSharedView, selectedId, detail, coverData, followedPlaylists, updateFollowedPlaylistMeta])
 
   // Reset sort/search/infoSong/editing when switching playlists
   useEffect(() => {
@@ -1555,6 +1572,30 @@ export default function PlaylistsView(): JSX.Element {
     )
   }
 
+  const openFollowedPlaylist = (id: number): void => { setSelectedId(id); setIsSharedView(true) }
+
+  const renderFollowedCard = (f: FollowedPlaylist): JSX.Element => (
+    <PlaylistCard
+      key={`followed-${f.id}`}
+      name={f.name}
+      subtitle={`${f.trackCount} ${f.trackCount === 1 ? 'track' : 'tracks'} · Following`}
+      cover={f.coverUrl ? (
+        <img src={f.coverUrl} alt="" className="w-full h-full object-cover" />
+      ) : (
+        <div className="w-full h-full bg-gradient-to-br from-accent/40 to-accent/10 flex items-center justify-center">
+          <Rss className="text-accent/50 w-1/3 h-1/3" />
+        </div>
+      )}
+      badge={<span className="flex items-center gap-1 bg-black/60 text-accent text-[10px] px-1.5 py-0.5 rounded-md"><Rss size={9} /> Following</span>}
+      selected={false}
+      selectMode={false}
+      onClick={() => openFollowedPlaylist(f.id)}
+      onContextMenu={e => { e.preventDefault(); e.stopPropagation(); unfollowPlaylist(f.id) }}
+      onMenuButton={() => unfollowPlaylist(f.id)}
+      onPlay={() => openFollowedPlaylist(f.id)}
+    />
+  )
+
   // Folders group both kinds of playlist by their composite key. Resolve each
   // folder's members against the currently-loaded playlists (a member whose
   // playlist was deleted since simply drops out — see the prune-on-read note in
@@ -2046,13 +2087,36 @@ export default function PlaylistsView(): JSX.Element {
                 {tracks.length > 0 && <HeroPlayButton onClick={() => playCollection(tracks)} />}
                 {tracks.length > 1 && <HeroShuffleButton onClick={playShuffle} />}
 
-                {/* Shared (not-owned) playlists only get "Save to library" —
-                    the owner-only actions below don't apply. */}
+                {/* Shared (not-owned) playlists get two ways to keep this
+                    around: Follow (a live pointer — always shows the owner's
+                    current tracks, local to this device) or Save a copy (a
+                    one-time snapshot into an owned playlist, requires an
+                    account). Follow needs no account since it's purely local. */}
+                {isSharedView && tracks.length > 0 && detail && (
+                  <button
+                    onClick={() => {
+                      if (isFollowingCurrent) { unfollowPlaylist(detail.id); return }
+                      followPlaylist({
+                        id: detail.id,
+                        name: detail.name,
+                        trackCount: detail.items.length,
+                        coverUrl: coverData?.cover_image_url ?? coverData?.cover_image ?? null,
+                      })
+                    }}
+                    title={isFollowingCurrent ? 'Unfollow — stop showing this in your Playlists' : 'Follow — always shows the owner\'s current tracks, kept on this device only'}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                      isFollowingCurrent ? 'text-accent bg-accent/10' : 'text-text-primary bg-surface-raised hover:bg-surface-overlay'
+                    }`}
+                  >
+                    {isFollowingCurrent ? <Check size={14} /> : <Rss size={14} />}
+                    {isFollowingCurrent ? 'Following' : 'Follow'}
+                  </button>
+                )}
                 {isSharedView && account && tracks.length > 0 && detail && (
                   <button
                     onClick={handleImportPlaylist}
                     disabled={importState === 'loading' || importState === 'done'}
-                    title={importState === 'done' ? 'Saved to library!' : importState === 'error' ? 'Import failed' : 'Save to my library'}
+                    title={importState === 'done' ? 'Saved to library!' : importState === 'error' ? 'Import failed' : 'Save a one-time copy to my library'}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors disabled:opacity-60 ${
                       importState === 'done' ? 'text-accent bg-accent/10' :
                       importState === 'error' ? 'text-red-400 bg-red-400/10' :
@@ -2062,7 +2126,7 @@ export default function PlaylistsView(): JSX.Element {
                     {importState === 'loading' ? <Loader2 size={14} className="animate-spin" /> :
                      importState === 'done' ? <Check size={14} /> :
                      <FolderInput size={14} />}
-                    {importState === 'loading' ? 'Saving…' : importState === 'done' ? 'Saved!' : importState === 'error' ? 'Failed' : 'Save to library'}
+                    {importState === 'loading' ? 'Saving…' : importState === 'done' ? 'Saved!' : importState === 'error' ? 'Failed' : 'Save a copy'}
                   </button>
                 )}
 
@@ -2820,6 +2884,19 @@ export default function PlaylistsView(): JSX.Element {
             <p className="text-text-muted text-sm col-span-full py-2">No synced playlists yet — click "New Playlist" to create one.</p>
           )}
         </div>
+
+        {/* ── Following section — other people's playlists followed from a
+            share link. Live pointers, not copies (see FollowedPlaylist);
+            right-click or the "⋯" button unfollows since there's nothing
+            else to do with one from here. ── */}
+        {followedPlaylists.length > 0 && (
+          <>
+            <h2 className="text-text-muted text-xs font-semibold uppercase tracking-widest mb-3 mt-9">Following</h2>
+            <div className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+              {followedPlaylists.map(renderFollowedCard)}
+            </div>
+          </>
+        )}
 
         {/* ── On This Device section — separated from synced playlists,
             mirroring Apple Music's split between iCloud and local library. ── */}

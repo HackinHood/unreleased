@@ -2,6 +2,7 @@ import { Track } from '../types'
 import { apiRequest } from './apiClient'
 import { cacheGet } from './apiCache'
 import { peekSongPref } from './songPrefs'
+import { peekRotatedCover } from './coverRotation'
 
 export const JWAPI_BASE = 'https://juicewrldapi.com/juicewrld'
 
@@ -491,7 +492,9 @@ export function songToTrack(song: JWApiSong): Track {
   const apiTitle = song.track_titles?.[0] || song.name
   const apiImageUrl = buildImageUrl(song.image_url)
   const pref = peekSongPref(song.id)
-  const coverUrl = resolvePrefCoverUrl(pref?.cover_url)
+  // A user-set cover always wins; a rotated suggestion only fills in where
+  // there is none (and is only ever populated while the setting is on).
+  const coverUrl = resolvePrefCoverUrl(pref?.cover_url) ?? peekRotatedCover(song.id)
   return {
     id: `jw-${song.id}`,
     path: song.path,

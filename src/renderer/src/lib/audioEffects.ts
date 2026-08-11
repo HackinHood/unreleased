@@ -15,7 +15,7 @@
 // <audio> elements must carry crossOrigin="anonymous" for any of that to
 // apply.
 
-import { IS_IOS } from './platform'
+import { IS_IOS, IS_MOBILE } from './platform'
 
 export const EQ_BANDS = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
 export const EQ_GAIN_LIMIT = 12
@@ -94,6 +94,15 @@ export interface AudioEffectSettings {
 // nothing.
 export const EFFECTS_SUPPORTED = !IS_IOS
 
+// Android is a milder version of the same story: routing through the graph
+// works, but the context gets suspended by doze/screen-off and the page loses
+// the "playing audio" exemption that keeps a backgrounded tab from being
+// frozen — at which point nothing is left running to resume it. A bare element
+// survives all of that. So on mobile the graph is built lazily: elements stay
+// unrouted until the user actually switches an effect on, which is the only
+// point where the trade is worth making. Desktop attaches eagerly as before.
+let effectsWanted = !IS_MOBILE
+
 let ctx: AudioContext | null = null
 let chainInput: GainNode | null = null
 let analyser: AnalyserNode | null = null
@@ -110,6 +119,12 @@ let decayRebuildTimer: number | null = null
 // Elements already wired in — createMediaElementSource throws if called twice
 // on the same element, and there is no way to un-create a source node.
 const attachedEls = new WeakSet<HTMLAudioElement>()
+// Elements that asked to be routed while the graph didn't exist yet (mobile,
+// before any effect is switched on). Held so enabling an effect later can wire
+// up everything that already registered — the player slots and the FM element
+// all attach once at mount and never come back to ask again. Bounded by that:
+// three elements that live as long as the app does.
+const pendingEls = new Set<HTMLAudioElement>()
 
 // Settings/sink can arrive from the store before the first element attaches
 // (i.e. before the graph exists) — hold them and apply on creation.
@@ -138,6 +153,8 @@ function ensureGraph(): AudioContext | null {
   // iOS: never build the graph — routing through Web Audio would kill
   // background playback (see IS_IOS above). Elements play bare instead.
   if (IS_IOS) return null
+  // Android: not until an effect is actually in use (see effectsWanted).
+  if (!effectsWanted) return null
   try {
     ctx = new AudioContext()
   } catch (e) {
@@ -218,18 +235,36 @@ function ensureGraph(): AudioContext | null {
 }
 
 // Routes an element through the shared chain. Safe to call repeatedly.
-// Elements keep playing (unprocessed) if the Web Audio setup fails.
+// Elements keep playing (unprocessed) if the Web Audio setup fails — and on
+// mobile they deliberately stay unprocessed until setEffectsChainWanted().
 export function attachAudioElement(el: HTMLAudioElement | null): void {
   if (!el || attachedEls.has(el)) return
+  pendingEls.add(el)
+  flushPendingAttachments()
+}
+
+function flushPendingAttachments(): void {
+  if (pendingEls.size === 0) return
   const context = ensureGraph()
   if (!context || !chainInput) return
-  try {
-    const src = context.createMediaElementSource(el)
-    src.connect(chainInput)
-    attachedEls.add(el)
-  } catch (e) {
-    console.error('attachAudioElement failed:', e)
+  for (const el of pendingEls) {
+    try {
+      context.createMediaElementSource(el).connect(chainInput)
+      attachedEls.add(el)
+    } catch (e) {
+      console.error('attachAudioElement failed:', e)
+    }
+    pendingEls.delete(el)
   }
+}
+
+// Opts this session into the Web Audio chain on mobile, wiring up every element
+// that registered before now. One-way by nature: a MediaElementSource can't be
+// un-created, so an element routed once stays routed until the page reloads.
+export function setEffectsChainWanted(wanted: boolean): void {
+  if (!wanted || effectsWanted) return
+  effectsWanted = true
+  flushPendingAttachments()
 }
 
 export function applyAudioEffects(settings: AudioEffectSettings): void {

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Music, Radio, Search, SkipForward, ThumbsUp, ThumbsDown, X, ChevronDown, ChevronLeft, Play, Pause, SkipBack, SkipForward as SkipFwd, Shuffle, Repeat, Repeat1, Volume2, VolumeX, MoreHorizontal, Info, Heart, Maximize2, Minimize2, PictureInPicture2, ListMusic, GripVertical, Trash2, Check, Download, History, SlidersHorizontal } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import { useShallow } from 'zustand/react/shallow'
-import { parseLrc, getCurrentLineIndex, isLrcFormat, downloadSyncedLyrics } from '../lib/lyrics'
+import { parseLrc, getCurrentLineIndex, isLrcFormat, downloadSyncedLyrics, splitAdLibs, ADLIB_FONT_SCALE } from '../lib/lyrics'
 import { formatDuration } from '../lib/format'
 import { seekAudio, getAudioDuration, getAudioCurrentTime } from './Player'
 import { buildImageUrl, apiFetch, songToTrack, JWAPI_BASE, playlistCoverUrl, smallCoverUrl } from '../lib/juicewrldApi'
@@ -1955,7 +1955,11 @@ const LyricsPanel = memo(function LyricsPanel({
   const linesRef    = useRef<HTMLDivElement>(null)
   const activeRef   = useRef<HTMLDivElement>(null)
   const lyricsOffset = useStore(s => s.lyricsOffset)
-  const { lyricsScale, lyricsAlign, lyricsBlur } = useStorePick('lyricsScale', 'lyricsAlign', 'lyricsBlur')
+  const { lyricsScale, lyricsAlign, lyricsBlur, lyricsBlurAmount, lyricsColorActive, lyricsColorInactive } =
+    useStorePick('lyricsScale', 'lyricsAlign', 'lyricsBlur', 'lyricsBlurAmount', 'lyricsColorActive', 'lyricsColorInactive')
+  // null = auto, i.e. the art-derived text colors this tab already picks.
+  const activeColor   = lyricsColorActive ?? txtPri
+  const inactiveColor = lyricsColorInactive ?? txtSec
 
   // Driven by requestAnimationFrame against the LIVE audio.currentTime rather
   // than the Zustand-stored value (which only updates on the native
@@ -2148,7 +2152,6 @@ const LyricsPanel = memo(function LyricsPanel({
           {syncedLines.map((line, i) => {
             if (!line.text) return <div key={i} className="h-3" />
             const isActive = i === currentLineIdx
-            const isPast   = i < currentLineIdx
             const dist     = Math.abs(i - currentLineIdx)
             // The active line grows via `transform: scale()`, not a literal
             // font-size change. font-size is a layout property — animating it
@@ -2189,15 +2192,20 @@ const LyricsPanel = memo(function LyricsPanel({
                   // smooth) scale/opacity/color animation appears to settle.
                   fontWeight: isActive ? 800 : 500,
                   lineHeight: 1.25,
-                  color:      isActive ? txtPri : txtSec,
+                  color:      isActive ? activeColor : inactiveColor,
                   opacity:    isActive ? 1 : dist === 1 ? 0.55 : dist === 2 ? 0.35 : 0.2,
-                  filter:     (!isActive && !isPast && dist >= 2 && lyricsBlur) ? 'blur(0.6px)' : 'none',
+                  // Every line except the one playing — played and upcoming
+                  // alike — so the active line is the only sharp thing on
+                  // screen.
+                  filter:     (!isActive && lyricsBlur) ? `blur(${(0.6 * lyricsBlurAmount).toFixed(2)}px)` : 'none',
                   transform:  `scale(${scale})`,
                   transition: 'opacity 0.4s cubic-bezier(0.4,0,0.2,1), color 0.4s cubic-bezier(0.4,0,0.2,1), transform 0.4s cubic-bezier(0.4,0,0.2,1), filter 0.4s cubic-bezier(0.4,0,0.2,1)',
                   textShadow: isActive ? '0 0 30px rgba(255,255,255,0.12)' : 'none',
                 }}
               >
-                {line.text}
+                {splitAdLibs(line.text).map((seg, si) => (
+                  <span key={si} style={seg.adLib ? { fontSize: `${ADLIB_FONT_SCALE}em` } : undefined}>{seg.text}</span>
+                ))}
               </div>
             )
           })}
@@ -2223,14 +2231,18 @@ const LyricsPanel = memo(function LyricsPanel({
       <pre
         className="text-xs md:text-sm leading-6 md:leading-7 whitespace-pre-wrap"
         style={{
-          color: txtSec,
+          // Unsynced lyrics have no "sung yet" state, so they follow the
+          // upcoming/played color.
+          color: inactiveColor,
           fontFamily: 'var(--font-lyrics)',
           textAlign: lyricsAlign,
           // Only override the responsive size classes when the user actually
           // changed the size; unitless line-height keeps spacing proportional.
           ...(lyricsScale !== 1 ? { fontSize: `${0.875 * lyricsScale}rem`, lineHeight: 1.9 } : {}),
         }}
-      >{rawLyrics}</pre>
+      >{splitAdLibs(rawLyrics).map((seg, si) => (
+        <span key={si} style={seg.adLib ? { fontSize: `${ADLIB_FONT_SCALE}em` } : undefined}>{seg.text}</span>
+      ))}</pre>
     </div>
   )
 })

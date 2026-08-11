@@ -3,7 +3,7 @@ import {
   Music, Play, Pause, Shuffle, Search, MoreHorizontal,
   ChevronLeft, ChevronRight, LayoutGrid, List, Sparkles, User,
   FolderOpen, Clock, Loader2, GripVertical, ChevronDown, ChevronUp, Link2,
-  CheckSquare2, Square, Pencil, ListPlus,
+  CheckSquare2, Square, Pencil, ListPlus, Plus, HardDrive,
 } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import { LibraryTrack } from '../types'
@@ -556,7 +556,7 @@ function BrowseRail({ nav, onNav, songCount }: { nav: Nav; onNav: (n: Nav) => vo
 // ─── main ─────────────────────────────────────────────────────────────────────
 
 export default function LibraryTab(): JSX.Element {
-  const { libraryTracks, libraryScanning, scanLibrary, libraryFolders, loadLibrary, setShowSettings, playTrack, playCollection, playNext, addToQueue, account, openLocalEditor, likedTrackIds, toggleLike, openUrlImport, openBulkTrackEditor } = useStorePick('libraryTracks', 'libraryScanning', 'scanLibrary', 'libraryFolders', 'loadLibrary', 'setShowSettings', 'playTrack', 'playCollection', 'playNext', 'addToQueue', 'account', 'openLocalEditor', 'likedTrackIds', 'toggleLike', 'openUrlImport', 'openBulkTrackEditor')
+  const { libraryTracks, libraryScanning, scanLibrary, libraryFolders, loadLibrary, setShowSettings, playTrack, playCollection, playNext, addToQueue, account, openLocalEditor, likedTrackIds, toggleLike, openUrlImport, openBulkTrackEditor, localPlaylists, addToLocalPlaylist, createLocalPlaylist } = useStorePick('libraryTracks', 'libraryScanning', 'scanLibrary', 'libraryFolders', 'loadLibrary', 'setShowSettings', 'playTrack', 'playCollection', 'playNext', 'addToQueue', 'account', 'openLocalEditor', 'likedTrackIds', 'toggleLike', 'openUrlImport', 'openBulkTrackEditor', 'localPlaylists', 'addToLocalPlaylist', 'createLocalPlaylist')
 
   const [nav, setNav] = useState<Nav>(() => ({ kind: 'lib', key: (localStorage.getItem('library:view') as LibKey) || 'albums' }))
   const [drill, setDrill] = useState<{ kind: 'album'; album: Album } | { kind: 'artist'; name: string } | null>(null)
@@ -621,6 +621,33 @@ export default function LibraryTab(): JSX.Element {
   }, [selectMode])
 
   const selectedTracks = useMemo(() => [...selected.values()], [selected])
+
+  // ── Bulk "Add to playlist" ──
+  // Library files are device-only, so local playlists are the only valid
+  // target (a scanned file has no song id to give a synced playlist). The
+  // per-track context menu has always offered this; the bulk bar hadn't.
+  const [showBulkPlaylists, setShowBulkPlaylists] = useState(false)
+  const [bulkNewName, setBulkNewName] = useState('')
+
+  const closeBulkPlaylists = (): void => { setShowBulkPlaylists(false); setBulkNewName('') }
+
+  const bulkAddToLocalPlaylist = (playlistId: string): void => {
+    selectedTracks.forEach(t => addToLocalPlaylist(playlistId, t.id))
+    closeBulkPlaylists()
+    exitSelectMode()
+  }
+
+  const bulkCreateAndAdd = (): void => {
+    const name = bulkNewName.trim()
+    if (!name) return
+    createLocalPlaylist(name)
+    // createLocalPlaylist applies synchronously and parks the new id in
+    // activeLocalPlaylistId (same trick SongContextMenu uses).
+    const newId = useStore.getState().activeLocalPlaylistId
+    if (newId) selectedTracks.forEach(t => addToLocalPlaylist(newId, t.id))
+    closeBulkPlaylists()
+    exitSelectMode()
+  }
 
   const openCtx = (track: LibraryTrack, queue: LibraryTrack[], x: number, y: number) => setCtx({ track, queue, x, y })
 
@@ -796,7 +823,7 @@ export default function LibraryTab(): JSX.Element {
 
         {/* Bulk selection action bar */}
         {selectMode && (
-          <div className="shrink-0 border-t border-[var(--border)] bg-surface px-4 py-2.5 flex items-center gap-2">
+          <div className="relative z-30 shrink-0 border-t border-[var(--border)] bg-surface px-4 py-2.5 flex items-center gap-2">
             <span className="text-sm text-text-primary font-medium flex-1">
               {selected.size} selected
             </span>
@@ -819,6 +846,56 @@ export default function LibraryTab(): JSX.Element {
             >
               <ListPlus size={13} /> Add to queue
             </button>
+            <div className="relative">
+              <button
+                onClick={() => setShowBulkPlaylists(v => !v)}
+                disabled={selected.size === 0}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-overlay hover:bg-surface-raised text-text-primary rounded-lg text-xs font-medium disabled:opacity-50 transition-colors"
+              >
+                <Plus size={13} /> Add to playlist
+              </button>
+              {showBulkPlaylists && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={closeBulkPlaylists} />
+                  <div className="absolute right-0 bottom-full mb-1 z-50 w-56 bg-surface border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden">
+                    <div className="px-3 py-2 border-b border-[var(--border)] text-[11px] uppercase tracking-wider text-text-muted font-semibold">
+                      Add to playlist
+                    </div>
+                    <div className="max-h-56 overflow-y-auto py-1">
+                      {localPlaylists.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-text-muted">No playlists yet.</p>
+                      ) : localPlaylists.map(p => (
+                        <button
+                          key={p.id}
+                          onClick={() => bulkAddToLocalPlaylist(p.id)}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors"
+                        >
+                          <HardDrive size={14} className="shrink-0 text-text-muted" />
+                          <span className="flex-1 truncate">{p.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="border-t border-[var(--border)] p-2 flex items-center gap-1.5">
+                      <input
+                        value={bulkNewName}
+                        onChange={e => setBulkNewName(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') bulkCreateAndAdd() }}
+                        placeholder="New playlist…"
+                        className="flex-1 min-w-0 bg-surface-overlay border border-[var(--border)] rounded-lg px-2 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
+                      />
+                      <button
+                        onClick={bulkCreateAndAdd}
+                        disabled={!bulkNewName.trim()}
+                        className="shrink-0 p-1.5 rounded-lg bg-accent text-white disabled:opacity-40 transition-opacity"
+                        title="Create playlist and add selection"
+                      >
+                        <Plus size={13} />
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
             <button
               onClick={() => openBulkTrackEditor(selectedTracks)}
               disabled={selected.size === 0}

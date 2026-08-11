@@ -5,7 +5,7 @@ import {
   FolderOpen, FolderPlus, Monitor, BellOff, Minus, Loader2, Plus, AlignLeft, FileText, Trash2, Wrench, FlaskConical,
   PanelLeft, PanelRight, PanelTop, PanelBottom, Waves, Keyboard, RotateCcw, AppWindow, PictureInPicture2, Minimize2,
   ListOrdered, GripVertical, CloudUpload, Type, AlignCenter, Menu, Pencil, Upload,
-  ScrollText, ShieldCheck, Disc,
+  ScrollText, ShieldCheck, Disc, Images,
 } from 'lucide-react'
 import { useStore, useStorePick, type SidebarPosition, type AppMenuPosition, type PopoutWindowKind } from '../store/useStore'
 import { HOTKEY_ACTIONS, HOTKEY_CATEGORIES, effectiveBinding, effectiveGlobalBinding, comboTokens, eventToCombo, isGloballyRegistrable } from '../lib/hotkeys'
@@ -36,6 +36,12 @@ const APP_TEXT_SIZES: { label: string; value: number }[] = [
   { label: 'Large', value: 1.1 },
   { label: 'Larger', value: 1.2 },
 ]
+
+// Swatches offered for the lyric line colors. The sung line wants bright,
+// high-contrast tones; the rest want dimmer ones that still read against the
+// WRLD tab's blurred cover art.
+const LYRIC_ACTIVE_PRESETS = ['#ffffff', '#1db954', '#a78bfa', '#60a5fa', '#f472b6', '#facc15']
+const LYRIC_INACTIVE_PRESETS = ['#9ca3af', '#6b7280', '#94a3b8', '#c4b5fd', '#7dd3fc', '#fda4af']
 
 const LYRIC_TEXT_SIZES: { label: string; value: number }[] = [
   { label: 'Small', value: 0.85 },
@@ -109,6 +115,59 @@ function Row({ icon: Icon, iconColor, label, sub, labelExtra, children }: {
   )
 }
 
+// One line of the "Lyric colors" setting: presets + a custom picker, with
+// "Auto" (value === null) meaning "leave it to the surface's own colors" —
+// the theme's text vars in the mini/now-playing lyrics, the cover-art-derived
+// ones in the WRLD tab. The <input type="color"> always needs a concrete hex,
+// so `fallback` is what it shows while the setting is on Auto.
+function LyricColorRow({ label, presets, value, fallback, onChange }: {
+  label: string
+  presets: string[]
+  value: string | null
+  fallback: string
+  onChange: (color: string | null) => void
+}): JSX.Element {
+  const [custom, setCustom] = useState(value ?? fallback)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current) }, [])
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-text-muted text-[11px] w-[86px] shrink-0">{label}</span>
+      <button
+        onClick={() => onChange(null)}
+        className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-colors ${
+          value === null
+            ? 'bg-accent/15 text-accent border-[var(--accent)]'
+            : 'text-text-muted border-[var(--border)] hover:text-text-primary hover:bg-[var(--surface-overlay)]'
+        }`}
+      >
+        Auto
+      </button>
+      {presets.map((c) => (
+        <button
+          key={c}
+          onClick={() => { onChange(c); setCustom(c) }}
+          className="w-6 h-6 rounded-full border border-[var(--border)] transition-transform hover:scale-110"
+          style={{ backgroundColor: c, outline: value?.toLowerCase() === c ? `2px solid ${c}` : 'none', outlineOffset: '2px' }}
+          title={c}
+        />
+      ))}
+      <input
+        type="color"
+        value={custom}
+        onChange={(e) => {
+          const next = e.target.value
+          setCustom(next)
+          if (debounceRef.current) clearTimeout(debounceRef.current)
+          debounceRef.current = setTimeout(() => onChange(next), 80)
+        }}
+        className="w-6 h-6 rounded-full cursor-pointer border-0 p-0 bg-transparent"
+        title="Custom color"
+      />
+    </div>
+  )
+}
+
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }): JSX.Element {
   return (
     <button
@@ -168,6 +227,7 @@ export default function Settings({ floating = false }: { floating?: boolean }): 
     crossfadeEnabled, crossfadeDuration, setCrossfade,
     pauseFadeEnabled, setPauseFade,
     preferOgVersion, setPreferOgVersion,
+    rotateSuggestedCovers, setRotateSuggestedCovers,
     mediaOverlayEnabled, setMediaOverlayEnabled,
     popoutWindows, setPopoutWindow,
     lyricsOffset, setLyricsOffset,
@@ -184,11 +244,14 @@ export default function Settings({ floating = false }: { floating?: boolean }): 
     lyricsScale, setLyricsScale,
     lyricsAlign, setLyricsAlign,
     lyricsBlur, setLyricsBlur,
+    lyricsBlurAmount, setLyricsBlurAmount,
+    lyricsColorActive, setLyricsColorActive,
+    lyricsColorInactive, setLyricsColorInactive,
     appFont, setAppFont,
     lyricsFont, setLyricsFont,
     gradientsEnabled, setGradientsEnabled,
     refreshPlaylists,
-  } = useStorePick('setShowSettings', 'setActiveView', 'account', 'theme', 'setTheme', 'customSkins', 'saveCustomSkin', 'deleteCustomSkin', 'accentColor', 'setAccentColor', 'settingsTab', 'setSettingsTab', 'sidebarPosition', 'setSidebarPosition', 'appMenuPosition', 'setAppMenuPosition', 'navOrder', 'setNavOrder', 'navVisibility', 'setNavItemVisible', 'navControlOrder', 'setNavControlOrder', 'navControlVisibility', 'setNavControlVisible', 'audioOutput', 'setAudioOutput', 'crossfadeEnabled', 'crossfadeDuration', 'setCrossfade', 'pauseFadeEnabled', 'setPauseFade', 'preferOgVersion', 'setPreferOgVersion', 'mediaOverlayEnabled', 'setMediaOverlayEnabled', 'popoutWindows', 'setPopoutWindow', 'lyricsOffset', 'setLyricsOffset', 'sleepTimerEnd', 'setSleepTimer', 'hotkeyBindings', 'setHotkeyBinding', 'resetHotkeyBindings', 'resetGlobalHotkeyBindings', 'hotkeySeekSeconds', 'setHotkeySeekSeconds', 'globalHotkeysEnabled', 'setGlobalHotkeysEnabled', 'globalHotkeyBindings', 'setGlobalHotkeyBinding', 'updateStatus', 'libraryFolders', 'addLibraryFolder', 'removeLibraryFolder', 'scanLibrary', 'libraryScanning', 'libraryTracks', 'libraryLastScanned', 'libraryAutoRefresh', 'setLibraryAutoRefresh', 'developerMode', 'setDeveloperMode', 'lastfmUser', 'setLastfmUser', 'lastfmEnabled', 'setLastfmEnabled', 'appTextScale', 'setAppTextScale', 'lyricsScale', 'setLyricsScale', 'lyricsAlign', 'setLyricsAlign', 'lyricsBlur', 'setLyricsBlur', 'appFont', 'setAppFont', 'lyricsFont', 'setLyricsFont', 'gradientsEnabled', 'setGradientsEnabled', 'refreshPlaylists')
+  } = useStorePick('setShowSettings', 'setActiveView', 'account', 'theme', 'setTheme', 'customSkins', 'saveCustomSkin', 'deleteCustomSkin', 'accentColor', 'setAccentColor', 'settingsTab', 'setSettingsTab', 'sidebarPosition', 'setSidebarPosition', 'appMenuPosition', 'setAppMenuPosition', 'navOrder', 'setNavOrder', 'navVisibility', 'setNavItemVisible', 'navControlOrder', 'setNavControlOrder', 'navControlVisibility', 'setNavControlVisible', 'audioOutput', 'setAudioOutput', 'crossfadeEnabled', 'crossfadeDuration', 'setCrossfade', 'pauseFadeEnabled', 'setPauseFade', 'preferOgVersion', 'setPreferOgVersion', 'rotateSuggestedCovers', 'setRotateSuggestedCovers', 'mediaOverlayEnabled', 'setMediaOverlayEnabled', 'popoutWindows', 'setPopoutWindow', 'lyricsOffset', 'setLyricsOffset', 'sleepTimerEnd', 'setSleepTimer', 'hotkeyBindings', 'setHotkeyBinding', 'resetHotkeyBindings', 'resetGlobalHotkeyBindings', 'hotkeySeekSeconds', 'setHotkeySeekSeconds', 'globalHotkeysEnabled', 'setGlobalHotkeysEnabled', 'globalHotkeyBindings', 'setGlobalHotkeyBinding', 'updateStatus', 'libraryFolders', 'addLibraryFolder', 'removeLibraryFolder', 'scanLibrary', 'libraryScanning', 'libraryTracks', 'libraryLastScanned', 'libraryAutoRefresh', 'setLibraryAutoRefresh', 'developerMode', 'setDeveloperMode', 'lastfmUser', 'setLastfmUser', 'lastfmEnabled', 'setLastfmEnabled', 'appTextScale', 'setAppTextScale', 'lyricsScale', 'setLyricsScale', 'lyricsAlign', 'setLyricsAlign', 'lyricsBlur', 'setLyricsBlur', 'lyricsBlurAmount', 'setLyricsBlurAmount', 'lyricsColorActive', 'setLyricsColorActive', 'lyricsColorInactive', 'setLyricsColorInactive', 'appFont', 'setAppFont', 'lyricsFont', 'setLyricsFont', 'gradientsEnabled', 'setGradientsEnabled', 'refreshPlaylists')
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [customAccent, setCustomAccent] = useState(accentColor)
@@ -1016,11 +1079,49 @@ export default function Settings({ floating = false }: { floating?: boolean }): 
                 <Row
                   icon={Eye}
                   iconColor="#64748b"
-                  label="Blur upcoming lyrics"
-                  sub="Soften synced lines that haven't played yet"
+                  label="Blur inactive lyrics"
+                  sub="Soften every synced line except the one playing"
+                  labelExtra={<div className="ml-2 translate-y-[3px]"><Toggle on={lyricsBlur} onClick={() => setLyricsBlur(!lyricsBlur)} /></div>}
                 >
-                  <Toggle on={lyricsBlur} onClick={() => setLyricsBlur(!lyricsBlur)} />
+                  {lyricsBlur && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range" min={0.25} max={4} step={0.25}
+                        value={lyricsBlurAmount}
+                        onChange={(e) => setLyricsBlurAmount(parseFloat(e.target.value))}
+                        className="w-20 accent-[var(--accent)]"
+                      />
+                      <span className="text-text-muted text-xs tabular-nums w-10 text-right">{lyricsBlurAmount}×</span>
+                    </div>
+                  )}
                 </Row>
+                <div className="py-3 border-b border-[var(--border)] last:border-b-0">
+                  <div className="flex items-center gap-2.5 mb-2.5">
+                    <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: '#9333ea' }}>
+                      <Palette size={13} className="text-white" strokeWidth={2.25} />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-text-primary text-sm">Lyric colors</span>
+                      <p className="text-text-muted text-[11px]">Color the line being sung and the ones that aren't — WRLD tab, now playing, mini player</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2.5 pl-[34px]">
+                    <LyricColorRow
+                      label="Current line"
+                      presets={LYRIC_ACTIVE_PRESETS}
+                      value={lyricsColorActive}
+                      fallback="#ffffff"
+                      onChange={setLyricsColorActive}
+                    />
+                    <LyricColorRow
+                      label="Other lines"
+                      presets={LYRIC_INACTIVE_PRESETS}
+                      value={lyricsColorInactive}
+                      fallback="#9ca3af"
+                      onChange={setLyricsColorInactive}
+                    />
+                  </div>
+                </div>
                 <div className="py-3 border-b border-[var(--border)] last:border-b-0">
                   <div className="flex items-center gap-2.5 mb-2.5">
                     <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: '#0d9488' }}>
@@ -1319,6 +1420,13 @@ export default function Settings({ floating = false }: { floating?: boolean }): 
                   iconColor="#059669"
                   label="Prefer OG version"
                   labelExtra={<div className="ml-2 translate-y-[3px]"><Toggle on={preferOgVersion} onClick={() => setPreferOgVersion(!preferOgVersion)} /></div>}
+                />
+                <Row
+                  icon={Images}
+                  iconColor="#d946ef"
+                  label="Rotate suggested covers"
+                  sub="Songs without a custom cover show a different cover from the API files each play"
+                  labelExtra={<div className="ml-2 translate-y-[3px]"><Toggle on={rotateSuggestedCovers} onClick={() => setRotateSuggestedCovers(!rotateSuggestedCovers)} /></div>}
                 />
                 <Row icon={Clock} iconColor="#4f46e5" label="Sleep timer">
                   <div className="flex items-center gap-2">

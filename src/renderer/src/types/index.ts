@@ -85,6 +85,22 @@ export interface LocalPlaylist {
   coverImage?: string | null  // base64 data URL or null
 }
 
+// A live pointer to someone else's synced playlist, saved from a share link
+// without cloning its songs — opening it always re-fetches the owner's
+// current playlist (see PlaylistsView's shared-view load path), so edits the
+// owner makes later show up here too. Local-only: the account profile has no
+// field for this yet, so unlike an owned playlist it doesn't sync across
+// devices. name/trackCount/coverUrl are a display cache, refreshed
+// opportunistically whenever this playlist is opened — never authoritative,
+// just enough for the grid card to render before that fetch resolves.
+export interface FollowedPlaylist {
+  id: number
+  name: string
+  trackCount: number
+  coverUrl: string | null
+  followedAt: number
+}
+
 // ─── Offline playlist sync (Electron only) ─────────────────────────────────
 // A downloaded API song, kept fully playable without network — the audio
 // file plus a snapshot of the song's own metadata at download time.
