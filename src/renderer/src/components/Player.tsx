@@ -25,7 +25,7 @@ import {
 } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import { registerPlayerCommandHandler } from '../lib/windowSync'
-import { eventToCombo, resolveAction, getAction, effectiveGlobalBinding, isGloballyRegistrable, comboToAccelerator, registerHotkeyDispatch, HOTKEY_ACTIONS } from '../lib/hotkeys'
+import { eventToCombo, resolveAction, getAction, effectiveGlobalBinding, comboToAccelerator, registerHotkeyDispatch, HOTKEY_ACTIONS } from '../lib/hotkeys'
 import { formatDuration } from '../lib/format'
 import { apiFetch, smallCoverUrl, JWApiSong } from '../lib/juicewrldApi'
 import { trackIdToSongId, showStaffProfile, staffProfileView } from '../lib/userApi'
@@ -1304,6 +1304,10 @@ export default function Player(): JSX.Element {
     if (dur > 0) seekAudio(dur * pct)
   }
   const hotkeyActionsRef = useRef<Record<string, () => void>>({})
+  // Last action the in-app keydown listener ran, so the OS-global listener can
+  // tell "the user pressed a combo bound in both columns while focused" (skip,
+  // already handled) from "a global-only binding fired" (run it).
+  const lastInAppFire = useRef<{ id: string; at: number } | null>(null)
   hotkeyActionsRef.current = {
     'play-pause': () => { if (currentTrack && !radioFmActive) setIsPlaying(!isPlaying) },
     'play':       () => { if (currentTrack && !radioFmActive) setIsPlaying(true) },
@@ -1408,20 +1412,13 @@ export default function Player(): JSX.Element {
       if (clickable && (combo === 'Space' || combo === 'Enter')) return
       const id = resolveAction(combo, useStore.getState().hotkeyBindings)
       if (!id) return
-      // When this exact combo is ALSO this action's registered global binding,
-      // the OS delivers it through the global handler instead — don't also run
-      // it here (double-fire). A different global combo (or none) for this
-      // action doesn't affect the in-app one; the two are independent.
-      if (
-        useStore.getState().globalHotkeysEnabled && (window as any).electron &&
-        isGloballyRegistrable(combo) && effectiveGlobalBinding(id, useStore.getState().globalHotkeyBindings) === combo
-      ) return
       // Desktop-only actions are unbindable-in-practice on web — ignore them so
       // e.g. Alt+3 doesn't half-switch to a Library view web builds don't have.
       if (getAction(id)?.electronOnly && !(window as any).electron) return
       const fn = hotkeyActionsRef.current[id]
       if (!fn) return
       e.preventDefault()
+      lastInAppFire.current = { id, at: Date.now() }
       fn()
     }
     document.addEventListener('keydown', handler)
@@ -1429,27 +1426,53 @@ export default function Player(): JSX.Element {
   }, [])
 
   // Global (OS-wide) shortcuts — a fired accelerator arrives here as an action
-  // id and runs through the same dispatch table as the in-app keys.
+  // id and runs through the same dispatch table as the in-app keys. Electron
+  // delivers these regardless of focus, so while our window IS focused a combo
+  // bound in both columns would otherwise run twice (once via the keydown
+  // listener above, once here). Guard on "did the in-app listener just run
+  // this same action" rather than on focus alone — gating on focus would break
+  // an action bound ONLY in the Global column, since the keydown listener
+  // resolves against the in-app map and would never fire it.
   useEffect(() => {
     const el = (window as any).electron
     if (!el?.onGlobalShortcut) return
-    return el.onGlobalShortcut((id: string) => hotkeyActionsRef.current[id]?.())
+    return el.onGlobalShortcut((id: string) => {
+      const last = lastInAppFire.current
+      if (last && last.id === id && Date.now() - last.at < 300) return
+      hotkeyActionsRef.current[id]?.()
+    })
   }, [])
 
   // (Re)register the OS-global set whenever it's toggled or a binding changes.
   // Only the main window runs this (Player is main-only); pop-outs just flip the
   // synced `globalHotkeysEnabled` and let this window own the registration.
+  //
+  // Deliberately NO cleanup that clears the set. Each register call is
+  // authoritative (main unregisterAll's first, then registers what it's given),
+  // so re-running this effect already replaces the previous set. A cleanup that
+  // sent [] would tear every shortcut down on any Player remount — and under
+  // <React.StrictMode> (see main.tsx) effects run mount→cleanup→mount, so a
+  // late-arriving clear could land after the re-register and leave nothing
+  // registered while still reporting success. Quitting unregisters everything
+  // anyway (main.js 'before-quit'), so there's nothing to leak.
   useEffect(() => {
     const el = (window as any).electron
     if (!el?.registerGlobalShortcuts) return
-    if (!globalHotkeysEnabled) { el.registerGlobalShortcuts([]); return }
     const entries: { accelerator: string; id: string }[] = []
-    for (const action of HOTKEY_ACTIONS) {
-      const accelerator = comboToAccelerator(effectiveGlobalBinding(action.id, globalHotkeyBindings))
-      if (accelerator) entries.push({ accelerator, id: action.id })
+    if (globalHotkeysEnabled) {
+      for (const action of HOTKEY_ACTIONS) {
+        const accelerator = comboToAccelerator(effectiveGlobalBinding(action.id, globalHotkeyBindings))
+        if (accelerator) entries.push({ accelerator, id: action.id })
+      }
     }
-    el.registerGlobalShortcuts(entries)
-    return () => { el.registerGlobalShortcuts?.([]) }
+    // Surfaced so a registration failure (Electron's globalShortcut.register
+    // returns false when the OS or another app already owns that accelerator)
+    // is visible in DevTools instead of silently doing nothing.
+    Promise.resolve(el.registerGlobalShortcuts(entries))
+      .then((result: { failed?: string[] } | undefined) => {
+        if (result?.failed?.length) console.warn('[global-shortcuts] OS refused to register:', result.failed)
+      })
+      .catch((err: unknown) => console.error('[global-shortcuts] registerGlobalShortcuts threw:', err))
   }, [globalHotkeysEnabled, globalHotkeyBindings])
 
   // Seek: buffer visually while dragging, only commit on mouse release

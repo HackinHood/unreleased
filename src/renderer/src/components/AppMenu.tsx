@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { ChevronRight, ChevronDown, Menu, Check, RefreshCw, AlertTriangle } from 'lucide-react'
+import { ChevronRight, ChevronLeft, ChevronDown, Menu, Check, RefreshCw, AlertTriangle } from 'lucide-react'
 import { useStorePick } from '../store/useStore'
 import { effectiveBinding, comboTokens, runHotkeyAction } from '../lib/hotkeys'
 import { trackIdToSongId } from '../lib/userApi'
@@ -473,6 +473,14 @@ export default function AppMenu({ variant = 'bar', collapsed = false }: { varian
 
   if (!el) return null
 
+  // Which side the flyouts open on — mirrors placeFlyout's flip test (a flyout
+  // sits to the right unless it would overrun the viewport, then it flips left).
+  // Derived here so the row chevrons point toward where the flyout actually
+  // opens, e.g. leftward when the whole menu is docked on the right edge.
+  const SUB_W = 240 // w-60
+  const submenuOpensLeft = panelPos.left + PANEL_W + 4 + SUB_W > window.innerWidth - 8
+  const nestedOpensLeft = subPos.left + SUB_W + 4 + SUB_W > window.innerWidth - 8
+
   const activeEntries = menus.find((m) => m.id === activeMenu)?.entries ?? []
   const activeSubEntries =
     (activeEntries.find((e) => e.kind === 'submenu' && e.label === activeSub) as
@@ -582,8 +590,9 @@ export default function AppMenu({ variant = 'bar', collapsed = false }: { varian
                   : 'text-text-secondary hover:text-text-primary hover:bg-surface-raised'
               }`}
             >
-              {m.label}
-              <ChevronRight size={13} className="ml-auto text-text-muted shrink-0" />
+              {submenuOpensLeft && <ChevronLeft size={13} className="text-text-muted shrink-0" />}
+              <span className="flex-1 truncate">{m.label}</span>
+              {!submenuOpensLeft && <ChevronRight size={13} className="text-text-muted shrink-0" />}
             </button>
           ))}
         </div>
@@ -619,9 +628,10 @@ export default function AppMenu({ variant = 'bar', collapsed = false }: { varian
                         isOpenSub ? 'bg-surface-raised text-text-primary' : 'text-text-secondary hover:text-text-primary hover:bg-surface-raised'
                       }`}
                     >
-                      <span className="w-3.5 shrink-0" />
+                      {nestedOpensLeft && <ChevronLeft size={13} className="text-text-muted shrink-0" />}
+                      {!nestedOpensLeft && <span className="w-3.5 shrink-0" />}
                       <span className="flex-1 truncate">{entry.label}</span>
-                      <ChevronRight size={13} className="ml-auto text-text-muted shrink-0" />
+                      {!nestedOpensLeft && <ChevronRight size={13} className="text-text-muted shrink-0" />}
                     </button>
                   )
                 }

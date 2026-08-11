@@ -241,13 +241,17 @@ export function isGloballyRegistrable(combo: string): boolean {
   return parts.slice(0, -1).some((p) => MODIFIER_TOKENS.has(p))
 }
 
-/** The global-registration default for `id`: the same combo as its default
- *  in-app binding when that combo is eligible for OS-global registration,
- *  otherwise unset. Keeps existing installs' shortcuts globally registered
- *  by default now that in-app and global are independently rebindable. */
-export function defaultGlobalBinding(id: string): string {
-  const def = ACTIONS_BY_ID.get(id)?.defaultBinding ?? ''
-  return isGloballyRegistrable(def) ? def : ''
+/** The global-registration default for `id` — deliberately nothing: the Global
+ *  column is opt-in, per action.
+ *
+ *  Mirroring the in-app defaults here would hand the OS every eligible one the
+ *  moment global shortcuts are switched on, and an OS-global accelerator is
+ *  taken from *every* application: Shift+ArrowLeft/Right would stop selecting
+ *  text system-wide, Ctrl+F would stop opening Find, and Ctrl+M / Ctrl+, /
+ *  Alt+1-5 would be swallowed everywhere. Only the user can say a shortcut is
+ *  worth taking machine-wide, so they pick each one explicitly. */
+export function defaultGlobalBinding(_id: string): string {
+  return ''
 }
 
 /** The OS-global combo currently bound to `id`: the user override if one

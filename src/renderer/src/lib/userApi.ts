@@ -3,6 +3,7 @@ import { JWAPI_BASE, buildStreamUrl, buildImageUrl, parseDuration, resolvePrefCo
 import type { JWApiSong } from './juicewrldApi'
 import { peekSongPref } from './songPrefs'
 import type { SongPreference } from './songPrefs'
+import { peekRotatedCover } from './coverRotation'
 import type { ListeningPlayEvent } from './listeningPlays'
 import type { ServerPlaylistFolder } from './playlistFolders'
 import { apiRequest, cacheDelete } from './apiClient'
@@ -130,7 +131,8 @@ export function liteSongToTrack(song: ApiSongLite): Track {
   const apiTitle = song.track_titles?.[0] || song.name
   const apiImageUrl = buildImageUrl(song.image_url)
   const pref = peekSongPref(song.id)
-  const coverUrl = resolvePrefCoverUrl(pref?.cover_url)
+  // Same precedence as songToTrack: user cover, then a rotated suggestion.
+  const coverUrl = resolvePrefCoverUrl(pref?.cover_url) ?? peekRotatedCover(song.id)
   return {
     id: `jw-${song.id}`,
     path: song.path,
