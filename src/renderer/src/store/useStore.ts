@@ -95,12 +95,18 @@ export type SettingsTab = 'appearance' | 'playback' | 'shortcuts' | 'library' | 
 // rendering a view inline (see FloatApp). Each can be turned off individually:
 // for settings/songInfo/editor that falls back to the in-app overlay, and for
 // miniPlayer (which has no in-app equivalent) it hides the pop-out entry point.
-export type PopoutWindowKind = 'settings' | 'songInfo' | 'editor' | 'localEditor' | 'miniPlayer' | 'convert' | 'equalizer'
+export type PopoutWindowKind = 'settings' | 'songInfo' | 'editor' | 'localEditor' | 'miniPlayer' | 'convert' | 'equalizer' | 'profile'
 // `equalizer` defaults OFF — unlike the others (which start life as pop-outs
 // and fall back to inline when disabled), the equalizer's normal home is the
 // in-app popover; turning it on makes the panel open as its own window.
 const POPOUT_WINDOW_DEFAULTS: Record<PopoutWindowKind, boolean> = {
   settings: true, songInfo: true, editor: true, localEditor: true, miniPlayer: true, convert: true, equalizer: false,
+  // Review work (proposals, comp files, reports) is the one place people keep
+  // a page open *while* using the rest of the app — checking a song against
+  // the proposal editing it, playing what they're about to approve. Its own
+  // window is the point, so this starts on; the toggle in Settings → Windows
+  // sends it back to the in-app tab.
+  profile: true,
 }
 
 // ─── Non-queue state ──────────────────────────────────────────────────────────
@@ -442,6 +448,10 @@ interface AppActions {
   // stays "always open/focus" for callers that never want to close it
   // (the open-settings hotkey, the library empty-state CTA).
   toggleSettings: () => void
+  /** Single entry point for every "go to my profile" control (sidebar row,
+   *  bottom nav tab, the player's profile hotkey). Opens the pop-out window
+   *  when that's enabled, otherwise navigates in-app. */
+  openProfile: () => void
   setShowDiagnostics: (show: boolean) => void
   setShowQueue: (show: boolean) => void
   setShowEqPanel: (show: boolean) => void
@@ -1067,6 +1077,26 @@ export const useStore = create<AppStore>((set, get, store) => ({
       return
     }
     set((s) => ({ showSettings: !s.showSettings }))
+  },
+  openProfile: () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const el = (window as any).electron
+    if (el?.openFloatWindow && get().popoutWindows.profile) {
+      el.openFloatWindow('profile')
+      return
+    }
+    // Which profile view depends on the account's roles, not on the caller —
+    // staffProfileView is the same helper the sidebar/bottom-nav tabs label
+    // themselves from, so the two can't drift apart.
+    const view = userApi.staffProfileView(get().account)
+    if (IS_FLOAT_WINDOW) {
+      // A pop-out asking for the profile with the pop-out disabled: it has no
+      // router of its own, so the main window takes the navigation.
+      el?.windowSyncSend?.({ type: 'navigate', view })
+      el?.focusMainWindow?.()
+      return
+    }
+    get().setActiveView(view)
   },
   setShowDiagnostics: (showDiagnostics) => set({ showDiagnostics }),
   setShowQueue: (showQueue) => set({ showQueue }),

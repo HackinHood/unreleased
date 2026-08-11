@@ -72,6 +72,7 @@ const POPOUT_KINDS: { key: PopoutWindowKind; label: string; sub?: string }[] = [
   { key: 'editor', label: 'Song editor' },
   { key: 'localEditor', label: 'Local metadata editor' },
   { key: 'convert', label: 'Convert format' },
+  { key: 'profile', label: 'Profile', sub: 'Proposals, comp files, reports and admin in their own window' },
   { key: 'miniPlayer', label: 'Mini player', sub: 'No in-app version — off hides the pop-out button' },
 ]
 

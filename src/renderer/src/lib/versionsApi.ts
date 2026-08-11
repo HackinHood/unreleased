@@ -241,8 +241,68 @@ export async function setSongVersion(
   return groupId
 }
 
+/** A group id nothing is using yet. Standalone groups conventionally reuse the
+ *  song's own id (see setSongVersion); when that's already taken — the song is
+ *  currently in a group whose id came from it — pick the next free integer
+ *  instead. Nothing reads meaning from the number, only equality. */
+function freeGroupId(all: VersionRow[], songId: number): number {
+  const used = new Set<number>()
+  for (const r of all) used.add(r.group_id)
+  if (!used.has(songId)) return songId
+  let candidate = songId
+  for (const g of used) if (g > candidate) candidate = g
+  candidate += 1
+  while (used.has(candidate)) candidate += 1
+  return candidate
+}
+
+/** Retitles from the perspective of ONE song.
+ *
+ *  The title belongs to the group, so renaming it in place would rename every
+ *  linked song — which is rarely what an editor typing in one song's title
+ *  field means. Instead, a song that shares its group with others is split out
+ *  into a new group carrying the new title, leaving the original group and its
+ *  remaining members untouched. A song that's alone in its group is simply
+ *  retitled, since there's nothing to split from.
+ *
+ *  Joining an existing title is the separate, explicit path (the autocomplete
+ *  suggestions → joinVersionGroup), and renaming a whole group on purpose is
+ *  still setGroupVersionTitle, used by the bulk editor and the Tracker's
+ *  "link versions" flow.
+ *
+ *  Returns the group id the song ends up in. */
+export async function setOwnVersionTitle(
+  songId: number,
+  versionTitle: string | null,
+  existingGroupId?: number | null,
+): Promise<number> {
+  const row = await getRow(songId)
+  const all = await getAllRows()
+  if (!row) {
+    const groupId = existingGroupId ?? freeGroupId(all, songId)
+    await createRow(songId, groupId, null, versionTitle)
+    return groupId
+  }
+
+  const others = new Set<number>()
+  for (const r of all) if (r.group_id === row.group_id && r.song_id !== songId) others.add(r.song_id)
+  if (others.size === 0) {
+    await patchRow(songId, row.id, { title: versionTitle })
+    return row.group_id
+  }
+
+  // Move every row this song owns in the old group — the table has no unique
+  // constraint on (song_id, group_id), so a double-submitted link can leave
+  // duplicates behind that would otherwise keep the song in both groups.
+  const groupId = freeGroupId(all, songId)
+  const own = all.filter(r => r.song_id === songId && r.group_id === row.group_id)
+  await Promise.all(own.map(r => patchRow(songId, r.id, { group_id: groupId, title: versionTitle })))
+  return groupId
+}
+
 /** Sets the version title for every song in a group at once, so linked
- *  songs always agree on the title (e.g. "She's The One"). */
+ *  songs always agree on the title (e.g. "She's The One"). Group-wide by
+ *  design — see setOwnVersionTitle for the single-song editor's rename. */
 export async function setGroupVersionTitle(groupId: number, versionTitle: string | null): Promise<void> {
   const all = await getAllRows()
   const members = all.filter(r => r.group_id === groupId)

@@ -49,13 +49,15 @@ export function getCurrentLineIndex(lines: SyncedLyricLine[], currentTime: numbe
   return idx
 }
 
-/** How much smaller ad-libs render than the line around them. Unitless `em`
- *  so it tracks the surface's own font size and the active line's scale. */
-export const ADLIB_FONT_SCALE = 0.72
+/** Ad-libs render at the same size as the line around them, just dimmer.
+ *  Applied as `opacity` on the run, which multiplies with whatever opacity the
+ *  line already carries (active vs. distant), so it reads as a consistent step
+ *  down from its own line rather than a fixed tone. */
+export const ADLIB_OPACITY = 0.7
 
 /**
  * Split a lyric line into plain runs and parenthesized ad-lib runs, so the
- * renderers can shrink the ad-libs ("I'm still here (still here)"). The
+ * renderers can dim the ad-libs ("I'm still here (still here)"). The
  * brackets stay in the output — they're part of how ad-libs read.
  *
  * Only balanced `(...)` pairs on a single line count; an unclosed bracket is

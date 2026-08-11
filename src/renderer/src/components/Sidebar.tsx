@@ -12,7 +12,7 @@ const LS_COLLAPSED = 'sidebar:collapsed'
 const LS_PLAYLISTS_EXPANDED = 'sidebar:playlistsExpanded'
 
 export default function Sidebar(): JSX.Element {
-  const { activeView, setActiveView, toggleSettings, setShowDiagnostics, developerMode, account, logoutAccount, setShowUserAuth, playlists, setPendingPlaylistId, sidebarPosition, navOrder, navVisibility, navControlOrder, navControlVisibility, appMenuPosition, offlinePlaylists } = useStorePick('activeView', 'setActiveView', 'toggleSettings', 'setShowDiagnostics', 'developerMode', 'account', 'logoutAccount', 'setShowUserAuth', 'playlists', 'setPendingPlaylistId', 'sidebarPosition', 'navOrder', 'navVisibility', 'navControlOrder', 'navControlVisibility', 'appMenuPosition', 'offlinePlaylists')
+  const { activeView, setActiveView, openProfile, toggleSettings, setShowDiagnostics, developerMode, account, logoutAccount, setShowUserAuth, playlists, setPendingPlaylistId, sidebarPosition, navOrder, navVisibility, navControlOrder, navControlVisibility, appMenuPosition, offlinePlaylists } = useStorePick('activeView', 'setActiveView', 'openProfile', 'toggleSettings', 'setShowDiagnostics', 'developerMode', 'account', 'logoutAccount', 'setShowUserAuth', 'playlists', 'setPendingPlaylistId', 'sidebarPosition', 'navOrder', 'navVisibility', 'navControlOrder', 'navControlVisibility', 'appMenuPosition', 'offlinePlaylists')
   const isElectron = navigator.userAgent.includes('Electron')
 
   const [collapsed, setCollapsed] = useState<boolean>(
@@ -122,7 +122,7 @@ export default function Sidebar(): JSX.Element {
       case 'profile':
         if (!account || !showStaffProfile(account)) return null
         return (
-          <button key="profile" onClick={() => setActiveView(profileView)} onContextMenu={copyAuthToken} title={collapsed ? (account.display_name || account.discord_username) : undefined} className={rowCls}>
+          <button key="profile" onClick={openProfile} onContextMenu={copyAuthToken} title={collapsed ? (account.display_name || account.discord_username) : undefined} className={rowCls}>
             <span className={`${iconWrap} relative`}>
               {account.discord_avatar
                 ? <img src={account.discord_avatar} alt="" className="w-6 h-6 rounded-full object-cover" />
@@ -164,7 +164,7 @@ export default function Sidebar(): JSX.Element {
       case 'profile':
         if (!account || !showStaffProfile(account)) return null
         return (
-          <button key="profile" onClick={() => setActiveView(profileView)} onContextMenu={copyAuthToken} title={tokenCopied ? 'Token copied!' : (account.display_name || account.discord_username)} className={`${barIconBtn} hover:bg-transparent hover:opacity-80 relative`}>
+          <button key="profile" onClick={openProfile} onContextMenu={copyAuthToken} title={tokenCopied ? 'Token copied!' : (account.display_name || account.discord_username)} className={`${barIconBtn} hover:bg-transparent hover:opacity-80 relative`}>
             {account.discord_avatar
               ? <img src={account.discord_avatar} alt="" className="w-6 h-6 rounded-full object-cover" />
               : <div className="w-6 h-6 rounded-full bg-accent/20 text-accent flex items-center justify-center text-[10px] font-semibold">{(account.display_name || account.discord_username || '?').charAt(0).toUpperCase()}</div>}

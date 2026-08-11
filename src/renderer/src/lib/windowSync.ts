@@ -1,4 +1,5 @@
-import { useStore, type AppStore } from '../store/useStore'
+import { useStore, IS_FLOAT_WINDOW, type AppStore } from '../store/useStore'
+import { staffProfileView } from './userApi'
 import { setSongPrefsCache } from './songPrefs'
 import { setCustomSkinsCache } from './skins'
 import type { ViewType, LibraryTrack } from '../types'
@@ -39,6 +40,12 @@ const SYNC_KEYS = [
   // outside the main window (see the delivery trigger below and the store's
   // report outbox comment for why only the main window may send).
   'pendingReports',
+  // "Edit" on one of your own proposals, from the profile pop-out: the target
+  // song and the proposal's draft data are staged here, then the main window
+  // is asked to open the editor. Without mirroring them it would arrive with
+  // nothing pending and prefill from whatever happened to be playing. Both are
+  // plain serializable one-shot handoffs, and EditorPage clears them on use.
+  'pendingEditorSongId', 'pendingEditProposal',
   'libraryFolders', 'libraryAutoRefresh', 'libraryScanning', 'libraryLastScanned',
   'developerMode', 'updateStatus',
   // Playback mirror for the mini-player pop-out. The MAIN window owns the
@@ -67,6 +74,10 @@ type AttachTarget =
   | { view: 'editor'; songId: number }
   | { view: 'song-info'; songId: number }
   | { view: 'local-editor'; trackId: string }
+  // The staff profile carries no target of its own — which of the two profile
+  // views to show is derived from the account, so the main window works it out
+  // rather than trusting a view name off the wire.
+  | { view: 'profile' }
 
 type SyncMessage =
   | { type: 'patch'; payload: SyncPatch }
@@ -167,6 +178,7 @@ export function initWindowSync(isFloat: boolean): void {
         // setState directly (not the setShowSettings/openSongEditor actions)
         // so we force the in-app view even when that page's auto-pop-out is on.
         if (t.view === 'settings') useStore.setState({ showSettings: true })
+        else if (t.view === 'profile') s.setActiveView(staffProfileView(useStore.getState().account))
         else if (t.view === 'editor') { useStore.setState({ pendingEditorSongId: t.songId }); s.setActiveView('editor') }
         else if (t.view === 'song-info') s.setInfoSongId(t.songId)
         else if (t.view === 'local-editor') {
@@ -216,6 +228,18 @@ export function navigateMainWindow(view: ViewType): void {
   const el = (window as any).electron
   el?.windowSyncSend?.({ type: 'navigate', view })
   el?.focusMainWindow?.()
+}
+
+/** Navigate to `view` from whichever window is asking.
+ *
+ *  In the main window this is a plain setActiveView. In a pop-out — which
+ *  renders the single view its URL names and has no router — setActiveView
+ *  would silently do nothing, so this hands the navigation to the main window
+ *  and focuses it. Use it for any in-page link that leaves the current view
+ *  from a component that can render inside a pop-out. */
+export function navigateFromWindow(view: ViewType): void {
+  if (IS_FLOAT_WINDOW) { navigateMainWindow(view); return }
+  useStore.getState().setActiveView(view)
 }
 
 // "Attach" a floating pop-out back into the main window: ask the main window to

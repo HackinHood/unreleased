@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { RefreshCw, ChevronLeft, Plus, FolderOpen } from 'lucide-react'
 import { useStorePick } from '../store/useStore'
+import { navigateFromWindow } from '../lib/windowSync'
 import * as userApi from '../lib/userApi'
 import type { CompFileProposal } from '../lib/userApi'
 import { CONTRIBUTOR_ENABLED } from '../lib/userApi'
@@ -11,7 +12,10 @@ import CompProposalList, { CompFilterBar, filterCompProposals, type CompFilterTa
 // page's "Comp files" tab, reachable from the editor profile.
 
 export default function ContributorProfileView(): JSX.Element {
-  const { account, setActiveView } = useStorePick('account', 'setActiveView')
+  const { account } = useStorePick('account')
+  // Also renders as its own window (FloatApp's `profile` view), where
+  // setActiveView goes nowhere — see navigateFromWindow.
+  const go = navigateFromWindow
   const [proposals, setProposals] = useState<CompFileProposal[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<CompFilterTab>('all')
@@ -54,7 +58,7 @@ export default function ContributorProfileView(): JSX.Element {
     return (
       <div className="flex-1 min-w-0 flex flex-col items-center justify-center h-full gap-4 px-6 text-center">
         <p className="text-sm text-text-muted">You are not a contributor yet.</p>
-        <button onClick={() => setActiveView('contributor')} className="px-4 py-2 rounded-xl bg-accent text-white text-sm font-semibold">Apply or submit</button>
+        <button onClick={() => go('contributor')} className="px-4 py-2 rounded-xl bg-accent text-white text-sm font-semibold">Apply or submit</button>
       </div>
     )
   }
@@ -62,7 +66,7 @@ export default function ContributorProfileView(): JSX.Element {
   return (
     <div className="flex-1 min-w-0 h-full flex flex-col overflow-hidden">
       <div className="shrink-0 px-5 py-4 border-b border-[var(--border)] flex items-center gap-3">
-        <button onClick={() => setActiveView('api-tracker')} className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-raised transition-colors md:hidden">
+        <button onClick={() => go('api-tracker')} className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-raised transition-colors md:hidden">
           <ChevronLeft size={18} />
         </button>
         <div className="flex-1 min-w-0">
@@ -73,14 +77,14 @@ export default function ContributorProfileView(): JSX.Element {
           </p>
         </div>
         {account.is_editor && (
-          <button onClick={() => setActiveView('editor-profile')} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-surface-raised text-text-secondary hover:text-text-primary transition-colors">
+          <button onClick={() => go('editor-profile')} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-surface-raised text-text-secondary hover:text-text-primary transition-colors">
             Editor profile
           </button>
         )}
-        <button onClick={() => setActiveView('contributor')} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-accent text-white flex items-center gap-1.5">
+        <button onClick={() => go('contributor')} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-accent text-white flex items-center gap-1.5">
           <Plus size={14} /> New proposal
         </button>
-        <button onClick={() => setActiveView('api-files')} className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-raised transition-colors" title="Browse comp files">
+        <button onClick={() => go('api-files')} className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-raised transition-colors" title="Browse comp files">
           <FolderOpen size={16} />
         </button>
         <button onClick={() => setRefreshKey(k => k + 1)} className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-raised transition-colors">
@@ -95,7 +99,7 @@ export default function ContributorProfileView(): JSX.Element {
         <CompProposalList
           proposals={filtered}
           loading={loading}
-          onSelect={() => setActiveView('contributor')}
+          onSelect={() => go('contributor')}
           onWithdraw={withdraw}
           withdrawingId={withdrawingId}
         />

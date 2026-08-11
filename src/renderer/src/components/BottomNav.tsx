@@ -5,7 +5,7 @@ import { ViewType } from '../types'
 import { showStaffProfile, staffProfileView, staffProfileLabel } from '../lib/userApi'
 
 export default function BottomNav(): JSX.Element {
-  const { activeView, setActiveView, toggleSettings, account, navVisibility } = useStorePick('activeView', 'setActiveView', 'toggleSettings', 'account', 'navVisibility')
+  const { activeView, setActiveView, openProfile, toggleSettings, account, navVisibility } = useStorePick('activeView', 'setActiveView', 'openProfile', 'toggleSettings', 'account', 'navVisibility')
   const isAdmin = !!account?.is_administrator
   const isEditor = !!account?.is_editor
   const profileView = staffProfileView(account)
@@ -57,7 +57,7 @@ export default function BottomNav(): JSX.Element {
           view in the nav. Hideable via Settings (see showEditorTab). */}
       {profileTabVisible && (
         <button
-          onClick={() => setActiveView(profileView)}
+          onClick={openProfile}
           className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-1 transition-colors overflow-hidden relative ${activeView === profileView ? 'text-accent' : 'text-text-muted'}`}
         >
           {activeView === profileView && (

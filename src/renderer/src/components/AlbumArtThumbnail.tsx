@@ -34,6 +34,12 @@ export function AlbumArtThumbnail({ track, size = 40, className = '', fill = fal
   if (track.imageUrl) {
     return (
       <img
+        // Remount per cover. In a list each row has its own element so this is
+        // a no-op, but the callers that keep one thumbnail across track changes
+        // (mini player, WRLD tab) were reusing the element — which meant the
+        // previous song's art stayed painted until the new one decoded, and a
+        // single 404 left `display:none` stuck on for every later track.
+        key={track.imageUrl}
         // Every caller draws this at 56px or less, so the API's degraded 128px
         // cover is more than enough resolution even on a 2x display — and it's
         // ~300x smaller than the original, which is what makes a long list of

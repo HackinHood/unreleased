@@ -14,6 +14,7 @@ import type { EditorApplication, SongEditProposal, AdminUser, ProposalStatus } f
 import * as reportsApi from '../lib/reportsApi'
 import type { SongReportRow, SongReportStatus } from '../lib/reportsApi'
 import { invalidateLyricsCache } from './Player'
+import { navigateFromWindow } from '../lib/windowSync'
 import { relativeTime, shortDate, STATUS_STYLE, StatusChip, Avatar, Empty, AppSection, QueueSearch, buildHaystack, matchesHaystack } from './adminShared'
 import ReportsTab from './ReportsTab'
 import CompProposalsTab from './CompProposalsTab'
@@ -158,7 +159,10 @@ const ProposalDiff = memo(function ProposalDiff({ proposal }: { proposal: SongEd
 // profile's Admin tab) — no back button, page title, or window-control
 // clearance, since the host view owns that chrome.
 export default function AdminPage({ embedded = false }: { embedded?: boolean }): JSX.Element {
-  const { account, setActiveView, loadAccount, showNowPlaying, showQueue } = useStorePick('account', 'setActiveView', 'loadAccount', 'showNowPlaying', 'showQueue')
+  const { account, loadAccount, showNowPlaying, showQueue } = useStorePick('account', 'loadAccount', 'showNowPlaying', 'showQueue')
+  // Renders inside the profile page, which can itself be a pop-out window —
+  // setActiveView would go nowhere there. See navigateFromWindow.
+  const go = navigateFromWindow
   // The header's rightmost controls (refresh + tabs) sit at the same corner
   // as the custom frameless-window buttons (see WindowControls in App.tsx,
   // fixed top-right). Without extra clearance they render underneath them —
@@ -209,7 +213,7 @@ export default function AdminPage({ embedded = false }: { embedded?: boolean }):
     <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center">
       <Shield size={28} className="text-text-muted" />
       <p className="text-text-primary font-semibold text-sm">Staff access required</p>
-      <button onClick={() => setActiveView('api-tracker')} className="text-xs text-accent hover:underline">Go back</button>
+      <button onClick={() => go('api-tracker')} className="text-xs text-accent hover:underline">Go back</button>
     </div>
   )
 
@@ -254,7 +258,7 @@ export default function AdminPage({ embedded = false }: { embedded?: boolean }):
       <div className={`shrink-0 flex items-center gap-3 pb-0 border-b border-[var(--border)] ${embedded ? 'px-4' : 'px-6'}`}
         style={{ paddingTop: needsWindowControlClearance ? 36 : embedded ? 4 : 16, paddingRight: needsWindowControlClearance ? 148 : undefined }}>
         {!embedded && (
-          <button onClick={() => setActiveView('api-tracker')}
+          <button onClick={() => go('api-tracker')}
             className="p-1.5 rounded-lg hover:bg-surface-overlay transition-colors text-text-muted hover:text-text-primary mb-3">
             <ChevronLeft size={16} />
           </button>

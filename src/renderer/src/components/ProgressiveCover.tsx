@@ -18,17 +18,24 @@ interface Props {
 // is just an <img> — one load, no placeholder step.
 export function ProgressiveCover({ src, alt = '', className = '', onError }: Props): JSX.Element | null {
   const placeholder = hasSmallCoverVariant(src) ? smallCoverUrl(src) : undefined
-  const [fullLoaded, setFullLoaded] = useState(false)
+  // Stored as the src it belongs to rather than a bare boolean: a boolean is
+  // only reset inside the effect, which runs *after* the first render with the
+  // new src — so that render still saw `true` from the previous track and
+  // pointed the <img> straight at the new full-size original, skipping the
+  // placeholder step entirely. Since an <img> keeps painting its old frame
+  // until the new src decodes, a track change sat on the previous song's cover
+  // for however long the ~1MB PNG took. Deriving it from `src` can't go stale.
+  const [fullLoadedSrc, setFullLoadedSrc] = useState<string | null>(null)
+  const fullLoaded = !!src && fullLoadedSrc === src
 
   useEffect(() => {
-    if (!src || !placeholder) { setFullLoaded(false); return }
-    setFullLoaded(false)
+    if (!src || !placeholder) return
     // Preloading in an off-DOM Image (rather than swapping the <img> src and
     // waiting) keeps the placeholder painted until the full copy is decoded —
     // swapping src directly blanks the element while the new one loads.
     const img = new Image()
     let cancelled = false
-    img.onload = () => { if (!cancelled) setFullLoaded(true) }
+    img.onload = () => { if (!cancelled) setFullLoadedSrc(src) }
     // A failed full load is not an error state: the placeholder is a perfectly
     // good cover, so leave it up and let the caller's onError stay unfired.
     img.src = src
@@ -39,6 +46,11 @@ export function ProgressiveCover({ src, alt = '', className = '', onError }: Pro
   const showing = placeholder && !fullLoaded ? placeholder : src
   return (
     <img
+      // Keyed per cover so a track change mounts a fresh element instead of
+      // reusing one that would hold the last song's art on screen until the
+      // placeholder decodes. The key is the cover, not `showing`, so the
+      // placeholder→full swap within one song still reuses the element.
+      key={src}
       src={showing}
       alt={alt}
       className={className}

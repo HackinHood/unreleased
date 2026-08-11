@@ -12,7 +12,8 @@ import * as userApi from '../lib/userApi'
 import { invalidateLyricsCache } from './Player'
 import type { EditorApplication } from '../lib/userApi'
 import {
-  versionsEnabled, getOwnVersionMeta, setSongVersion, setGroupVersionTitle, searchVersionTitles, joinVersionGroup,
+  versionsEnabled, getOwnVersionMeta, setSongVersion, setGroupVersionTitle, setOwnVersionTitle,
+  searchVersionTitles, joinVersionGroup, getVersionGroup,
 } from '../lib/versionsApi'
 import type { VersionTitleSuggestion } from '../lib/versionsApi'
 import { invalidateCompactGroupsCache } from '../lib/compactGroups'
@@ -519,6 +520,11 @@ export default function EditorPage({ initialSongId = null }: {
   const [versionNum,   setVersionNum]   = useState('')
   const [versionTitle, setVersionTitle] = useState('')
   const [ownGroupId,   setOwnGroupId]   = useState<number | null>(null)
+  // The title as loaded, so a save can tell "renamed" from "left alone" — only
+  // a real change retitles (and possibly splits) the song.
+  const [loadedTitle,  setLoadedTitle]  = useState('')
+  // Other songs sharing this song's group.
+  const [linkedCount,  setLinkedCount]  = useState(0)
   const [versionSaveStatus, setVersionSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [linkError, setLinkError] = useState<string | null>(null)
   const [titleSuggestions, setTitleSuggestions] = useState<VersionTitleSuggestion[]>([])
@@ -616,12 +622,20 @@ export default function EditorPage({ initialSongId = null }: {
   }, [canEdit])
 
   useEffect(() => {
-    if (!versionsEnabled || !song) { setVersionNum(''); setVersionTitle(''); setOwnGroupId(null); return }
+    if (!versionsEnabled || !song) {
+      setVersionNum(''); setVersionTitle(''); setOwnGroupId(null)
+      setLoadedTitle(''); setLinkedCount(0)
+      return
+    }
     getOwnVersionMeta(song.id).then(meta => {
       setVersionNum(meta?.version ?? '')
       setVersionTitle(meta?.versionTitle ?? '')
+      setLoadedTitle(meta?.versionTitle ?? '')
       setOwnGroupId(meta?.groupId ?? null)
     })
+    // How many other songs share this song's group — decides whether a retitle
+    // renames in place or splits this song out, and is shown as a hint below.
+    getVersionGroup(song.id).then(g => setLinkedCount(g.length))
   }, [song])
 
   useEffect(() => {
@@ -638,9 +652,20 @@ export default function EditorPage({ initialSongId = null }: {
     setLinkError(null)
     try {
       const groupId = await setSongVersion(song.id, versionNum.trim() || null, ownGroupId)
-      await setGroupVersionTitle(groupId, versionTitle.trim() || null)
+      const nextTitle = versionTitle.trim()
+      // Only touch titles when the field actually changed — saving a version
+      // number alone must not split the song out of its group. A changed title
+      // retitles this song only: setOwnVersionTitle moves it to a group of its
+      // own when it shares one, leaving the other members' title alone.
+      if (nextTitle !== loadedTitle) {
+        const nextGroupId = await setOwnVersionTitle(song.id, nextTitle || null, groupId)
+        setOwnGroupId(nextGroupId)
+        setLoadedTitle(nextTitle)
+        if (nextGroupId !== groupId) setLinkedCount(0)
+      } else {
+        setOwnGroupId(groupId)
+      }
       invalidateCompactGroupsCache()
-      setOwnGroupId(groupId)
       setVersionSaveStatus('saved')
     } catch (e) {
       setLinkError(e instanceof Error ? e.message : 'Failed to save version info')
@@ -664,6 +689,10 @@ export default function EditorPage({ initialSongId = null }: {
       await setGroupVersionTitle(groupId, suggestion.title)
       invalidateCompactGroupsCache()
       setOwnGroupId(groupId)
+      // Joining adopts the group's title, so the next plain save mustn't read
+      // that as a rename and split the song straight back out.
+      setLoadedTitle(suggestion.title)
+      getVersionGroup(song.id).then(g => setLinkedCount(g.length))
       setVersionSaveStatus('saved')
     } catch (e) {
       setLinkError(e instanceof Error ? e.message : 'Failed to join version group')
@@ -1450,6 +1479,15 @@ export default function EditorPage({ initialSongId = null }: {
                     </div>
                     {linkError && (
                       <p className="mt-1.5 text-red-400 text-xs">{linkError}</p>
+                    )}
+                    {/* The title belongs to the group, so say plainly what
+                        saving a changed one will do to the other members. */}
+                    {linkedCount > 0 && (
+                      <p className="mt-1.5 text-[11px] text-text-muted opacity-75">
+                        {versionTitle.trim() !== loadedTitle
+                          ? `Saving moves this song out of its group of ${linkedCount + 1} under the new title. The others keep "${loadedTitle || '—'}".`
+                          : `Linked with ${linkedCount} other song${linkedCount === 1 ? '' : 's'} under this title.`}
+                      </p>
                     )}
                   </Card>
                 )}

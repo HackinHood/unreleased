@@ -1,9 +1,10 @@
-import React, { useEffect, Suspense, lazy } from 'react'
+import React, { useEffect, Suspense } from 'react'
 import { useStore, useStorePick } from './store/useStore'
 import { setToken, getToken } from './lib/userApi'
 import { useThemeEffects } from './lib/themeEffects'
 import { runWhenIdle } from './lib/platform'
 import { applySeo } from './lib/seo'
+import { lazyView } from './lib/lazyView'
 import { ViewType } from './types'
 
 function getViewFromPath(pathname: string): ViewType {
@@ -55,24 +56,26 @@ import ErrorBoundary from './components/ErrorBoundary'
 
 // Rarely-visited views load on first navigation instead of inflating the
 // startup bundle. Suspense fallback is null: these chunks are local (Electron)
-// or small (web), so a spinner would just flash.
-const EditorPage = lazy(() => import('./components/EditorPage'))
-const AdminPage = lazy(() => import('./components/AdminPage'))
-const SharedPlaylistView = lazy(() => import('./components/SharedPlaylistView'))
-const EditorProfileView = lazy(() => import('./components/EditorProfileView'))
-const NotFoundView = lazy(() => import('./components/NotFoundView'))
-const DocsPage = lazy(() => import('./components/DocsPage'))
-const WrldView = lazy(() => import('./components/WrldView'))
-const NewsView = lazy(() => import('./components/NewsView'))
-const HeardleView = lazy(() => import('./components/HeardleView'))
-const StatsView = lazy(() => import('./components/StatsView'))
-const DownloadAppView = lazy(() => import('./components/DownloadAppView'))
-const AlbumsAdminView = lazy(() => import('./components/AlbumsAdminView'))
-const LocalEditorPage = lazy(() => import('./components/LocalEditorPage'))
-const ContributorPage = lazy(() => import('./components/ContributorPage'))
-const ContributorProfileView = lazy(() => import('./components/ContributorProfileView'))
-const Settings = lazy(() => import('./components/Settings'))
-const DiagnosticsModal = lazy(() => import('./components/DiagnosticsModal'))
+// or small (web), so a spinner would just flash. lazyView (not React's lazy)
+// so a chunk that vanished in a redeploy triggers a reload instead of an
+// error card — see lib/lazyView.
+const EditorPage = lazyView(() => import('./components/EditorPage'))
+const AdminPage = lazyView(() => import('./components/AdminPage'))
+const SharedPlaylistView = lazyView(() => import('./components/SharedPlaylistView'))
+const EditorProfileView = lazyView(() => import('./components/EditorProfileView'))
+const NotFoundView = lazyView(() => import('./components/NotFoundView'))
+const DocsPage = lazyView(() => import('./components/DocsPage'))
+const WrldView = lazyView(() => import('./components/WrldView'))
+const NewsView = lazyView(() => import('./components/NewsView'))
+const HeardleView = lazyView(() => import('./components/HeardleView'))
+const StatsView = lazyView(() => import('./components/StatsView'))
+const DownloadAppView = lazyView(() => import('./components/DownloadAppView'))
+const AlbumsAdminView = lazyView(() => import('./components/AlbumsAdminView'))
+const LocalEditorPage = lazyView(() => import('./components/LocalEditorPage'))
+const ContributorPage = lazyView(() => import('./components/ContributorPage'))
+const ContributorProfileView = lazyView(() => import('./components/ContributorProfileView'))
+const Settings = lazyView(() => import('./components/Settings'))
+const DiagnosticsModal = lazyView(() => import('./components/DiagnosticsModal'))
 
 function WindowControls(): JSX.Element {
   const [maximized, setMaximized] = React.useState(false)

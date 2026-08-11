@@ -1,10 +1,14 @@
 import { Suspense, lazy, useEffect, useState, CSSProperties } from 'react'
+import { Loader2 } from 'lucide-react'
 import { useStore, useStorePick } from './store/useStore'
 import { useThemeEffects } from './lib/themeEffects'
 import { apiFetch, JWApiSong } from './lib/juicewrldApi'
+import { showStaffProfile, staffProfileView } from './lib/userApi'
 import ErrorBoundary from './components/ErrorBoundary'
 
 const Settings = lazy(() => import('./components/Settings'))
+const EditorProfileView = lazy(() => import('./components/EditorProfileView'))
+const ContributorProfileView = lazy(() => import('./components/ContributorProfileView'))
 const EditorPage = lazy(() => import('./components/EditorPage'))
 const LocalEditorPage = lazy(() => import('./components/LocalEditorPage'))
 const MiniPlayer = lazy(() => import('./components/MiniPlayer'))
@@ -154,6 +158,41 @@ function FloatConvert(): JSX.Element {
   )
 }
 
+// The staff profile in its own window: proposals, comp files, reports and the
+// admin panel, all of which live inside EditorProfileView / ContributorProfile-
+// View exactly as they do in-app. Which of the two renders is derived from the
+// account, so a role change (or the account arriving late over windowSync)
+// lands on the right one without the window being reopened.
+function FloatProfile(): JSX.Element {
+  const { account } = useStorePick('account')
+
+  // The account normally arrives in the boot snapshot from the main window,
+  // but a pop-out can outlive a sign-out/refresh — reload it here so the
+  // window recovers on its own instead of sitting empty.
+  useEffect(() => { useStore.getState().loadAccount() }, [])
+
+  if (!account) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 size={20} className="animate-spin text-text-muted" />
+      </div>
+    )
+  }
+  if (!showStaffProfile(account)) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center px-6">
+        <p className="text-text-primary text-sm font-semibold">No staff profile on this account</p>
+        <p className="text-text-muted text-xs">Sign in with an editor, contributor, manager or admin account.</p>
+      </div>
+    )
+  }
+  return (
+    <div className="flex-1 min-h-0 overflow-hidden flex">
+      {staffProfileView(account) === 'contributor-profile' ? <ContributorProfileView /> : <EditorProfileView />}
+    </div>
+  )
+}
+
 // Shell for floating pop-out windows: main.js createFloatWindow opens a second
 // frameless BrowserWindow on the same bundle with ?float=<view> (+ params),
 // and main.tsx mounts this instead of <App/> — a single view filling the whole
@@ -172,7 +211,7 @@ export default function FloatApp({ view }: { view: string }): JSX.Element {
     // The equalizer pop-out matches the in-app popover's surface (bg-surface-
     // highest) so detaching it doesn't visibly change the panel's color.
     <div className={`h-dvh overflow-hidden flex flex-col ${view === 'equalizer' ? 'bg-surface-highest' : 'bg-surface'}`}>
-      {(view === 'editor' || view === 'local-editor' || view === 'equalizer') && <FloatTitleBar />}
+      {(view === 'editor' || view === 'local-editor' || view === 'equalizer' || view === 'profile') && <FloatTitleBar />}
       {/* A pop-out's view is the whole window's content, so an uncaught render
           error left nothing but a blank window with no way back — the boundary
           keeps the error (and its stack) visible and reloadable in place. */}
@@ -184,6 +223,7 @@ export default function FloatApp({ view }: { view: string }): JSX.Element {
             : view === 'local-editor' ? <FloatLocalEditor />
             : view === 'mini-player' ? <MiniPlayer />
             : view === 'convert' ? <FloatConvert />
+            : view === 'profile' ? <FloatProfile />
             : view === 'equalizer' ? (
               <div className="flex-1 min-h-0 overflow-y-auto flex justify-center">
                 <EqualizerPanel floating />

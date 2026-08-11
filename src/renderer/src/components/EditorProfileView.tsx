@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { Loader2, Trophy, FileEdit, ChevronLeft, Pencil, Trash2, RefreshCw, Plus, X, Check, AlertCircle, ChevronDown, ChevronUp, Search, Flag, ShieldCheck, FolderOpen, Copy } from 'lucide-react'
-import { useStore } from '../store/useStore'
+import { Loader2, Trophy, FileEdit, ChevronLeft, Pencil, Trash2, RefreshCw, Plus, X, Check, AlertCircle, ChevronDown, ChevronUp, Search, Flag, ShieldCheck, FolderOpen, Copy, PictureInPicture2 } from 'lucide-react'
+import { useStore, IS_FLOAT_WINDOW } from '../store/useStore'
+import { navigateFromWindow, attachToMainWindow } from '../lib/windowSync'
 import { getMyProposals, getLeaderboard, withdrawProposal, createProposal, resubmitProposal, SongEditProposal, ProposalStatus, getMyCompProposals, withdrawCompProposal, CompFileProposal } from '../lib/userApi'
 import { apiFetch, JWApiEra, JWApiSong } from '../lib/juicewrldApi'
 import * as reportsApi from '../lib/reportsApi'
@@ -388,12 +389,19 @@ function changeTypeLabel(type: string): string {
 
 export default function EditorProfileView(): JSX.Element {
   const isElectron = navigator.userAgent.includes('Electron')
-  const { account, setActiveView, setPendingEditorSongId, setPendingEditProposal } = useStore(useShallow(s => ({
+  const { account, setPendingEditorSongId, setPendingEditProposal } = useStore(useShallow(s => ({
     account: s.account,
-    setActiveView: s.setActiveView,
     setPendingEditorSongId: s.setPendingEditorSongId,
     setPendingEditProposal: s.setPendingEditProposal,
   })))
+  // This page also renders as its own window (FloatApp's `profile` view), where
+  // setActiveView is a no-op — nothing routes there. Every link that leaves the
+  // profile goes through this instead, which hands the navigation to the main
+  // window when we're a pop-out.
+  const go = navigateFromWindow
+  const floating = IS_FLOAT_WINDOW
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const el = (window as any).electron
 
   const [proposals, setProposals] = useState<SongEditProposal[]>([])
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
@@ -479,7 +487,7 @@ export default function EditorProfileView(): JSX.Element {
     // EditorPage handles that case, so don't block it here.
     setPendingEditProposal({ id: p.id, songId: p.song, proposedData: p.proposed_data, editorNotes: p.editor_notes || '' })
     setPendingEditorSongId(p.song)
-    setActiveView('editor')
+    go('editor')
   }
 
   useEffect(() => {
@@ -533,19 +541,35 @@ export default function EditorProfileView(): JSX.Element {
           doesn't otherwise reserve space for them, it just draws a drag
           region behind the content. Extra top padding pushes this row
           below that band instead of overlapping it. */}
-      <div className={`px-6 pb-5 border-b border-[var(--border)] shrink-0 ${isElectron ? 'pt-9' : 'pt-5'}`}>
+      {/* The pop-out has FloatTitleBar above it holding its own controls, in
+          normal flow — so it needs none of that clearance. */}
+      <div className={`px-6 pb-5 border-b border-[var(--border)] shrink-0 ${isElectron && !floating ? 'pt-9' : 'pt-5'}`}>
         <div className="flex items-center justify-between mb-4">
-          <button
-            onClick={() => setActiveView('api-tracker')}
-            className="flex items-center gap-1.5 text-text-muted hover:text-text-primary text-xs transition-colors"
-          >
-            <ChevronLeft size={14} /> Back
-          </button>
+          {floating ? (
+            // No "Back" in a pop-out — there's nothing behind it. Docking puts
+            // the profile back in the main window and closes this one, which is
+            // the in-the-moment escape hatch for someone who doesn't want the
+            // separate window right now (the Settings toggle is the permanent one).
+            <button
+              onClick={() => { attachToMainWindow({ view: 'profile' }); el?.closeSelf?.() }}
+              className="flex items-center gap-1.5 text-text-muted hover:text-text-primary text-xs transition-colors"
+              title="Move back into the main window"
+            >
+              <PictureInPicture2 size={13} /> Dock
+            </button>
+          ) : (
+            <button
+              onClick={() => go('api-tracker')}
+              className="flex items-center gap-1.5 text-text-muted hover:text-text-primary text-xs transition-colors"
+            >
+              <ChevronLeft size={14} /> Back
+            </button>
+          )}
           <div className="flex items-center gap-1.5">
             {(account?.is_editor || account?.is_administrator) && (
               <>
                 <button
-                  onClick={() => setActiveView('albums-admin')}
+                  onClick={() => go('albums-admin')}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-raised hover:bg-surface-highest text-text-secondary hover:text-text-primary text-xs font-semibold transition-colors"
                   title="Edit albums (wrlddata.json)"
                 >
@@ -562,11 +586,23 @@ export default function EditorProfileView(): JSX.Element {
             )}
             {profileTab === 'comp' && isContributor && (
               <button
-                onClick={() => setActiveView('contributor')}
+                onClick={() => go('contributor')}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-accent/15 hover:bg-accent/25 text-accent text-xs font-semibold transition-colors"
                 title="Propose a comp file change"
               >
                 <Plus size={12} /> New comp proposal
+              </button>
+            )}
+            {/* Shown only when the pop-out is turned off — with it on, this page
+                *is* the pop-out and the button would reopen the window it's
+                already in. */}
+            {!floating && el?.openFloatWindow && (
+              <button
+                onClick={() => el.openFloatWindow('profile')}
+                className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-[var(--surface-raised)] transition-colors"
+                title="Open in its own window"
+              >
+                <PictureInPicture2 size={13} />
               </button>
             )}
             <button
@@ -660,7 +696,7 @@ export default function EditorProfileView(): JSX.Element {
           <CompProposalList
             proposals={filterCompProposals(compProposals, compFilter)}
             loading={loadingComp}
-            onSelect={() => setActiveView('contributor')}
+            onSelect={() => go('contributor')}
             onWithdraw={handleWithdrawComp}
             withdrawingId={withdrawingCompId}
           />

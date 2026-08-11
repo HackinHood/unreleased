@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Music, Radio, Search, SkipForward, ThumbsUp, ThumbsDown, X, ChevronDown, ChevronLeft, Play, Pause, SkipBack, SkipForward as SkipFwd, Shuffle, Repeat, Repeat1, Volume2, VolumeX, MoreHorizontal, Info, Heart, Maximize2, Minimize2, PictureInPicture2, ListMusic, GripVertical, Trash2, Check, Download, History, SlidersHorizontal } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import { useShallow } from 'zustand/react/shallow'
-import { parseLrc, getCurrentLineIndex, isLrcFormat, downloadSyncedLyrics, splitAdLibs, ADLIB_FONT_SCALE } from '../lib/lyrics'
+import { parseLrc, getCurrentLineIndex, isLrcFormat, downloadSyncedLyrics, splitAdLibs, ADLIB_OPACITY } from '../lib/lyrics'
 import { formatDuration } from '../lib/format'
 import { seekAudio, getAudioDuration, getAudioCurrentTime } from './Player'
 import { buildImageUrl, apiFetch, songToTrack, JWAPI_BASE, playlistCoverUrl, smallCoverUrl } from '../lib/juicewrldApi'
@@ -282,6 +282,16 @@ export default function WrldView(): JSX.Element {
   // a single notch menu next to the cover art.
   const [songVersions, setSongVersions] = useState<{ songId: number; label: string | null }[]>([])
   const [songVersionMenuOpen, setSongVersionMenuOpen] = useState(false)
+  // Portaled + measured rather than anchored inline: the menu is anchored to
+  // the cover art, which lives inside the (overflow-y-auto) left column, and
+  // an absolutely positioned child counts toward its scroll box. A song with
+  // enough versions therefore grew the column hundreds of px of phantom
+  // scrollable height, so the whole interface half scrolled off under a big
+  // empty gap even though the controls fit fine. Same reason the output-device
+  // picker below is portaled.
+  const songVersionBtnRef = useRef<HTMLButtonElement>(null)
+  const songVersionMenuRef = useRef<HTMLDivElement>(null)
+  const [songVersionMenuPos, setSongVersionMenuPos] = useState({ top: 0, right: 0 })
   useEffect(() => {
     if (radioFmActive || !currentTrack?.id) { setSongVersions([]); return }
     const numericId = parseInt(currentTrack.id.replace('jw-', ''), 10)
@@ -307,6 +317,27 @@ export default function WrldView(): JSX.Element {
     })
     return () => { cancelled = true }
   }, [currentTrack?.id, radioFmActive])
+
+  // Keep the portaled version menu pinned beside its button: vertically
+  // centred on the notch, then clamped so a long version list can't run off
+  // the top or bottom of the window (it scrolls internally past that).
+  useLayoutEffect(() => {
+    if (!songVersionMenuOpen) return
+    const place = (): void => {
+      const btn = songVersionBtnRef.current
+      const el = songVersionMenuRef.current
+      if (!btn || !el) return
+      const b = btn.getBoundingClientRect()
+      const h = el.offsetHeight
+      setSongVersionMenuPos({
+        top: Math.min(Math.max(12, b.top + b.height / 2 - h / 2), Math.max(12, window.innerHeight - 12 - h)),
+        right: Math.max(12, window.innerWidth - b.left + 12),
+      })
+    }
+    place()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [songVersionMenuOpen, songVersions])
 
   const handlePlayVersion = async (songId: number): Promise<void> => {
     try {
@@ -469,7 +500,10 @@ export default function WrldView(): JSX.Element {
         // the desktop box is the biggest cover in the app and loads the full
         // one behind a degraded first paint.
         mobile
-          ? <img src={smallCoverUrl(artSrc)} alt="Album art" className="w-full h-full object-cover" onError={() => setArtError(true)} />
+          // Keyed for the same reason as ProgressiveCover: reusing the element
+          // across a track change leaves the old cover painted until the new
+          // one decodes.
+          ? <img key={artSrc} src={smallCoverUrl(artSrc)} alt="Album art" className="w-full h-full object-cover" onError={() => setArtError(true)} />
           : <ProgressiveCover src={artSrc} alt="Album art" className="w-full h-full object-cover" onError={() => setArtError(true)} />
       ) : radioFmActive ? (
         <div className="w-full h-full bg-gradient-to-br from-red-900/60 to-black flex flex-col items-center justify-center gap-2">
@@ -1042,6 +1076,7 @@ export default function WrldView(): JSX.Element {
                         drawn (rounded-l-full, flat edge against the art),
                         instead of a full pill floating half on top of it. */}
                     <button
+                      ref={songVersionBtnRef}
                       onClick={() => setSongVersionMenuOpen(o => !o)}
                       title="Other versions"
                       className={`w-4 h-9 flex items-center justify-center rounded-l-full bg-white/15 dark:bg-white/[0.08] backdrop-blur-xl backdrop-saturate-150 border-y border-l shadow-lg transition-colors ${
@@ -1050,24 +1085,6 @@ export default function WrldView(): JSX.Element {
                     >
                       <span className="w-[2px] h-4 bg-white/60" />
                     </button>
-                    <div className="fixed inset-0 z-10" onClick={() => setSongVersionMenuOpen(false)} style={{ pointerEvents: songVersionMenuOpen ? 'auto' : 'none' }} />
-                    <div
-                      className={`absolute right-full top-1/2 -translate-y-1/2 mr-3 z-20 min-w-[120px] origin-right bg-black/95 backdrop-blur-xl rounded-lg border border-white/10 overflow-hidden py-1 shadow-2xl transition-all duration-200 ease-out ${
-                        songVersionMenuOpen
-                          ? 'opacity-100 scale-100 translate-x-0'
-                          : 'opacity-0 scale-90 translate-x-2 pointer-events-none'
-                      }`}
-                    >
-                      {songVersions.map((v, i) => (
-                        <button
-                          key={v.songId}
-                          onClick={() => { setSongVersionMenuOpen(false); handlePlayVersion(v.songId) }}
-                          className="w-full px-3 py-1.5 text-left text-[10px] font-medium text-white/70 hover:text-white/95 hover:bg-white/[0.08] transition-colors whitespace-nowrap"
-                        >
-                          {v.label ?? `Version ${i + 1}`}
-                        </button>
-                      ))}
-                    </div>
                   </div>
                 )}
               </div>
@@ -1229,6 +1246,39 @@ export default function WrldView(): JSX.Element {
               </div>
 
             </div>
+
+            {/* Version menu — portaled (see songVersionMenuPos above): kept
+                mounted so it still fades/scales in, but out of the left
+                column's scroll box. */}
+            {!radioFmActive && songVersions.length > 0 && createPortal(
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setSongVersionMenuOpen(false)}
+                  style={{ pointerEvents: songVersionMenuOpen ? 'auto' : 'none' }}
+                />
+                <div
+                  ref={songVersionMenuRef}
+                  className={`fixed z-50 min-w-[120px] max-h-[70vh] overflow-y-auto origin-right bg-black/95 backdrop-blur-xl rounded-lg border border-white/10 py-1 shadow-2xl transition-[opacity,transform] duration-200 ease-out ${
+                    songVersionMenuOpen
+                      ? 'opacity-100 scale-100 translate-x-0'
+                      : 'opacity-0 scale-90 translate-x-2 pointer-events-none'
+                  }`}
+                  style={{ top: songVersionMenuPos.top, right: songVersionMenuPos.right, scrollbarWidth: 'thin' }}
+                >
+                  {songVersions.map((v, i) => (
+                    <button
+                      key={v.songId}
+                      onClick={() => { setSongVersionMenuOpen(false); handlePlayVersion(v.songId) }}
+                      className="w-full px-3 py-1.5 text-left text-[10px] font-medium text-white/70 hover:text-white/95 hover:bg-white/[0.08] transition-colors whitespace-nowrap"
+                    >
+                      {v.label ?? `Version ${i + 1}`}
+                    </button>
+                  ))}
+                </div>
+              </>,
+              document.body
+            )}
 
             {/* Output device popover — portaled so it isn't clipped by the
                 (overflow-hidden) column it's anchored to. */}
@@ -2204,7 +2254,7 @@ const LyricsPanel = memo(function LyricsPanel({
                 }}
               >
                 {splitAdLibs(line.text).map((seg, si) => (
-                  <span key={si} style={seg.adLib ? { fontSize: `${ADLIB_FONT_SCALE}em` } : undefined}>{seg.text}</span>
+                  <span key={si} style={seg.adLib ? { opacity: ADLIB_OPACITY } : undefined}>{seg.text}</span>
                 ))}
               </div>
             )
@@ -2241,7 +2291,7 @@ const LyricsPanel = memo(function LyricsPanel({
           ...(lyricsScale !== 1 ? { fontSize: `${0.875 * lyricsScale}rem`, lineHeight: 1.9 } : {}),
         }}
       >{splitAdLibs(rawLyrics).map((seg, si) => (
-        <span key={si} style={seg.adLib ? { fontSize: `${ADLIB_FONT_SCALE}em` } : undefined}>{seg.text}</span>
+        <span key={si} style={seg.adLib ? { opacity: ADLIB_OPACITY } : undefined}>{seg.text}</span>
       ))}</pre>
     </div>
   )
