@@ -4,7 +4,7 @@ import logo from '../assets/logo.png'
 import { useStore, useStorePick } from '../store/useStore'
 import { ViewType } from '../types'
 import { showStaffProfile, staffProfileView, getToken } from '../lib/userApi'
-import { orderedNavItems, isNavItemVisible, orderedNavControls, isNavControlVisible, type NavControlId } from '../lib/navItems'
+import { orderedNavItems, isNavItemVisible, orderedNavControls, isNavControlVisible, navTabFor, type NavControlId } from '../lib/navItems'
 import AppMenu from './AppMenu'
 import PlaylistContextMenu, { PlaylistContextMenuState } from './PlaylistContextMenu'
 
@@ -67,6 +67,9 @@ export default function Sidebar(): JSX.Element {
   // items. orderedNavItems sanitizes the saved order; isNavItemVisible drops
   // web-only tabs on web and anything the user has toggled off.
   const items = orderedNavItems(navOrder).filter((i) => isNavItemVisible(i, navVisibility, isElectron))
+  // Which tab reads as current — not always activeView, since some views are
+  // sub-views of a tab (the games inside Games). See navTabFor.
+  const activeTab = navTabFor(activeView)
 
   const navClick = (view: ViewType): void => {
     if (activeView === view && view === 'playlists') {
@@ -209,7 +212,7 @@ export default function Sidebar(): JSX.Element {
                 key={view}
                 onClick={() => navClick(view)}
                 className={`flex items-center gap-2 pl-2 pr-3 py-1.5 rounded text-sm font-medium whitespace-nowrap transition-colors ${
-                  activeView === view
+                  activeTab === view
                     ? 'bg-surface-raised text-text-primary'
                     : 'text-text-secondary hover:text-text-primary hover:bg-surface-raised'
                 }`}
@@ -283,7 +286,7 @@ export default function Sidebar(): JSX.Element {
           <div key={view}>
             <div
               className={`flex items-center w-full rounded text-sm font-medium transition-colors ${
-                activeView === view
+                activeTab === view
                   ? 'bg-surface-raised text-text-primary'
                   : 'text-text-secondary hover:text-text-primary hover:bg-surface-raised'
               }`}

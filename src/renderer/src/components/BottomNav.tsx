@@ -2,6 +2,7 @@ import { SearchCode, Settings, ShieldCheck, ListMusic, Disc, Gamepad2 } from 'lu
 import logo from '../assets/logo.png'
 import { useStore, useStorePick } from '../store/useStore'
 import { ViewType } from '../types'
+import { navTabFor } from '../lib/navItems'
 import { showStaffProfile, staffProfileView, staffProfileLabel } from '../lib/userApi'
 
 export default function BottomNav(): JSX.Element {
@@ -26,7 +27,9 @@ export default function BottomNav(): JSX.Element {
   return (
     <nav className="md:hidden flex items-stretch bg-sidebar shrink-0" style={{ borderTop: '1px solid var(--border)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       {items.map(({ icon, label, view }) => {
-        const active = activeView === view
+        // Sub-views count as their tab — switching game inside Games must not
+        // put the bar in a state where nothing looks selected. See navTabFor.
+        const active = navTabFor(activeView) === view
         return (
           <button
             key={view}

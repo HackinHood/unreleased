@@ -1030,6 +1030,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
       'wrld': '/wrld',
       'news': '/news',
       'heardle': '/heardle',
+      'wordle': '/wordle',
       'stats': '/stats',
       'download': '/download',
     }

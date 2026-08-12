@@ -424,8 +424,9 @@ export function msUntilNextPuzzle(now = new Date()): number {
 }
 
 // FNV-1a. Not cryptographic — it just has to scatter consecutive date strings
-// so consecutive days don't land on neighbouring songs.
-function hash32(input: string): number {
+// so consecutive days don't land on neighbouring songs. Exported for lib/wordle,
+// which derives its own daily answer the same way (from a different seed).
+export function hash32(input: string): number {
   let h = 0x811c9dc5
   for (let i = 0; i < input.length; i++) {
     h ^= input.charCodeAt(i)

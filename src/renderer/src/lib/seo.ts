@@ -64,6 +64,12 @@ const ROUTES: Record<ViewType, SeoEntry> = {
     description:
       'Guess the Juice WRLD song from its opening second. A new track every day, drawn from the released and unreleased catalog.',
   },
+  wordle: {
+    path: '/wordle',
+    title: 'Wordle — the daily Juice WRLD song title game',
+    description:
+      'Guess the Juice WRLD song title letter by letter. A new title every day, and every guess is a real track from the released and unreleased catalog.',
+  },
   docs: {
     path: '/docs',
     title: 'Docs',

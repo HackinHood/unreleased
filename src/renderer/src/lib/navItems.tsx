@@ -35,6 +35,19 @@ export const NAV_ITEMS: NavItemDef[] = [
 
 export const DEFAULT_NAV_ORDER: ViewType[] = NAV_ITEMS.map((i) => i.view)
 
+// Views that live inside another tab rather than owning one. The Games tab is
+// entered as 'heardle' but holds a view per game, so the menu has to highlight
+// it for all of them — a nav item that goes dark the moment you switch game
+// reads as having navigated out of the tab.
+const TAB_OF: Partial<Record<ViewType, ViewType>> = {
+  wordle: 'heardle',
+}
+
+/** The nav tab `view` belongs to — itself, unless it's a sub-view. */
+export function navTabFor(view: ViewType): ViewType {
+  return TAB_OF[view] ?? view
+}
+
 // Default visibility per item, keyed by view. Persisted overrides are merged
 // onto this (see the store), so an item added in a newer version picks up its
 // own default automatically instead of a stale saved map deciding for it.

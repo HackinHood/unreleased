@@ -177,7 +177,7 @@ function ClampedMenu({ x, y, className = '', children }: {
   )
 }
 
-type SortField = 'default' | 'title' | 'artist' | 'duration'
+type SortField = 'default' | 'index' | 'title' | 'artist' | 'era' | 'category' | 'duration'
 interface SortState { field: SortField; dir: 'asc' | 'desc' }
 
 type CardMenuState =
@@ -596,10 +596,17 @@ export default function PlaylistsView(): JSX.Element {
       result = result.filter(t => t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q))
     }
     if (sort.field !== 'default') {
+      // Original playlist position, for the "#" column's own sort (and the
+      // tie-break below) — built from the unfiltered `tracks` order rather
+      // than `result`, since search may have already dropped entries.
+      const origIndex = sort.field === 'index' ? new Map(tracks.map((t, i) => [t, i])) : null
       result = [...result].sort((a, b) => {
         let cmp = 0
-        if (sort.field === 'title') cmp = a.title.localeCompare(b.title)
+        if (sort.field === 'index') cmp = (origIndex!.get(a) ?? 0) - (origIndex!.get(b) ?? 0)
+        else if (sort.field === 'title') cmp = a.title.localeCompare(b.title)
         else if (sort.field === 'artist') cmp = a.artist.localeCompare(b.artist)
+        else if (sort.field === 'era') cmp = (a.era || '').localeCompare(b.era || '')
+        else if (sort.field === 'category') cmp = (CATEGORY_LABELS[a.genre] ?? (a.genre || '')).localeCompare(CATEGORY_LABELS[b.genre] ?? (b.genre || ''))
         else if (sort.field === 'duration') cmp = (a.duration || 0) - (b.duration || 0)
         return sort.dir === 'asc' ? cmp : -cmp
       })
@@ -2359,11 +2366,13 @@ export default function PlaylistsView(): JSX.Element {
                     </button>
                   )}
                   <span />
-                  <span className="text-center">#</span>
+                  <div className="flex justify-center">
+                    <SortHeader label="#" field="index" sort={sort} onSort={handleSort} />
+                  </div>
                   <span />
                   <SortHeader label="Title" field="title" sort={sort} onSort={handleSort} />
-                  <span className="truncate">Era</span>
-                  <span className="truncate">Category</span>
+                  <SortHeader label="Era" field="era" sort={sort} onSort={handleSort} />
+                  <SortHeader label="Category" field="category" sort={sort} onSort={handleSort} />
                   <div className="flex justify-center">
                     <SortHeader label={<Clock size={12} className="inline" />} field="duration" sort={sort} onSort={handleSort} />
                   </div>
@@ -2436,22 +2445,37 @@ export default function PlaylistsView(): JSX.Element {
                 <p className="text-text-muted text-sm text-center py-8">No tracks match "{search}"</p>
               ) : (
                 <div className="grid gap-4 pt-1" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(9.5rem, 1fr))' }}>
-                  {displayTracks.map(track => {
+                  {/* Drag-to-reorder mirrors the list view: idx doubles as both
+                      the original playlist index and the displayTracks index
+                      because dragEnabled only allows dragging when there's no
+                      search/sort applied, so the two orders are identical. */}
+                  {displayTracks.map((track, idx) => {
                     const songId = track.id ? (userApi.trackIdToSongId(track.id) ?? -1) : -1
                     const isSelected = selectedTracks.has(track.id)
+                    const isDragging = dragEnabled && dragIdx === idx
+                    const isDropTarget = dragEnabled && dropIdx === idx && dragIdx !== null && dragIdx !== idx
                     return (
-                      <PlaylistCard
+                      <div
                         key={track.id}
-                        name={track.title}
-                        subtitle={track.artist}
-                        cover={<AlbumArtThumbnail track={track} fill className="w-full h-full" shimmer={false} eager />}
-                        selected={isSelected}
-                        selectMode={selectMode}
-                        onClick={e => { if (e.ctrlKey || e.metaKey || selectMode) toggleTrackSelect(track) }}
-                        onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setTrackMenu({ track, songId, x: e.clientX, y: e.clientY }) }}
-                        onMenuButton={e => setTrackMenu({ track, songId, x: e.clientX, y: e.clientY })}
-                        onPlay={() => { if (selectMode) toggleTrackSelect(track); else playTrack(track, displayTracks) }}
-                      />
+                        draggable={!isSharedView && dragEnabled && !selectMode}
+                        onDragStart={() => !isSharedView && dragEnabled && !selectMode && setDragIdx(idx)}
+                        onDragOver={e => { if (!dragEnabled || selectMode) return; e.preventDefault(); setDropIdx(idx) }}
+                        onDragEnd={() => { setDragIdx(null); setDropIdx(null) }}
+                        onDrop={() => dragEnabled && !selectMode && handleDrop(idx)}
+                        className={`rounded-2xl transition-opacity ${isDragging ? 'opacity-40' : ''} ${isDropTarget ? 'ring-2 ring-accent' : ''} ${!isSharedView && dragEnabled && !selectMode ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                      >
+                        <PlaylistCard
+                          name={track.title}
+                          subtitle={track.artist}
+                          cover={<AlbumArtThumbnail track={track} fill className="w-full h-full" shimmer={false} eager />}
+                          selected={isSelected}
+                          selectMode={selectMode}
+                          onClick={e => { if (e.ctrlKey || e.metaKey || selectMode) toggleTrackSelect(track) }}
+                          onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setTrackMenu({ track, songId, x: e.clientX, y: e.clientY }) }}
+                          onMenuButton={e => setTrackMenu({ track, songId, x: e.clientX, y: e.clientY })}
+                          onPlay={() => { if (selectMode) toggleTrackSelect(track); else playTrack(track, displayTracks) }}
+                        />
+                      </div>
                     )
                   })}
                 </div>
