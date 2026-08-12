@@ -546,6 +546,41 @@ export function saveRound(mode: DailyMode, state: RoundState): void {
   lsSet(`round:${mode}`, state)
 }
 
+/** A practice round in progress. Unlimited is neither scored nor streaked, but
+ *  it is still a round someone is in the middle of: leaving the tab and coming
+ *  back used to throw the guesses away and deal a new song. No day — a
+ *  practice round is whatever you last left open, not something that expires
+ *  at midnight. */
+export interface PracticeRound {
+  answerId: number
+  guesses: Guess[]
+  status: GameStatus
+  /** Where the clip was cut from. Practice re-rolls this freely on a new song
+   *  (see clipStart's null seed), so resuming has to restore the offset the
+   *  round was actually played at rather than roll a fresh one under it. */
+  startAt: number
+}
+
+export function loadPracticeRound(): PracticeRound | null {
+  return lsGet<PracticeRound>('round:unlimited')
+}
+
+export function savePracticeRound(round: PracticeRound): void {
+  lsSet('round:unlimited', round)
+}
+
+/** The mode tab to open on. 1v1 is deliberately not persistable — it's a live
+ *  match, and dropping someone back into matchmaking because that's where they
+ *  were last week isn't resuming anything. */
+export function loadGameMode(): DailyMode | 'unlimited' {
+  const saved = lsGet<string>('mode')
+  return saved === 'personal' || saved === 'unlimited' ? saved : 'daily'
+}
+
+export function saveGameMode(mode: DailyMode | 'unlimited'): void {
+  lsSet('mode', mode)
+}
+
 export function loadStats(mode: DailyMode): Stats {
   const saved = lsGet<Stats>(`stats:${mode}`)
   if (!saved) return { ...EMPTY_STATS, distribution: Array(MAX_TRIES).fill(0) }

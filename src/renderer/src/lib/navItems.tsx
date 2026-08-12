@@ -48,6 +48,29 @@ export function navTabFor(view: ViewType): ViewType {
   return TAB_OF[view] ?? view
 }
 
+const LS_LAST_GAME = 'unreleased:games:last'
+
+/** The view a tab click actually lands on. Games reopens on the game last
+ *  played: with a round in progress in one of them, coming back to the tab and
+ *  landing on the other reads as having lost it. */
+export function tabEntryView(view: ViewType): ViewType {
+  if (view !== 'heardle') return view
+  try {
+    return localStorage.getItem(LS_LAST_GAME) === 'wordle' ? 'wordle' : 'heardle'
+  } catch {
+    return 'heardle'
+  }
+}
+
+/** Remember `view` as where its tab reopens. Called by whichever game is on
+ *  screen, so a /wordle link counts the same as the switcher does. */
+export function rememberTabView(view: ViewType): void {
+  if (navTabFor(view) !== 'heardle') return
+  try {
+    localStorage.setItem(LS_LAST_GAME, view)
+  } catch {}
+}
+
 // Default visibility per item, keyed by view. Persisted overrides are merged
 // onto this (see the store), so an item added in a newer version picks up its
 // own default automatically instead of a stale saved map deciding for it.

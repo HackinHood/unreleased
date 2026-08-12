@@ -104,6 +104,14 @@ export function answerEntries(entries: WordleEntry[]): WordleEntry[] {
   return entries.filter((e) => (counts.get(e.key.length) ?? 0) >= MIN_OPTIONS)
 }
 
+/** The entry a typed row spells, if the catalogue holds one. Entries are one
+ *  per distinct row of letters (see playableEntries), so this is unambiguous —
+ *  and it's what lets a guess be typed out letter by letter instead of picked
+ *  from the list: the letters still have to name a real song. */
+export function findEntryByKey(entries: WordleEntry[], key: string): WordleEntry | null {
+  return entries.find((e) => e.key === key) ?? null
+}
+
 /** The songs a guess can be: every playable title of exactly `length` letters.
  *  Includes the answer itself, obviously — it has to be guessable. */
 export function guessOptions(entries: WordleEntry[], length: number): HeardleSong[] {
@@ -288,6 +296,34 @@ export function loadRound(dayKey: string, answerId: number): RoundState | null {
 
 export function saveRound(state: RoundState): void {
   lsSet('round', state)
+}
+
+/** The practice round in progress, if there is one.
+ *
+ *  Unlimited isn't scored, but it is still a round someone is in the middle
+ *  of: leaving the tab and coming back used to throw away a half-finished
+ *  board and deal a new title. Kept under its own key so it can never be
+ *  mistaken for the daily one, and without a day — a practice round is
+ *  whatever you last left open, not something that expires at midnight.
+ *
+ *  `day` is carried anyway so the shape matches the daily round; nothing
+ *  reads it here. */
+export function loadPracticeRound(): RoundState | null {
+  return lsGet<RoundState>('round:unlimited')
+}
+
+export function savePracticeRound(state: RoundState): void {
+  lsSet('round:unlimited', state)
+}
+
+/** The mode tab to open on, so returning to the tab doesn't drop you back on
+ *  Daily halfway through a practice round. */
+export function loadMode(): WordleMode {
+  return lsGet<WordleMode>('mode') === 'unlimited' ? 'unlimited' : 'daily'
+}
+
+export function saveMode(mode: WordleMode): void {
+  lsSet('mode', mode)
 }
 
 export function loadStats(): Stats {

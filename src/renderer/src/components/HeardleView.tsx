@@ -14,7 +14,8 @@ import {
   pickDailySong, pickPersonalSong, pickRandomSong, playerSeed, clipStart,
   searchPool, matchedAlias, isCorrectGuess, stageLadder, settingsForMode, clampTries,
   todayKey, puzzleNumber, msUntilNextPuzzle, unlockedSeconds,
-  loadRound, saveRound, loadStats, recordResult, shareText,
+  loadRound, saveRound, loadPracticeRound, savePracticeRound,
+  loadGameMode, saveGameMode, loadStats, recordResult, shareText,
   loadSettings, saveSettings,
 } from '../lib/heardle'
 import type {
@@ -603,7 +604,7 @@ export default function HeardleView(): JSX.Element {
   const { setActiveView, playTrack, setIsPlaying, isPlaying, volume, setVolume, account } = useStorePick(
     'setActiveView', 'playTrack', 'setIsPlaying', 'isPlaying', 'volume', 'setVolume', 'account')
 
-  const [mode, setMode] = useState<Mode>('daily')
+  const [mode, setMode] = useState<Mode>(() => loadGameMode())
   const [settings, setSettings] = useState<HeardleSettings>(() => loadSettings())
   const [pool, setPool] = useState<HeardleSong[]>([])
   const [poolLoading, setPoolLoading] = useState(true)
@@ -613,6 +614,11 @@ export default function HeardleView(): JSX.Element {
   const [answer, setAnswer] = useState<HeardleSong | null>(null)
   const [guesses, setGuesses] = useState<Guess[]>([])
   const [status, setStatus] = useState<GameStatus>('playing')
+  // Which mode the round in state was dealt for. On the render a mode switch
+  // happens, the round below is still the old mode's — without this the save
+  // effects would file it under the new mode's key before the setup effect's
+  // state lands, overwriting a daily round with a practice one.
+  const [roundMode, setRoundMode] = useState<DailyMode | 'unlimited'>('daily')
 
   const [query, setQuery] = useState('')
   const [highlighted, setHighlighted] = useState(0)
@@ -645,6 +651,10 @@ export default function HeardleView(): JSX.Element {
   const isDaily = mode !== 'unlimited' && mode !== 'versus'
   const useServerRound = isDaily && !!account
   const dailyMode: DailyMode = mode === 'personal' ? 'personal' : 'daily'
+  // The mode the round in state should belong to. Compared against roundMode
+  // to tell "the round on screen" from "the round the tabs are now asking
+  // for" — they differ for one render after every mode switch.
+  const wantedRoundMode: DailyMode | 'unlimited' = mode === 'unlimited' ? 'unlimited' : dailyMode
   const localDay = useMemo(() => todayKey(), [])
   // Every day-keyed thing below uses this, never todayKey() directly: on the
   // server path the round belongs to the server's day, and storing it under
@@ -727,6 +737,9 @@ export default function HeardleView(): JSX.Element {
 
   const applyServerPuzzle = useCallback((res: PuzzleResponse) => {
     setRoundToken(res.round_token)
+    // Tag the round with the mode it was fetched for, same as the local paths
+    // do — the stats fold below keys off it.
+    setRoundMode(dailyMode)
     // The server's calendar wins. Everything keyed by day — the saved round,
     // the stats entry, the share text — must use the day the round was
     // actually graded against, not this machine's local date.
@@ -743,7 +756,7 @@ export default function HeardleView(): JSX.Element {
     if (res.reveal) setAnswer(res.reveal)
     else if (res.status !== 'playing') setAnswer(res.reveal ?? null)
     else setAnswer(null)
-  }, [])
+  }, [dailyMode])
 
   useEffect(() => {
     if (!useServerRound) return
@@ -769,12 +782,26 @@ export default function HeardleView(): JSX.Element {
       setStatus(saved?.status ?? 'playing')
       // Same seed every load, so a refresh can't shop for a kinder offset.
       setStartAt(clipStart(song, fullWindow, rules.startPoint, `${seed}-${dailyMode}-${day}`))
+      setRoundMode(dailyMode)
     } else {
-      const song = pickRandomSong(playablePool)
-      setAnswer(song)
-      setGuesses([])
-      setStatus('playing')
-      setStartAt(song ? clipStart(song, fullWindow, rules.startPoint, null) : 0)
+      // Practice picks up where it was left, unless the saved song has since
+      // fallen out of the pool (the era filter or the catalogue moved under
+      // it) — then there's nothing to resume against and it deals a new one.
+      const saved = loadPracticeRound()
+      const resumed = saved ? playablePool.find((s) => s.id === saved.answerId) : undefined
+      if (saved && resumed) {
+        setAnswer(resumed)
+        setGuesses(saved.guesses)
+        setStatus(saved.status)
+        setStartAt(saved.startAt)
+      } else {
+        const song = pickRandomSong(playablePool)
+        setAnswer(song)
+        setGuesses([])
+        setStatus('playing')
+        setStartAt(song ? clipStart(song, fullWindow, rules.startPoint, null) : 0)
+      }
+      setRoundMode('unlimited')
     }
     setQuery('')
     setElapsed(0)
@@ -790,16 +817,32 @@ export default function HeardleView(): JSX.Element {
   // Never on the server path: there the round's status is the server's to
   // decide, and forcing a loss locally because a stale ladder looked full
   // would report a defeat for a round the server still has open.
+  //
+  // And only against the round it's actually judging: on a mode switch the
+  // guesses here are still the old mode's, and a ten-try practice round
+  // measured against Daily's six would settle the round being restored as a
+  // loss it never played.
   useEffect(() => {
-    if (useServerRound) return
+    if (useServerRound || roundMode !== wantedRoundMode) return
     if (status === 'playing' && guesses.length >= ladder.length) setStatus('lost')
-  }, [useServerRound, status, guesses.length, ladder.length])
+  }, [useServerRound, roundMode, wantedRoundMode, status, guesses.length, ladder.length])
 
   // Persist the round after every guess.
   useEffect(() => {
-    if (!isDaily || useServerRound || !answer) return
+    if (!isDaily || useServerRound || !answer || roundMode !== wantedRoundMode) return
     saveRound(dailyMode, { day, answerId: answer.id, guesses, status })
-  }, [isDaily, useServerRound, dailyMode, answer, day, guesses, status])
+  }, [isDaily, useServerRound, dailyMode, roundMode, wantedRoundMode, answer, day, guesses, status])
+
+  // Same for practice, under its own key — see loadPracticeRound. The clip
+  // offset rides along: it was rolled at random for this round and can't be
+  // derived again.
+  useEffect(() => {
+    if (mode !== 'unlimited' || roundMode !== wantedRoundMode || !answer) return
+    savePracticeRound({ answerId: answer.id, guesses, status, startAt })
+  }, [mode, roundMode, wantedRoundMode, answer, guesses, status, startAt])
+
+  // 1v1 is live, so it's never what the tab reopens on (see saveGameMode).
+  useEffect(() => { if (mode !== 'versus') saveGameMode(mode) }, [mode])
 
   // Fold a finished round into that mode's stats (once — see recordResult's
   // lastDay guard) and hand it to the leaderboard. submitResult queues rather
@@ -808,6 +851,10 @@ export default function HeardleView(): JSX.Element {
   useEffect(() => {
     if (!isDaily || status === 'playing') return
     if (!useServerRound && !answer) return
+    // Never fold a round that belongs to another mode: a finished practice
+    // round left on screen would otherwise be recorded as today's daily
+    // result the moment the Daily tab is clicked.
+    if (roundMode !== wantedRoundMode) return
     // Both paths, always. The Stats panel reads localStorage and nothing else,
     // so a server-graded round has to be folded in here too — gating this on
     // the local path would freeze the streak, distribution and played count
@@ -824,7 +871,7 @@ export default function HeardleView(): JSX.Element {
         guess_song_ids: guesses.map((g) => g.songId),
       })
     }
-  }, [isDaily, useServerRound, dailyMode, status, day, guesses.length, answer])
+  }, [isDaily, useServerRound, dailyMode, roundMode, wantedRoundMode, status, day, guesses.length, answer])
 
   // Deliver anything queued in an earlier session.
   useEffect(() => { flushResults() }, [account])

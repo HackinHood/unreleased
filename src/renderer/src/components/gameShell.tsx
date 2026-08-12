@@ -5,7 +5,9 @@
 // swaps children: each game owns a full-page layout with its own corner
 // controls, and nesting those under a shared chrome bar meant two rows of
 // chrome doing the same job.
+import { useEffect } from 'react'
 import { useStorePick } from '../store/useStore'
+import { rememberTabView } from '../lib/navItems'
 import type { ViewType } from '../types'
 
 export type GameId = Extract<ViewType, 'heardle' | 'wordle'>
@@ -20,6 +22,8 @@ const GAMES: { id: GameId; label: string }[] = [
  *  the scroll flow rather than another floating layer to dodge them. */
 export function GameSwitcher({ current }: { current: GameId }): JSX.Element {
   const { setActiveView } = useStorePick('setActiveView')
+  // Whichever game is on screen is the one the Games tab reopens on.
+  useEffect(() => { rememberTabView(current) }, [current])
   return (
     <div className="flex justify-center mb-5">
       <div className="inline-flex rounded-full border border-[var(--border)] bg-[var(--surface-raised)]/60 p-0.5">

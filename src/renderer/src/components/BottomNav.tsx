@@ -2,7 +2,7 @@ import { SearchCode, Settings, ShieldCheck, ListMusic, Disc, Gamepad2 } from 'lu
 import logo from '../assets/logo.png'
 import { useStore, useStorePick } from '../store/useStore'
 import { ViewType } from '../types'
-import { navTabFor } from '../lib/navItems'
+import { navTabFor, tabEntryView } from '../lib/navItems'
 import { showStaffProfile, staffProfileView, staffProfileLabel } from '../lib/userApi'
 
 export default function BottomNav(): JSX.Element {
@@ -37,7 +37,8 @@ export default function BottomNav(): JSX.Element {
               if (activeView === view && view === 'playlists') {
                 window.dispatchEvent(new CustomEvent('playlists:back'))
               } else {
-                setActiveView(view)
+                // A tab holding several views reopens on the one last used.
+                setActiveView(tabEntryView(view))
               }
             }}
             className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-1 transition-colors relative overflow-hidden ${active ? 'text-accent' : 'text-text-muted'}`}

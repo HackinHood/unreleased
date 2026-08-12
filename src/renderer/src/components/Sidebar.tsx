@@ -4,7 +4,7 @@ import logo from '../assets/logo.png'
 import { useStore, useStorePick } from '../store/useStore'
 import { ViewType } from '../types'
 import { showStaffProfile, staffProfileView, getToken } from '../lib/userApi'
-import { orderedNavItems, isNavItemVisible, orderedNavControls, isNavControlVisible, navTabFor, type NavControlId } from '../lib/navItems'
+import { orderedNavItems, isNavItemVisible, orderedNavControls, isNavControlVisible, navTabFor, tabEntryView, type NavControlId } from '../lib/navItems'
 import AppMenu from './AppMenu'
 import PlaylistContextMenu, { PlaylistContextMenuState } from './PlaylistContextMenu'
 
@@ -75,7 +75,9 @@ export default function Sidebar(): JSX.Element {
     if (activeView === view && view === 'playlists') {
       window.dispatchEvent(new CustomEvent('playlists:back'))
     } else {
-      setActiveView(view)
+      // Not always `view` itself — a tab holding several views reopens on the
+      // one last used. See tabEntryView.
+      setActiveView(tabEntryView(view))
     }
   }
 
