@@ -13,7 +13,7 @@ import SongInfoModal from './SongInfoModal'
 import SongContextMenu from './SongContextMenu'
 import { CompactGroupRow, useExpandedGroups } from './CompactGroupRow'
 import {
-  apiFetch, apiPeek, songToTrack, parseDuration, buildStreamUrl, CATEGORY_LABELS, JWAPI_BASE,
+  apiFetch, apiPeek, songToTrack, parseDuration, buildStreamUrl, CATEGORY_LABELS, CATEGORY_COLORS, JWAPI_BASE,
   JWApiSong, JWApiPaginatedResponse, JWApiStats, JWApiEra,
 } from '../lib/juicewrldApi'
 import { fisherYates } from '../store/queueSlice'
@@ -30,13 +30,6 @@ import { formatDuration } from '../lib/format'
 type Category = 'released' | 'unreleased' | 'unsurfaced' | 'recording_session' | ''
 type ViewMode = 'list' | 'detail' | 'grid'
 type TrackerTab = 'songs' | 'lyrics' | 'calendar' | 'producers'
-
-const CATEGORY_COLORS: Record<string, string> = {
-  released:          'text-emerald-400 bg-emerald-400/10 border-emerald-400/25',
-  unreleased:        'text-blue-400   bg-blue-400/10   border-blue-400/25',
-  unsurfaced:        'text-amber-400  bg-amber-400/10  border-amber-400/25',
-  recording_session: 'text-purple-400 bg-purple-400/10 border-purple-400/25',
-}
 
 // ─── Era color palette (Calendar tab) ─────────────────────────────────────────
 // Eras are dynamic (fetched from the API, not a fixed enum), so colors are

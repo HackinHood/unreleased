@@ -523,3 +523,10 @@ export const CATEGORY_LABELS: Record<string, string> = {
   unsurfaced: 'Unsurfaced',
   recording_session: 'Session',
 }
+
+export const CATEGORY_COLORS: Record<string, string> = {
+  released:          'text-emerald-400 bg-emerald-400/10 border-emerald-400/25',
+  unreleased:        'text-blue-400   bg-blue-400/10   border-blue-400/25',
+  unsurfaced:        'text-amber-400  bg-amber-400/10  border-amber-400/25',
+  recording_session: 'text-purple-400 bg-purple-400/10 border-purple-400/25',
+}

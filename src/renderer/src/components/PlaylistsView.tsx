@@ -13,7 +13,7 @@ import type { PlaylistDetail, PlaylistSummary } from '../lib/userApi'
 import { Track, LocalPlaylist, LibraryTrack, FollowedPlaylist } from '../types'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { ProgressiveCover } from './ProgressiveCover'
-import { buildImageUrl, buildStreamUrl, JWAPI_BASE, apiFetch, JWApiSong, playlistCoverUrl, smallCoverUrl, resolveTitleToSong } from '../lib/juicewrldApi'
+import { buildImageUrl, buildStreamUrl, JWAPI_BASE, apiFetch, JWApiSong, playlistCoverUrl, smallCoverUrl, resolveTitleToSong, CATEGORY_LABELS, CATEGORY_COLORS } from '../lib/juicewrldApi'
 import { toFileUrl, libraryTrackToTrack as libTrackToTrack } from '../lib/fileTypes'
 import { formatDuration, formatTotalDuration } from '../lib/format'
 import { fisherYates } from '../store/queueSlice'
@@ -1950,7 +1950,9 @@ export default function PlaylistsView(): JSX.Element {
     // Extra leading checkbox column while selecting. rem, not px, so the fixed
     // columns (notably the album-art column) scale with the app text-size
     // setting alongside the rem-sized covers and text — identical at scale 1.
-    const gridCols = selectMode ? '1.25rem 1rem 1.75rem 2.5rem 1fr 3.5rem 2.25rem' : '1rem 1.75rem 2.5rem 1fr 3.5rem 2.25rem'
+    const gridCols = selectMode
+      ? '1.25rem 1rem 1.75rem 2.5rem 1fr 6rem 5rem 3.5rem 2.25rem'
+      : '1rem 1.75rem 2.5rem 1fr 6rem 5rem 3.5rem 2.25rem'
 
     // Shuffles by SONG, not by track — a song with several versions (a demo,
     // a TV mix, etc.) would otherwise flood the shuffle with itself, since
@@ -2360,6 +2362,8 @@ export default function PlaylistsView(): JSX.Element {
                   <span className="text-center">#</span>
                   <span />
                   <SortHeader label="Title" field="title" sort={sort} onSort={handleSort} />
+                  <span className="truncate">Era</span>
+                  <span className="truncate">Category</span>
                   <div className="flex justify-center">
                     <SortHeader label={<Clock size={12} className="inline" />} field="duration" sort={sort} onSort={handleSort} />
                   </div>
@@ -2509,6 +2513,12 @@ export default function PlaylistsView(): JSX.Element {
                       <span className="truncate">{track.artist}{track.album ? ` · ${track.album}` : ''}</span>
                     </p>
                   </div>
+                  <span className="text-text-muted text-xs truncate" title={track.era || undefined}>{track.era || '—'}</span>
+                  <span
+                    className={`text-xs px-1.5 py-0.5 rounded border text-center truncate ${CATEGORY_COLORS[track.genre] ?? 'text-text-muted bg-surface border-[var(--border)]'}`}
+                  >
+                    {CATEGORY_LABELS[track.genre] ?? (track.genre || '—')}
+                  </span>
                   <span className="text-text-muted text-xs tabular-nums text-center">
                     {formatDuration(track.duration, '--:--')}
                   </span>
