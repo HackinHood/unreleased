@@ -76,7 +76,7 @@ The **desktop app** (Windows, macOS, Linux) adds a local file library, offline d
 
 ## Changelog
 
-This branch's own [CHANGELOG.md](./CHANGELOG.md) predates most of what's listed above — for an accurate, current history see [CHANGELOG.web.md](https://github.com/leanwrldd/unreleased/blob/app/CHANGELOG.web.md) (web-scoped) or [CHANGELOG.md](https://github.com/leanwrldd/unreleased/blob/app/CHANGELOG.md) (full) on the `app` branch.
+See [CHANGELOG.md](https://github.com/leanwrldd/unreleased/blob/app/CHANGELOG.md) on the `app` branch for the full, current version history.
 
 ---
 
