@@ -1,5 +1,5 @@
 import { useState, memo } from 'react'
-import { ChevronUp, ChevronDown, Layers } from 'lucide-react'
+import { ChevronUp, ChevronDown, Layers, Play } from 'lucide-react'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { Track } from '../types'
 
@@ -24,7 +24,7 @@ export function useExpandedGroups(): { expanded: Set<number>; toggle: (groupId: 
  *  (each view renders its own member rows below, since Tracker/Playlists
  *  have different row layouts). */
 export const CompactGroupRow = memo(function CompactGroupRow({
-  coverTrack, title, count, expanded, onToggle, onContextMenu,
+  coverTrack, title, count, expanded, onToggle, onContextMenu, onPlay,
   categoryLabel, categoryClassName,
 }: {
   coverTrack: Track
@@ -35,6 +35,10 @@ export const CompactGroupRow = memo(function CompactGroupRow({
   /** Right-click (or long-press) the whole group — e.g. to act on all its
    *  versions at once. Left-click still expands/collapses. */
   onContextMenu?: (e: React.MouseEvent) => void
+  /** Optional play button for the group (plays its members starting from the
+   *  cover track). Omitted by callers that don't need it, so this stays a
+   *  plain button-less row for them. */
+  onPlay?: () => void
   /** Optional category badge for the group as a whole (the Tracker's compact
    *  view only — Playlists doesn't pass these, so the badge is omitted
    *  there). */
@@ -42,14 +46,23 @@ export const CompactGroupRow = memo(function CompactGroupRow({
   categoryClassName?: string
 }): JSX.Element {
   return (
-    <button
+    <div
       onClick={onToggle}
       onContextMenu={onContextMenu}
-      className="w-full flex items-center gap-3 px-3 py-2.5 md:py-2 hover:bg-surface-overlay rounded-lg transition-colors text-left"
+      className="group w-full flex items-center gap-3 px-3 py-2.5 md:py-2 hover:bg-surface-overlay rounded-lg transition-colors text-left cursor-pointer"
     >
       <div className="shrink-0 w-10 h-10 md:w-9 md:h-9 rounded overflow-hidden bg-surface-overlay">
         <AlbumArtThumbnail track={coverTrack} size={36} shimmer={false} eager />
       </div>
+      {onPlay && (
+        <button
+          onClick={e => { e.stopPropagation(); onPlay() }}
+          className="hidden group-hover:flex items-center justify-center text-text-primary shrink-0"
+          title="Play"
+        >
+          <Play size={14} fill="currentColor" />
+        </button>
+      )}
       <span className="flex-1 min-w-0 text-text-primary text-sm font-medium truncate" title={title}>{title}</span>
       {categoryLabel && (
         <span className={`hidden md:block text-xs px-1.5 py-0.5 rounded border shrink-0 w-24 text-center ${categoryClassName ?? 'text-text-muted bg-surface border-[var(--border)]'}`}>
@@ -60,7 +73,7 @@ export const CompactGroupRow = memo(function CompactGroupRow({
           in a column regardless of how wide "N versions" renders. */}
       <span className="text-text-muted text-xs shrink-0 w-20 text-right">{count} version{count === 1 ? '' : 's'}</span>
       {expanded ? <ChevronUp size={14} className="text-text-muted shrink-0" /> : <ChevronDown size={14} className="text-text-muted shrink-0" />}
-    </button>
+    </div>
   )
 }, (prev, next) =>
   // Compare by value, not reference — callers pass a freshly-built coverTrack

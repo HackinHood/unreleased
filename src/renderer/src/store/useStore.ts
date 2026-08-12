@@ -347,6 +347,12 @@ interface AppState {
   playlistsSelectedId: number | null
   playlistsSelectedLocalId: string | null
 
+  // The open playlist's track sort — same "lives in the store, not local
+  // state" reasoning as playlistsSelectedId above: without this, tabbing
+  // away from Playlists and back would silently drop the sort back to
+  // playlist order every time, since the component remounts from scratch.
+  playlistsSort: { field: string; dir: 'asc' | 'desc' }
+
   // A comp proposal started from the Files page's context menu — the
    // contributor page reads it once on mount and clears it, the same
    // hand-off pendingEditorSongId does for the song editor.
@@ -612,6 +618,7 @@ interface AppActions {
   setPendingPlaylistId: (id: number | null) => void
   setPlaylistsSelectedId: (id: number | null) => void
   setPlaylistsSelectedLocalId: (id: string | null) => void
+  setPlaylistsSort: (sort: { field: string; dir: 'asc' | 'desc' }) => void
 
   setPendingCompProposal: (v: { paths: string[]; changeType: 'delete' | 'replace' } | null) => void
   setPendingEditorSongId: (id: number | null) => void
@@ -1698,6 +1705,8 @@ export const useStore = create<AppStore>((set, get, store) => ({
   setPendingPlaylistId: (id) => set({ pendingPlaylistId: id }),
   playlistsSelectedId: null,
   playlistsSelectedLocalId: null,
+  playlistsSort: { field: 'default', dir: 'asc' },
+  setPlaylistsSort: (sort) => set({ playlistsSort: sort }),
   setPlaylistsSelectedId: (id) => set({ playlistsSelectedId: id }),
   setPlaylistsSelectedLocalId: (id) => set({ playlistsSelectedLocalId: id }),
 

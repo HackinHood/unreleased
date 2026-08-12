@@ -268,13 +268,18 @@ export default function PlaylistsView(): JSX.Element {
     pendingPlaylistId, setPendingPlaylistId,
     playlistsSelectedId: selectedId, setPlaylistsSelectedId: setSelectedId,
     playlistsSelectedLocalId: localSelectedId, setPlaylistsSelectedLocalId: setLocalSelectedId,
+    playlistsSort: sortRaw, setPlaylistsSort: setSortRaw,
     offlinePlaylists, offlineSync, offlineTracks, downloadPlaylistOffline, removePlaylistOffline,
     followedPlaylists, followPlaylist, unfollowPlaylist, updateFollowedPlaylistMeta,
     playlistFolders, createFolder, renameFolder, deleteFolder, movePlaylistsToFolder, appTextScale,
     // Subscribed purely so the track memo below re-derives when a custom
     // name/cover changes — liteSongToTrack bakes the override in at conversion
     // time, so without this the rows keep the old name until a refetch.
-    songPrefs } = useStorePick('account', 'playlists', 'refreshPlaylists', 'playTrack', 'playCollection', 'addToQueue', 'setShowUserAuth', 'likedTrackIds', 'toggleLike', 'setActiveView', 'setPendingEditorSongId', 'localPlaylists', 'libraryTracks', 'libraryArt', 'loadLibrary', 'deleteLocalPlaylist', 'renameLocalPlaylist', 'updateLocalPlaylist', 'addToLocalPlaylist', 'importM3uEntriesLocal', 'exportLocalPlaylistM3u', 'pendingPlaylistId', 'setPendingPlaylistId', 'playlistsSelectedId', 'setPlaylistsSelectedId', 'playlistsSelectedLocalId', 'setPlaylistsSelectedLocalId', 'offlinePlaylists', 'offlineSync', 'offlineTracks', 'downloadPlaylistOffline', 'removePlaylistOffline', 'followedPlaylists', 'followPlaylist', 'unfollowPlaylist', 'updateFollowedPlaylistMeta', 'playlistFolders', 'createFolder', 'renameFolder', 'deleteFolder', 'movePlaylistsToFolder', 'appTextScale', 'songPrefs')
+    songPrefs } = useStorePick('account', 'playlists', 'refreshPlaylists', 'playTrack', 'playCollection', 'addToQueue', 'setShowUserAuth', 'likedTrackIds', 'toggleLike', 'setActiveView', 'setPendingEditorSongId', 'localPlaylists', 'libraryTracks', 'libraryArt', 'loadLibrary', 'deleteLocalPlaylist', 'renameLocalPlaylist', 'updateLocalPlaylist', 'addToLocalPlaylist', 'importM3uEntriesLocal', 'exportLocalPlaylistM3u', 'pendingPlaylistId', 'setPendingPlaylistId', 'playlistsSelectedId', 'setPlaylistsSelectedId', 'playlistsSelectedLocalId', 'setPlaylistsSelectedLocalId', 'playlistsSort', 'setPlaylistsSort', 'offlinePlaylists', 'offlineSync', 'offlineTracks', 'downloadPlaylistOffline', 'removePlaylistOffline', 'followedPlaylists', 'followPlaylist', 'unfollowPlaylist', 'updateFollowedPlaylistMeta', 'playlistFolders', 'createFolder', 'renameFolder', 'deleteFolder', 'movePlaylistsToFolder', 'appTextScale', 'songPrefs')
+  // Cast back to the component's own SortField union — the store keeps the
+  // field as a plain string so it doesn't have to import this component's type.
+  const sort = sortRaw as SortState
+  const setSort = setSortRaw as (s: SortState) => void
   const canEdit = !!(account?.is_editor || account?.is_administrator)
 
   const [showLiked, setShowLiked] = useState(false)
@@ -331,8 +336,7 @@ export default function PlaylistsView(): JSX.Element {
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [dropIdx, setDropIdx] = useState<number | null>(null)
 
-  // Sort + search
-  const [sort, setSort] = useState<SortState>({ field: 'default', dir: 'asc' })
+  // Sort + search — sort itself comes from the store (see playlistsSort)
   const [search, setSearch] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -780,9 +784,15 @@ export default function PlaylistsView(): JSX.Element {
     })
   }, [isSharedView, selectedId, detail, coverData, followedPlaylists, updateFollowedPlaylistMeta])
 
-  // Reset sort/search/infoSong/editing when switching playlists
+  // Reset sort/search/infoSong/editing when switching playlists. The sort
+  // reset is skipped on the component's own first mount — this effect's
+  // dependency array fires then too, and since sort lives in the store (so
+  // it survives switching tabs and back, see playlistsSort), resetting it
+  // unconditionally here would wipe that persistence on every tab switch.
+  const mountedRef = useRef(false)
   useEffect(() => {
-    setSort({ field: 'default', dir: 'asc' })
+    if (mountedRef.current) setSort({ field: 'default', dir: 'asc' })
+    mountedRef.current = true
     setSearch('')
     setInfoSong(null)
     setEditingDesc(false)
@@ -990,13 +1000,11 @@ export default function PlaylistsView(): JSX.Element {
   }, [selectedPlaylistKeys, refreshPlaylists, localPlaylists, addToLocalPlaylist, exitPlaylistSelectMode])
 
   const handleSort = (field: SortField) => {
-    setSort(prev => {
-      if (prev.field === field) {
-        if (prev.dir === 'asc') return { field, dir: 'desc' }
-        return { field: 'default', dir: 'asc' }
-      }
-      return { field, dir: 'asc' }
-    })
+    if (sort.field === field) {
+      setSort(sort.dir === 'asc' ? { field, dir: 'desc' } : { field: 'default', dir: 'asc' })
+    } else {
+      setSort({ field, dir: 'asc' })
+    }
   }
 
   const handleDrop = useCallback(async (toIdx: number) => {
@@ -2349,8 +2357,10 @@ export default function PlaylistsView(): JSX.Element {
                 )}
               </div>
 
-              {!compactView && !gridView && (
-                <div className="grid items-center gap-3 text-text-muted text-xs uppercase tracking-widest" style={{ gridTemplateColumns: gridCols }}>
+              {/* Always rendered (just hidden) rather than conditionally mounted —
+                  otherwise toggling to grid/compact view drops this row's height
+                  and the track list jumps up. */}
+              <div className={`grid items-center gap-3 text-text-muted text-xs uppercase tracking-widest ${compactView || gridView ? 'invisible' : ''}`} style={{ gridTemplateColumns: gridCols }}>
                   {selectMode && (
                     <button
                       onClick={() => {
@@ -2378,7 +2388,6 @@ export default function PlaylistsView(): JSX.Element {
                   </div>
                   <span />
                 </div>
-              )}
             </div>
 
             {compactView ? (
@@ -2404,6 +2413,7 @@ export default function PlaylistsView(): JSX.Element {
                         count={group.members.length}
                         expanded={expandedGroups.has(group.groupId)}
                         onToggle={() => toggleGroupExpanded(group.groupId)}
+                        onPlay={() => playTrack(group.members[0].item, group.members.map(m => m.item))}
                       />
                       {expandedGroups.has(group.groupId) && (
                         <div className="ml-4 pl-4 border-l border-[var(--border)] space-y-0.5">
@@ -2417,6 +2427,13 @@ export default function PlaylistsView(): JSX.Element {
                                 onDoubleClick={() => playTrack(track, group.members.map(m => m.item))}
                               >
                                 <AlbumArtThumbnail track={track} size={32} className="rounded-md shrink-0" shimmer={false} eager />
+                                <button
+                                  onClick={e => { e.stopPropagation(); playTrack(track, group.members.map(m => m.item)) }}
+                                  className="hidden group-hover:flex items-center justify-center text-text-primary shrink-0"
+                                  title="Play"
+                                >
+                                  <Play size={14} fill="currentColor" />
+                                </button>
                                 <div className="min-w-0 flex-1">
                                   <p className="text-text-primary text-sm font-medium truncate" title={track.title}>
                                     {track.title}
