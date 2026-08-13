@@ -24,6 +24,7 @@ function CardPlayOverlay({ onPlay }: { onPlay: () => void }): JSX.Element {
 export default function PlaylistCard({
   name, subtitle, cover, badge, selected, selectMode,
   onClick, onContextMenu, onMenuButton, onPlay,
+  draggable, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop, isDragging, isDropTarget,
 }: {
   name: string
   subtitle: string
@@ -37,10 +38,33 @@ export default function PlaylistCard({
   /** The always-visible "⋯" button (distinct from right-click). */
   onMenuButton: (e: React.MouseEvent) => void
   onPlay: () => void
+  /** Drag-to-move-into-a-folder support — all optional so cards that are
+   *  neither draggable nor droppable (e.g. the "Liked Songs" tile) don't
+   *  need to pass any of this. */
+  draggable?: boolean
+  onDragStart?: (e: React.DragEvent) => void
+  onDragEnd?: () => void
+  onDragOver?: (e: React.DragEvent) => void
+  onDragLeave?: (e: React.DragEvent) => void
+  onDrop?: (e: React.DragEvent) => void
+  /** Dims the card while it's the one being dragged. */
+  isDragging?: boolean
+  /** Rings the card while another card is being dragged over it as a drop target. */
+  isDropTarget?: boolean
 }): JSX.Element {
   return (
-    <div className="group text-left relative cursor-pointer" onClick={onClick} onContextMenu={onContextMenu}>
-      <div className={`relative aspect-square rounded-2xl overflow-hidden bg-surface-overlay flex items-center justify-center mb-2.5 shadow-md group-hover:shadow-xl group-hover:-translate-y-1 transition-all duration-200 ${selected ? 'ring-2 ring-accent' : ''}`}>
+    <div
+      className={`group text-left relative cursor-pointer transition-opacity ${isDragging ? 'opacity-40' : ''}`}
+      onClick={onClick}
+      onContextMenu={onContextMenu}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      <div className={`relative aspect-square rounded-2xl overflow-hidden bg-surface-overlay flex items-center justify-center mb-2.5 shadow-md group-hover:shadow-xl group-hover:-translate-y-1 transition-all duration-200 ${selected ? 'ring-2 ring-accent' : ''} ${isDropTarget ? 'ring-2 ring-accent scale-[1.03]' : ''}`}>
         {cover}
         <CardPlayOverlay onPlay={onPlay} />
       </div>

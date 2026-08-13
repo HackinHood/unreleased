@@ -269,13 +269,14 @@ export default function PlaylistsView(): JSX.Element {
     playlistsSelectedId: selectedId, setPlaylistsSelectedId: setSelectedId,
     playlistsSelectedLocalId: localSelectedId, setPlaylistsSelectedLocalId: setLocalSelectedId,
     playlistsSort: sortRaw, setPlaylistsSort: setSortRaw,
+    playlistsOpenFolderId, setPlaylistsOpenFolderId,
     offlinePlaylists, offlineSync, offlineTracks, downloadPlaylistOffline, removePlaylistOffline,
     followedPlaylists, followPlaylist, unfollowPlaylist, updateFollowedPlaylistMeta,
     playlistFolders, createFolder, renameFolder, deleteFolder, movePlaylistsToFolder, appTextScale,
     // Subscribed purely so the track memo below re-derives when a custom
     // name/cover changes — liteSongToTrack bakes the override in at conversion
     // time, so without this the rows keep the old name until a refetch.
-    songPrefs } = useStorePick('account', 'playlists', 'refreshPlaylists', 'playTrack', 'playCollection', 'addToQueue', 'setShowUserAuth', 'likedTrackIds', 'toggleLike', 'setActiveView', 'setPendingEditorSongId', 'localPlaylists', 'libraryTracks', 'libraryArt', 'loadLibrary', 'deleteLocalPlaylist', 'renameLocalPlaylist', 'updateLocalPlaylist', 'addToLocalPlaylist', 'importM3uEntriesLocal', 'exportLocalPlaylistM3u', 'pendingPlaylistId', 'setPendingPlaylistId', 'playlistsSelectedId', 'setPlaylistsSelectedId', 'playlistsSelectedLocalId', 'setPlaylistsSelectedLocalId', 'playlistsSort', 'setPlaylistsSort', 'offlinePlaylists', 'offlineSync', 'offlineTracks', 'downloadPlaylistOffline', 'removePlaylistOffline', 'followedPlaylists', 'followPlaylist', 'unfollowPlaylist', 'updateFollowedPlaylistMeta', 'playlistFolders', 'createFolder', 'renameFolder', 'deleteFolder', 'movePlaylistsToFolder', 'appTextScale', 'songPrefs')
+    songPrefs } = useStorePick('account', 'playlists', 'refreshPlaylists', 'playTrack', 'playCollection', 'addToQueue', 'setShowUserAuth', 'likedTrackIds', 'toggleLike', 'setActiveView', 'setPendingEditorSongId', 'localPlaylists', 'libraryTracks', 'libraryArt', 'loadLibrary', 'deleteLocalPlaylist', 'renameLocalPlaylist', 'updateLocalPlaylist', 'addToLocalPlaylist', 'importM3uEntriesLocal', 'exportLocalPlaylistM3u', 'pendingPlaylistId', 'setPendingPlaylistId', 'playlistsSelectedId', 'setPlaylistsSelectedId', 'playlistsSelectedLocalId', 'setPlaylistsSelectedLocalId', 'playlistsSort', 'setPlaylistsSort', 'playlistsOpenFolderId', 'setPlaylistsOpenFolderId', 'offlinePlaylists', 'offlineSync', 'offlineTracks', 'downloadPlaylistOffline', 'removePlaylistOffline', 'followedPlaylists', 'followPlaylist', 'unfollowPlaylist', 'updateFollowedPlaylistMeta', 'playlistFolders', 'createFolder', 'renameFolder', 'deleteFolder', 'movePlaylistsToFolder', 'appTextScale', 'songPrefs')
   // Cast back to the component's own SortField union — the store keeps the
   // field as a plain string so it doesn't have to import this component's type.
   const sort = sortRaw as SortState
@@ -306,14 +307,16 @@ export default function PlaylistsView(): JSX.Element {
   const [showPlBulkAddMenu, setShowPlBulkAddMenu] = useState(false)
 
   // ── Playlist folders ──────────────────────────────────────────────────────
-  // Which folders are expanded in the library grid (UI-only, not persisted).
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [creatingFolder, setCreatingFolder] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
   const [folderMenu, setFolderMenu] = useState<{ folder: PlaylistFolder; x: number; y: number; renaming?: boolean; renameVal?: string } | null>(null)
-  const toggleFolderExpanded = (id: string): void => setExpandedFolders(prev => {
-    const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next
-  })
+
+  // Drag-to-move-into-a-folder — dragged key is the same "api:<id>"/"local:<id>"
+  // composite the multi-select already uses. Transient gesture state, so it's
+  // fine as local state (unlike the store-backed selection that survives tab
+  // switches).
+  const [draggedPlaylistKey, setDraggedPlaylistKey] = useState<string | null>(null)
+  const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null>(null)
 
   // Multi-select of tracks within an open playlist — mirrors the Tracker's
   // bulk-select (ApiTrackerView). Keyed by track.id (Track has a string id;
@@ -672,7 +675,19 @@ export default function PlaylistsView(): JSX.Element {
     let cancelled = false
     setLoadingCompact(true)
     groupItemsByVersion(tracks, t => userApi.trackIdToSongId(t.id) ?? -1).then(groups => {
-      if (!cancelled) { setCompactGroups(groups); setLoadingCompact(false) }
+      if (cancelled) return
+      // groupItemsByVersion builds groups from a Map keyed by version-group id,
+      // so they come back in whatever order the /versions/ lookup happened to
+      // return — not the playlist's actual track order. Re-sort both the
+      // groups and each group's members by their position in `tracks` so
+      // compact view lines up with what normal/grid view shows, instead of
+      // silently reshuffling the playlist.
+      const trackIndex = new Map(tracks.map((t, i) => [t.id, i]))
+      const ordered = groups
+        .map(g => ({ ...g, members: [...g.members].sort((a, b) => (trackIndex.get(a.item.id) ?? 0) - (trackIndex.get(b.item.id) ?? 0)) }))
+        .sort((a, b) => (trackIndex.get(a.members[0]?.item.id) ?? 0) - (trackIndex.get(b.members[0]?.item.id) ?? 0))
+      setCompactGroups(ordered)
+      setLoadingCompact(false)
     })
     return () => { cancelled = true }
   }, [compactView, tracks, compactReloadToken])
@@ -1224,7 +1239,7 @@ export default function PlaylistsView(): JSX.Element {
           </button>
         )}
         <button
-          onClick={() => { const id = createFolder(uniqueFolderName(), keys); if (id) setExpandedFolders(prev => new Set(prev).add(id)); onDone() }}
+          onClick={() => { createFolder(uniqueFolderName(), keys); onDone() }}
           className="w-full flex items-center gap-2 pl-9 pr-3.5 py-2 text-sm text-accent hover:bg-surface-overlay transition-colors"
         >
           <FolderPlus size={13} className="shrink-0" /> New folder…
@@ -1512,6 +1527,21 @@ export default function PlaylistsView(): JSX.Element {
         })()
   )
 
+  // Shared drag-source wiring for playlist cards — dropped onto a folder tile
+  // to move them in (see the folder tiles' onDrop in renderFoldersSection).
+  // Disabled in select mode so drag doesn't fight click-to-toggle-selection.
+  const dragSourceProps = (plKey: string): {
+    draggable: boolean
+    onDragStart: (e: React.DragEvent) => void
+    onDragEnd: () => void
+    isDragging: boolean
+  } => ({
+    draggable: !plSelectMode,
+    onDragStart: e => { e.dataTransfer.effectAllowed = 'move'; setDraggedPlaylistKey(plKey) },
+    onDragEnd: () => { setDraggedPlaylistKey(null); setDropTargetFolderId(null) },
+    isDragging: draggedPlaylistKey === plKey,
+  })
+
   const renderApiCard = (p: PlaylistSummary): JSX.Element => {
     const plKey = `api:${p.id}`
     const plSelected = selectedPlaylistKeys.has(plKey)
@@ -1557,6 +1587,7 @@ export default function PlaylistsView(): JSX.Element {
           const trks = d ? d.items.map(i => userApi.liteSongToTrack(i.song)) : []
           if (trks.length) playCollection(trks)
         }}
+        {...dragSourceProps(plKey)}
       />
     )
   }
@@ -1594,6 +1625,7 @@ export default function PlaylistsView(): JSX.Element {
           const qt = lp.trackIds.map(id => libraryTracks.find(t => t.id === id)).filter((t): t is LibraryTrack => !!t).map(libTrackToTrack)
           if (qt.length) playCollection(qt)
         }}
+        {...dragSourceProps(plKey)}
       />
     )
   }
@@ -1645,10 +1677,56 @@ export default function PlaylistsView(): JSX.Element {
   const ungroupedApi = playlists.filter(p => !foldered.has(`api:${p.id}`))
   const ungroupedLocal = localPlaylists.filter(lp => !foldered.has(`local:${lp.id}`))
 
-  /** The expandable Folders section. `onlyWithMembers` hides folders whose
-   *  members can't be resolved in the current view — the logged-out library
-   *  passes true so folders holding only synced playlists (invisible without
-   *  an account) don't render as misleadingly "empty". */
+  /** A folder's cover — a 2x2 mosaic of up to its first 4 members' own cover
+   *  nodes (reusing apiCoverNode / the same local-cover logic renderLocalCard
+   *  uses), so a folder reads as "a playlist made of playlists" instead of a
+   *  plain icon. Falls back to a Folder icon tile when it has no resolvable
+   *  members yet. */
+  const folderCoverNode = (f: PlaylistFolder): React.ReactNode => {
+    const slots: React.ReactNode[] = []
+    for (const key of f.playlistKeys) {
+      if (slots.length >= 4) break
+      const parsed = parsePlaylistKey(key)
+      if (!parsed) continue
+      if (parsed.kind === 'api') {
+        const p = apiById.get(Number(parsed.id))
+        if (p) slots.push(<div key={key} className="w-full h-full overflow-hidden">{apiCoverNode(p)}</div>)
+      } else {
+        const lp = localById.get(parsed.id)
+        if (lp) slots.push(
+          <div key={key} className="w-full h-full overflow-hidden">
+            {lp.coverImage
+              ? <img src={lp.coverImage} alt="" className="w-full h-full object-cover" />
+              : <LocalPlaylistMosaic trackIds={lp.trackIds} className="w-full h-full" />}
+          </div>
+        )
+      }
+    }
+    if (slots.length === 0) {
+      return (
+        <div className="w-full h-full bg-gradient-to-br from-accent/40 to-accent/10 flex items-center justify-center">
+          <Folder size={40} className="text-accent/50" />
+        </div>
+      )
+    }
+    if (slots.length === 1) return slots[0]
+    return (
+      <div className="w-full h-full grid grid-cols-2 grid-rows-2" style={{ overflow: 'hidden', transform: 'translateZ(0)' }}>
+        {slots}
+        {Array.from({ length: 4 - slots.length }).map((_, i) => <div key={`pad-${i}`} className="w-full h-full bg-surface-raised" />)}
+      </div>
+    )
+  }
+
+  const openFolder = (id: string): void => setPlaylistsOpenFolderId(id)
+
+  /** The Folders section — one PlaylistCard-styled tile per folder, in the
+   *  same grid as the playlists below it, so a folder looks and behaves like
+   *  any other playlist tile (click opens it, drag a playlist onto it to file
+   *  it away). `onlyWithMembers` hides folders whose members can't be
+   *  resolved in the current view — the logged-out library passes true so
+   *  folders holding only synced playlists (invisible without an account)
+   *  don't render as misleadingly "empty". */
   const renderFoldersSection = (onlyWithMembers: boolean): React.ReactNode => {
     const entries = playlistFolders
       .map(f => ({ f, memberCards: folderMemberCards(f) }))
@@ -1657,44 +1735,64 @@ export default function PlaylistsView(): JSX.Element {
     return (
       <div className="mb-9">
         <h2 className="text-text-muted text-xs font-semibold uppercase tracking-widest mb-3">Folders</h2>
-        <div className="space-y-3">
-          {entries.map(({ f, memberCards }) => {
-            const expanded = expandedFolders.has(f.id)
-            return (
-              <div key={f.id} className="rounded-2xl border border-[var(--border)] bg-surface-overlay/30 overflow-hidden">
-                <div
-                  className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-surface-overlay/60 transition-colors"
-                  onClick={() => toggleFolderExpanded(f.id)}
-                  onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setFolderMenu({ folder: f, x: e.clientX, y: e.clientY }) }}
-                >
-                  {expanded ? <FolderOpen size={20} className="text-accent shrink-0" /> : <Folder size={20} className="text-accent shrink-0" />}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-text-primary text-sm font-semibold truncate">{f.name}</p>
-                    <p className="text-text-muted text-xs">{memberCards.length} {memberCards.length === 1 ? 'playlist' : 'playlists'}</p>
-                  </div>
-                  <button
-                    onClick={e => { e.stopPropagation(); setFolderMenu({ folder: f, x: e.clientX, y: e.clientY }) }}
-                    className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-raised transition-colors"
-                  >
-                    <MoreHorizontal size={16} />
-                  </button>
-                  {expanded ? <ChevronUp size={16} className="text-text-muted shrink-0" /> : <ChevronDown size={16} className="text-text-muted shrink-0" />}
-                </div>
-                {expanded && (
-                  <div className="px-4 pb-4 pt-1">
-                    {memberCards.length === 0 ? (
-                      <p className="text-text-muted text-sm py-3">This folder is empty. Right-click a playlist and choose “Move to folder” to add one.</p>
-                    ) : (
-                      <div className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
-                        {memberCards}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })}
+        <div className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+          {entries.map(({ f, memberCards }) => (
+            <PlaylistCard
+              key={f.id}
+              name={f.name}
+              subtitle={`${memberCards.length} ${memberCards.length === 1 ? 'playlist' : 'playlists'}`}
+              cover={folderCoverNode(f)}
+              badge={<span className="flex items-center gap-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-md"><Folder size={9} /> Folder</span>}
+              selected={false}
+              selectMode={false}
+              onClick={() => openFolder(f.id)}
+              onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setFolderMenu({ folder: f, x: e.clientX, y: e.clientY }) }}
+              onMenuButton={e => setFolderMenu({ folder: f, x: e.clientX, y: e.clientY })}
+              onPlay={() => openFolder(f.id)}
+              isDropTarget={dropTargetFolderId === f.id}
+              onDragOver={e => { if (!draggedPlaylistKey) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDropTargetFolderId(f.id) }}
+              onDragLeave={() => setDropTargetFolderId(prev => (prev === f.id ? null : prev))}
+              onDrop={e => {
+                e.preventDefault()
+                if (draggedPlaylistKey) movePlaylistsToFolder([draggedPlaylistKey], f.id)
+                setDraggedPlaylistKey(null)
+                setDropTargetFolderId(null)
+              }}
+            />
+          ))}
         </div>
+      </div>
+    )
+  }
+
+  /** Full-screen view for one open folder — a back button and a grid of its
+   *  member cards, the exact same tiles the top-level library renders, so a
+   *  playlist looks identical whether or not it's filed into a folder. */
+  const renderFolderDetailView = (f: PlaylistFolder): JSX.Element => {
+    const memberCards = folderMemberCards(f)
+    return (
+      <div className="flex-1 flex flex-col min-h-0 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]" onClick={() => { setCardMenu(null); setFolderMenu(null) }}>
+        <div className="px-6 pt-6 pb-10">
+          <button onClick={() => setPlaylistsOpenFolderId(null)} className="flex items-center gap-1.5 text-text-muted hover:text-text-primary text-sm transition-colors mb-5">
+            <ArrowLeft size={15} /> Playlists
+          </button>
+          <div className="flex items-center gap-3 mb-7">
+            <FolderOpen size={26} className="text-accent shrink-0" />
+            <div>
+              <h1 className="text-text-primary text-3xl font-black tracking-tight">{f.name}</h1>
+              <p className="text-text-muted text-sm mt-1">{memberCards.length} {memberCards.length === 1 ? 'playlist' : 'playlists'}</p>
+            </div>
+          </div>
+          {memberCards.length === 0 ? (
+            <p className="text-text-muted text-sm">This folder is empty. Go back and drag a playlist onto it, or right-click one and choose “Move to folder”.</p>
+          ) : (
+            <div className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+              {memberCards}
+            </div>
+          )}
+        </div>
+        {renderCardMenu()}
+        {renderFolderMenu()}
       </div>
     )
   }
@@ -1816,6 +1914,15 @@ export default function PlaylistsView(): JSX.Element {
           </div>
         </div>
       )
+    }
+    // Folders work logged out too — membership is device-local (the API only
+    // ever stores synced-playlist ids). Checked after localSelectedId so
+    // opening a member playlist from inside a folder, then backing out,
+    // returns to the folder rather than the top-level grid.
+    if (playlistsOpenFolderId != null) {
+      const f = playlistFolders.find(x => x.id === playlistsOpenFolderId)
+      if (f) return renderFolderDetailView(f)
+      setPlaylistsOpenFolderId(null)
     }
     return (
       <div className="flex-1 flex flex-col min-h-0 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]">
@@ -2434,14 +2541,18 @@ export default function PlaylistsView(): JSX.Element {
                                 className="group flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-surface-raised transition-colors cursor-default"
                                 onDoubleClick={() => playTrack(track, tracks)}
                               >
-                                <AlbumArtThumbnail track={track} size={32} className="rounded-md shrink-0" shimmer={false} eager />
-                                <button
-                                  onClick={e => { e.stopPropagation(); playTrack(track, tracks) }}
-                                  className="hidden group-hover:flex items-center justify-center text-text-primary shrink-0"
-                                  title="Play"
-                                >
-                                  <Play size={14} fill="currentColor" />
-                                </button>
+                                <div className="relative shrink-0 w-8 h-8 rounded-md overflow-hidden">
+                                  <AlbumArtThumbnail track={track} size={32} shimmer={false} eager />
+                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                                    <button
+                                      onClick={e => { e.stopPropagation(); playTrack(track, tracks) }}
+                                      className="text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                      title="Play"
+                                    >
+                                      <Play size={14} fill="currentColor" />
+                                    </button>
+                                  </div>
+                                </div>
                                 <div className="min-w-0 flex-1">
                                   <p className="text-text-primary text-sm font-medium truncate" title={track.title}>
                                     {track.title}
@@ -2870,6 +2981,17 @@ export default function PlaylistsView(): JSX.Element {
     document.body,
   ) : null
 
+  // ── Open folder ────────────────────────────────────────────────────────────
+  // Checked after the selectedId/localSelectedId detail views above, so
+  // opening a member playlist from inside a folder and backing out lands you
+  // back in the folder rather than the top-level grid.
+
+  if (playlistsOpenFolderId != null) {
+    const f = playlistFolders.find(x => x.id === playlistsOpenFolderId)
+    if (f) return renderFolderDetailView(f)
+    setPlaylistsOpenFolderId(null)
+  }
+
   // ── Playlist library ───────────────────────────────────────────────────────
 
   return (
@@ -2971,14 +3093,14 @@ export default function PlaylistsView(): JSX.Element {
               value={newFolderName}
               onChange={e => setNewFolderName(e.target.value)}
               onKeyDown={e => {
-                if (e.key === 'Enter' && newFolderName.trim()) { const id = createFolder(newFolderName); if (id) setExpandedFolders(prev => new Set(prev).add(id)); setCreatingFolder(false); setNewFolderName('') }
+                if (e.key === 'Enter' && newFolderName.trim()) { const id = createFolder(newFolderName); if (id) setPlaylistsOpenFolderId(id); setCreatingFolder(false); setNewFolderName('') }
                 else if (e.key === 'Escape') { setCreatingFolder(false); setNewFolderName('') }
               }}
               placeholder="Folder name"
               autoFocus
               className="flex-1 bg-surface-overlay border border-[var(--border)] rounded-xl px-3.5 py-2.5 text-text-primary text-sm focus:outline-none focus:border-accent/50"
             />
-            <button onClick={() => { const id = createFolder(newFolderName); if (id) setExpandedFolders(prev => new Set(prev).add(id)); setCreatingFolder(false); setNewFolderName('') }} className="px-4 py-2.5 rounded-xl bg-accent text-black text-sm font-semibold">Create</button>
+            <button onClick={() => { const id = createFolder(newFolderName); if (id) setPlaylistsOpenFolderId(id); setCreatingFolder(false); setNewFolderName('') }} className="px-4 py-2.5 rounded-xl bg-accent text-black text-sm font-semibold">Create</button>
             <button onClick={() => { setCreatingFolder(false); setNewFolderName('') }} className="p-2.5 rounded-xl text-text-muted hover:text-text-primary"><X size={16} /></button>
           </div>
         )}

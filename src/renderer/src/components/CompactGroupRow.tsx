@@ -55,21 +55,28 @@ export const CompactGroupRow = memo(function CompactGroupRow({
       onContextMenu={onContextMenu}
       className="group w-full flex items-center gap-3 px-3 py-2.5 md:py-2 hover:bg-surface-overlay rounded-lg transition-colors text-left cursor-pointer"
     >
+      {/* # stays put — it used to swap for the play button on hover, but
+          since this row is flex (not the fixed-column grid the list view
+          uses), that swap made the number vanish and the cover jump left.
+          The play button now overlays the cover art instead, matching how
+          the grid view's tiles already do it. */}
       {index !== undefined && (
-        <span className="w-4 shrink-0 text-center text-xs text-text-muted tabular-nums group-hover:hidden">{index}</span>
+        <span className="w-4 shrink-0 text-center text-xs text-text-muted tabular-nums">{index}</span>
       )}
-      <div className="shrink-0 w-10 h-10 md:w-9 md:h-9 rounded overflow-hidden bg-surface-overlay">
+      <div className="relative shrink-0 w-10 h-10 md:w-9 md:h-9 rounded overflow-hidden bg-surface-overlay">
         <AlbumArtThumbnail track={coverTrack} size={36} shimmer={false} eager />
+        {onPlay && (
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+            <button
+              onClick={e => { e.stopPropagation(); onPlay() }}
+              className="text-white opacity-0 group-hover:opacity-100 transition-opacity"
+              title="Play"
+            >
+              <Play size={14} fill="currentColor" />
+            </button>
+          </div>
+        )}
       </div>
-      {onPlay && (
-        <button
-          onClick={e => { e.stopPropagation(); onPlay() }}
-          className="hidden group-hover:flex items-center justify-center text-text-primary shrink-0"
-          title="Play"
-        >
-          <Play size={14} fill="currentColor" />
-        </button>
-      )}
       <span className="flex-1 min-w-0 text-text-primary text-sm font-medium truncate" title={title}>{title}</span>
       {categoryLabel && (
         <span className={`hidden md:block text-xs px-1.5 py-0.5 rounded border shrink-0 w-24 text-center ${categoryClassName ?? 'text-text-muted bg-surface border-[var(--border)]'}`}>

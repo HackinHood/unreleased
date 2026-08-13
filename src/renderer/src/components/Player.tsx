@@ -470,10 +470,12 @@ export default function Player(): JSX.Element {
   // the user set). Keyed on the track id rather than the play-credit threshold
   // so the cover is picked as the song starts and then holds for the whole
   // play — advancing mid-song would swap the art out from under the user.
+  // Released songs are excluded: they already have real official artwork, so
+  // "suggestions" there would just be fan-made covers overriding it.
   useEffect(() => {
-    if (currentSongId == null) return
+    if (currentSongId == null || currentTrack?.genre === 'released') return
     useStore.getState()._maybeRotateCover(currentSongId)
-  }, [currentSongId])
+  }, [currentSongId, currentTrack?.genre])
 
   // Play / pause
   useEffect(() => {

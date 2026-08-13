@@ -353,6 +353,12 @@ interface AppState {
   // playlist order every time, since the component remounts from scratch.
   playlistsSort: { field: string; dir: 'asc' | 'desc' }
 
+  // Which folder (if any) is "open" in the library grid, showing just its
+  // member playlists — same reasoning as playlistsSelectedId: without this,
+  // tabbing away and back would silently kick you back out to the top-level
+  // grid instead of leaving you inside the folder you were looking at.
+  playlistsOpenFolderId: string | null
+
   // A comp proposal started from the Files page's context menu — the
    // contributor page reads it once on mount and clears it, the same
    // hand-off pendingEditorSongId does for the song editor.
@@ -619,6 +625,7 @@ interface AppActions {
   setPlaylistsSelectedId: (id: number | null) => void
   setPlaylistsSelectedLocalId: (id: string | null) => void
   setPlaylistsSort: (sort: { field: string; dir: 'asc' | 'desc' }) => void
+  setPlaylistsOpenFolderId: (id: string | null) => void
 
   setPendingCompProposal: (v: { paths: string[]; changeType: 'delete' | 'replace' } | null) => void
   setPendingEditorSongId: (id: number | null) => void
@@ -1709,6 +1716,8 @@ export const useStore = create<AppStore>((set, get, store) => ({
   setPlaylistsSort: (sort) => set({ playlistsSort: sort }),
   setPlaylistsSelectedId: (id) => set({ playlistsSelectedId: id }),
   setPlaylistsSelectedLocalId: (id) => set({ playlistsSelectedLocalId: id }),
+  playlistsOpenFolderId: null,
+  setPlaylistsOpenFolderId: (id) => set({ playlistsOpenFolderId: id }),
 
   setShowUserAuth: (showUserAuth) => set({ showUserAuth }),
 
