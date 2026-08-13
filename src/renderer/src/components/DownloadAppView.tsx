@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   Download, Github, Monitor, Apple, Terminal, Smartphone, Share, Plus,
   HardDriveDownload, Library, Globe, Radio, FileAudio, RefreshCw, ArrowDown, Check,
+  Home,
 } from 'lucide-react'
 import logo from '../assets/logo.png'
 import { IS_ANDROID, IS_IOS, IS_MOBILE } from '../lib/platform'
@@ -16,6 +17,12 @@ import { hasPwaInstallPrompt, onPwaInstallPromptChange, showPwaInstallPrompt } f
 // macOS builds don't ship with every release (they need a Mac to build), so
 // the page scans the recent release list and serves the newest release that
 // carries .dmg assets — possibly older than the Windows/Linux one.
+//
+// The Android APK is a separate release train off its own branch, tagged
+// `android-vX.Y.Z` (sideloaded — Play Store would reject the content, see
+// the capacitor-android-wrap memory), interleaved with the desktop `vX.Y.Z`
+// tags in the same releases list. Desktop and Android are picked out by
+// which asset extensions each release carries, not by tag string.
 
 const REPO_URL = 'https://github.com/leanwrldd/unreleased'
 const LATEST_URL = `${REPO_URL}/releases/latest`
@@ -162,24 +169,31 @@ export default function DownloadAppView(): JSX.Element {
 
   useEffect(() => onPwaInstallPromptChange(() => setCanInstallPwa(hasPwaInstallPrompt())), [])
 
-  // Release assets by platform. Windows/Linux come off the newest release; the
-  // macOS .dmg pair comes from the newest release that has one (Mac builds
-  // skip some versions). The web installer is the tiny nsis-web stub that
-  // pulls the rest during setup — offered next to the full offline installer.
-  const release = releases?.[0] ?? null
+  // Release assets by platform. Windows/Linux come off the newest desktop
+  // release; the macOS .dmg pair comes from the newest desktop release that
+  // has one (Mac builds skip some versions). The web installer is the tiny
+  // nsis-web stub that pulls the rest during setup — offered next to the
+  // full offline installer.
+  const desktopReleases = releases?.filter((r) => r.assets.some((a) => /\.(exe|AppImage|dmg)$/i.test(a.name))) ?? null
+  const release = desktopReleases?.[0] ?? null
   const assets = release?.assets ?? []
   const winFull = assets.find((a) => /^Unreleased-Setup-.+\.exe$/i.test(a.name))
   const winWeb = assets.find((a) => a.name === 'Unreleased-Setup.exe')
   const linuxAppImage = assets.find((a) => a.name.endsWith('.AppImage'))
 
-  const macRelease = releases?.find((r) => r.assets.some((a) => a.name.endsWith('.dmg'))) ?? null
+  const macRelease = desktopReleases?.find((r) => r.assets.some((a) => a.name.endsWith('.dmg'))) ?? null
   const macArm = macRelease?.assets.find((a) => a.name.endsWith('-arm64.dmg'))
   const macIntel = macRelease?.assets.find((a) => a.name.endsWith('.dmg') && !a.name.endsWith('-arm64.dmg'))
   const macDmg = macArm ?? macIntel
   const macLagging = !!macRelease && !!release && macRelease.version !== release.version
 
-  const heroAsset = os === 'windows' ? winFull : os === 'linux' ? linuxAppImage : os === 'mac' ? macDmg : undefined
-  const heroLabel = os === 'windows' ? 'Download for Windows' : os === 'linux' ? 'Download for Linux' : os === 'mac' ? 'Download for macOS' : 'Download'
+  // Android ships from its own tag train (`android-vX.Y.Z`) — pick the newest
+  // release carrying an .apk regardless of where it falls in the combined list.
+  const androidRelease = releases?.find((r) => r.assets.some((a) => a.name.endsWith('.apk'))) ?? null
+  const androidApk = androidRelease?.assets.find((a) => a.name.endsWith('.apk'))
+
+  const heroAsset = os === 'windows' ? winFull : os === 'linux' ? linuxAppImage : os === 'mac' ? macDmg : os === 'android' ? androidApk : undefined
+  const heroLabel = os === 'windows' ? 'Download for Windows' : os === 'linux' ? 'Download for Linux' : os === 'mac' ? 'Download for macOS' : os === 'android' ? 'Download APK' : 'Download'
 
   const loading = !releases && !failed
 
@@ -202,17 +216,32 @@ export default function DownloadAppView(): JSX.Element {
               className="w-24 h-24 mx-auto object-contain drop-shadow-2xl mb-6"
             />
             <h1 className="text-text-primary text-4xl md:text-5xl font-extrabold tracking-tight mb-3">
-              Unreleased for desktop
+              {os === 'android' ? 'Unreleased for Android' : 'Unreleased for desktop'}
             </h1>
             <p className="text-text-secondary text-base md:text-lg max-w-xl mx-auto leading-relaxed mb-5">
-              Everything from the web player, plus offline downloads, a local library,
-              audio effects and Discord Rich Presence — in a fast native app.
+              {os === 'android'
+                ? 'Everything from the web player, plus offline downloads, background playback and Discord Rich Presence — in a fast native app.'
+                : 'Everything from the web player, plus offline downloads, a local library, audio effects and Discord Rich Presence — in a fast native app.'}
             </p>
 
             {/* Version pill */}
             <div className="flex items-center justify-center mb-8 h-7">
               {loading ? (
                 <div className="w-56 h-7 rounded-full bg-surface-raised animate-pulse" />
+              ) : os === 'android' ? (
+                androidRelease ? (
+                  <a
+                    href={androidRelease.htmlUrl}
+                    target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full border border-[var(--border)] bg-surface-overlay/60 text-xs text-text-secondary hover:text-text-primary transition-colors"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    <span className="font-semibold text-text-primary">{androidRelease.version}</span>
+                    {androidRelease.publishedAt && <span className="text-text-muted">· {fmtDate(androidRelease.publishedAt)}</span>}
+                  </a>
+                ) : (
+                  <span className="text-text-muted text-xs">Latest version info unavailable — buttons below go to GitHub.</span>
+                )
               ) : release ? (
                 <a
                   href={release.htmlUrl}
@@ -230,14 +259,14 @@ export default function DownloadAppView(): JSX.Element {
 
             {/* Primary CTA(s) */}
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              {IS_MOBILE ? (
-                <a href="#mobile-install" className={heroBtnCls}>
-                  <Smartphone size={18} /> Install on this phone
-                </a>
-              ) : heroAsset ? (
+              {heroAsset ? (
                 <a href={heroAsset.browser_download_url} className={heroBtnCls}>
                   <Download size={18} /> {heroLabel}
                   <span className="font-medium text-white/70 text-sm">{fmtMB(heroAsset.size)}</span>
+                </a>
+              ) : IS_MOBILE ? (
+                <a href="#mobile-install" className={heroBtnCls}>
+                  <Smartphone size={18} /> Install on this phone
                 </a>
               ) : (
                 <a href={failed ? LATEST_URL : '#all-downloads'} target={failed ? '_blank' : undefined} rel={failed ? 'noopener noreferrer' : undefined} className={heroBtnCls}>
@@ -254,6 +283,11 @@ export default function DownloadAppView(): JSX.Element {
                 Apple Silicon build — on an Intel Mac, grab the Intel version below.
               </p>
             )}
+            {os === 'android' && heroAsset && (
+              <p className="text-text-muted text-xs mt-4">
+                Sideloaded APK — Android will ask you to allow installs from this source the first time.
+              </p>
+            )}
           </div>
         </div>
 
@@ -266,7 +300,7 @@ export default function DownloadAppView(): JSX.Element {
             {' '}and update themselves automatically after that.
           </p>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <PlatformCard icon={<Monitor size={19} />} name="Windows" requirement="Windows 10 / 11 · 64-bit" detected={os === 'windows'}>
               {loading ? (
                 <div className="h-[42px] rounded-xl bg-surface-raised animate-pulse" />
@@ -317,18 +351,41 @@ export default function DownloadAppView(): JSX.Element {
                 </a>
               )}
             </PlatformCard>
+
+            <PlatformCard icon={<Smartphone size={19} />} name="Android" requirement={androidRelease ? `APK · ${androidRelease.version}` : 'Sideloaded APK'} detected={os === 'android'}>
+              {loading ? (
+                <div className="h-[42px] rounded-xl bg-surface-raised animate-pulse" />
+              ) : androidApk ? (
+                <>
+                  <AssetButton asset={androidApk} label="Download APK" primary />
+                  <p className="text-text-muted text-[11px] leading-snug">
+                    Not on the Play Store — you&rsquo;ll need to allow installs from this source when prompted.
+                  </p>
+                </>
+              ) : (
+                <a href={`${REPO_URL}/releases`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-bold bg-accent text-white hover:bg-accent/90 transition-colors">
+                  <Download size={15} /> Get from GitHub
+                </a>
+              )}
+            </PlatformCard>
           </div>
 
-          {/* ── Phone / PWA ── */}
+          {/* ── Phone / PWA — the web-app-to-home-screen route. The only option
+              on iOS; on Android it's the lighter alternative to the APK card
+              above (no "unknown sources" prompt, updates silently). ── */}
           <div id="mobile-install" className="scroll-mt-8 mt-4 rounded-2xl border border-[var(--border)] bg-surface-overlay/40 p-5 md:p-6 flex flex-col md:flex-row md:items-center gap-5">
             <div className="flex items-center gap-4 flex-1 min-w-0">
               <div className="w-12 h-12 rounded-2xl bg-accent/15 text-accent flex items-center justify-center shrink-0">
-                <Smartphone size={22} />
+                <Home size={22} />
               </div>
               <div className="min-w-0">
-                <p className="text-text-primary text-sm font-semibold mb-0.5">On your phone?</p>
+                <p className="text-text-primary text-sm font-semibold mb-0.5">
+                  {os === 'android' ? 'Prefer the web app?' : 'On your phone?'}
+                </p>
                 <p className="text-text-secondary text-[13px] leading-relaxed">
-                  Install the web app to your home screen for a fullscreen, app-like experience — no app store needed.
+                  {os === 'android'
+                    ? 'Skip the APK and install the web app to your home screen instead — same look, updates itself, no "unknown sources" prompt.'
+                    : 'Install the web app to your home screen for a fullscreen, app-like experience — no app store needed.'}
                   {!IS_MOBILE && ' Open this site on your phone to install it there.'}
                 </p>
               </div>

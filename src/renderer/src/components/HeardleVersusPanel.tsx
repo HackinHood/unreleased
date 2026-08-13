@@ -19,7 +19,7 @@ import {
 } from '../lib/heardleMatchApi'
 import type { PuzzleResponse } from '../lib/heardleApi'
 import type { Guess, GameStatus, HeardleSong } from '../lib/heardle'
-import { loadPools, searchPool, unlockedSeconds } from '../lib/heardle'
+import { loadPools, searchPool, unlockedSeconds, revealCoverUrl } from '../lib/heardle'
 
 interface Props {
   embedded?: boolean
@@ -285,7 +285,11 @@ export default function HeardleVersusPanel({ embedded, onClose }: Props): JSX.El
           path: '',
           era: payload.reveal.era ?? null,
           category: payload.reveal.category ?? '',
-          imageUrl: payload.reveal.imageUrl ?? '',
+          // revealCoverUrl reads the runtime object, not MatchEndReveal's
+          // declared type — the websocket payload may carry `image_url`
+          // (see the comment on revealCoverUrl) even though that field isn't
+          // in this interface.
+          imageUrl: revealCoverUrl(payload.reveal) ?? '',
           length: payload.reveal.length ?? '',
         })
       }
@@ -489,8 +493,8 @@ export default function HeardleVersusPanel({ embedded, onClose }: Props): JSX.El
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-4">
               <div className="flex gap-4">
                 <div className="w-20 h-20 sm:w-24 sm:h-24 shrink-0 rounded-xl border border-[var(--border)] bg-[var(--surface-overlay)] overflow-hidden flex items-center justify-center">
-                  {reveal.imageUrl
-                    ? <img src={smallCoverUrl(reveal.imageUrl)} alt="" className="w-full h-full object-cover" />
+                  {revealCoverUrl(reveal)
+                    ? <img src={smallCoverUrl(revealCoverUrl(reveal))} alt="" className="w-full h-full object-cover" />
                     : <Music2 size={28} className="text-text-muted" />}
                 </div>
                 <div className="min-w-0 flex-1">

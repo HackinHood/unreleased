@@ -639,10 +639,12 @@ export default function PlaylistsView(): JSX.Element {
 
   // groupItemsByVersion doesn't know about the search box, so without this
   // typing a query while compact view is active would just do nothing.
-  const filteredCompactGroups = useMemo(
-    () => filterCompactGroups(compactGroups, search, t => `${t.title} ${t.artist}`),
-    [compactGroups, search]
-  )
+  const filteredCompactGroups = useMemo(() => {
+    const filtered = filterCompactGroups(compactGroups, search, t => `${t.title} ${t.artist}`)
+    // Compact view only exposes the # column (see the header row), so
+    // index sort is the only sort that applies here — reverse for desc.
+    return sort.field === 'index' && sort.dir === 'desc' ? [...filtered].reverse() : filtered
+  }, [compactGroups, search, sort])
 
   // ── Effects ────────────────────────────────────────────────────────────────
 
@@ -2359,15 +2361,20 @@ export default function PlaylistsView(): JSX.Element {
 
               {/* Always rendered (just hidden) rather than conditionally mounted —
                   otherwise toggling to grid/compact view drops this row's height
-                  and the track list jumps up. */}
-              <div className={`grid items-center gap-3 text-text-muted text-xs uppercase tracking-widest ${compactView || gridView ? 'invisible' : ''}`} style={{ gridTemplateColumns: gridCols }}>
+                  and the track list jumps up. Grid view's cards don't line up
+                  with this table layout at all, so it's hidden wholesale there;
+                  compact view keeps the # column live (groups are numbered too)
+                  since it doesn't depend on the table layout, but hides the
+                  columns that don't apply to grouped rows (Title/Era/Category/
+                  duration/select-all). */}
+              <div className={`grid items-center gap-3 text-text-muted text-xs uppercase tracking-widest ${gridView ? 'invisible' : ''}`} style={{ gridTemplateColumns: gridCols }}>
                   {selectMode && (
                     <button
                       onClick={() => {
                         const allShown = displayTracks.length > 0 && displayTracks.every(t => selectedTracks.has(t.id))
                         setSelectedTracks(allShown ? new Map() : new Map(displayTracks.map(t => [t.id, t])))
                       }}
-                      className="flex items-center justify-center text-text-muted hover:text-text-primary"
+                      className={`flex items-center justify-center text-text-muted hover:text-text-primary ${compactView ? 'invisible' : ''}`}
                       title="Select all / none"
                     >
                       {displayTracks.length > 0 && displayTracks.every(t => selectedTracks.has(t.id))
@@ -2379,11 +2386,11 @@ export default function PlaylistsView(): JSX.Element {
                   <div className="flex justify-center">
                     <SortHeader label="#" field="index" sort={sort} onSort={handleSort} />
                   </div>
-                  <span />
-                  <SortHeader label="Title" field="title" sort={sort} onSort={handleSort} />
-                  <SortHeader label="Era" field="era" sort={sort} onSort={handleSort} />
-                  <SortHeader label="Category" field="category" sort={sort} onSort={handleSort} />
-                  <div className="flex justify-center">
+                  <span className={compactView ? 'invisible' : ''} />
+                  <span className={compactView ? 'invisible' : ''}><SortHeader label="Title" field="title" sort={sort} onSort={handleSort} /></span>
+                  <span className={compactView ? 'invisible' : ''}><SortHeader label="Era" field="era" sort={sort} onSort={handleSort} /></span>
+                  <span className={compactView ? 'invisible' : ''}><SortHeader label="Category" field="category" sort={sort} onSort={handleSort} /></span>
+                  <div className={`flex justify-center ${compactView ? 'invisible' : ''}`}>
                     <SortHeader label={<Clock size={12} className="inline" />} field="duration" sort={sort} onSort={handleSort} />
                   </div>
                   <span />
@@ -2405,15 +2412,16 @@ export default function PlaylistsView(): JSX.Element {
                 </div>
               ) : (
                 <div className="space-y-0.5">
-                  {filteredCompactGroups.map((group) => (
+                  {filteredCompactGroups.map((group, groupIdx) => (
                     <div key={group.groupId}>
                       <CompactGroupRow
                         coverTrack={group.members[0].item}
                         title={group.title}
                         count={group.members.length}
                         expanded={expandedGroups.has(group.groupId)}
+                        index={groupIdx + 1}
                         onToggle={() => toggleGroupExpanded(group.groupId)}
-                        onPlay={() => playTrack(group.members[0].item, group.members.map(m => m.item))}
+                        onPlay={() => playTrack(group.members[0].item, tracks)}
                       />
                       {expandedGroups.has(group.groupId) && (
                         <div className="ml-4 pl-4 border-l border-[var(--border)] space-y-0.5">
@@ -2424,11 +2432,11 @@ export default function PlaylistsView(): JSX.Element {
                                 key={track.id}
                                 onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setTrackMenu({ track, songId, x: e.clientX, y: e.clientY }) }}
                                 className="group flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-surface-raised transition-colors cursor-default"
-                                onDoubleClick={() => playTrack(track, group.members.map(m => m.item))}
+                                onDoubleClick={() => playTrack(track, tracks)}
                               >
                                 <AlbumArtThumbnail track={track} size={32} className="rounded-md shrink-0" shimmer={false} eager />
                                 <button
-                                  onClick={e => { e.stopPropagation(); playTrack(track, group.members.map(m => m.item)) }}
+                                  onClick={e => { e.stopPropagation(); playTrack(track, tracks) }}
                                   className="hidden group-hover:flex items-center justify-center text-text-primary shrink-0"
                                   title="Play"
                                 >

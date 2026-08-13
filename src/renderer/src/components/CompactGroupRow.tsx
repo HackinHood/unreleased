@@ -24,7 +24,7 @@ export function useExpandedGroups(): { expanded: Set<number>; toggle: (groupId: 
  *  (each view renders its own member rows below, since Tracker/Playlists
  *  have different row layouts). */
 export const CompactGroupRow = memo(function CompactGroupRow({
-  coverTrack, title, count, expanded, onToggle, onContextMenu, onPlay,
+  coverTrack, title, count, expanded, onToggle, onContextMenu, onPlay, index,
   categoryLabel, categoryClassName,
 }: {
   coverTrack: Track
@@ -39,6 +39,10 @@ export const CompactGroupRow = memo(function CompactGroupRow({
    *  cover track). Omitted by callers that don't need it, so this stays a
    *  plain button-less row for them. */
   onPlay?: () => void
+  /** Optional 1-based row number, shown left of the cover art (swaps for the
+   *  play button on hover) so compact view's groups line up with the # column
+   *  in the list/grid header. Omitted by callers that don't need it. */
+  index?: number
   /** Optional category badge for the group as a whole (the Tracker's compact
    *  view only — Playlists doesn't pass these, so the badge is omitted
    *  there). */
@@ -51,6 +55,9 @@ export const CompactGroupRow = memo(function CompactGroupRow({
       onContextMenu={onContextMenu}
       className="group w-full flex items-center gap-3 px-3 py-2.5 md:py-2 hover:bg-surface-overlay rounded-lg transition-colors text-left cursor-pointer"
     >
+      {index !== undefined && (
+        <span className="w-4 shrink-0 text-center text-xs text-text-muted tabular-nums group-hover:hidden">{index}</span>
+      )}
       <div className="shrink-0 w-10 h-10 md:w-9 md:h-9 rounded overflow-hidden bg-surface-overlay">
         <AlbumArtThumbnail track={coverTrack} size={36} shimmer={false} eager />
       </div>
@@ -86,6 +93,7 @@ export const CompactGroupRow = memo(function CompactGroupRow({
   prev.title === next.title &&
   prev.count === next.count &&
   prev.expanded === next.expanded &&
+  prev.index === next.index &&
   prev.categoryLabel === next.categoryLabel &&
   prev.categoryClassName === next.categoryClassName
 )

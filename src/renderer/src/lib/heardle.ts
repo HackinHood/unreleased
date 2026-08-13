@@ -156,6 +156,31 @@ export interface HeardleSong {
   length: string
 }
 
+/** Resolves a "reveal" song's cover to a loadable URL, regardless of which
+ *  shape the server actually sent it in.
+ *
+ *  Server-graded rounds (see lib/heardleApi, lib/heardleMatchApi) hand back a
+ *  `reveal` object that the client types as `HeardleSong` — i.e. it assumes
+ *  the cover already arrives resolved under `imageUrl`, the same shape `slim`
+ *  below produces locally. In practice these endpoints reuse the catalog's own
+ *  serializer, which is `image_url` (snake_case, a site-relative asset path
+ *  like "/assets/fd.webp" — confirmed against GET /songs/{id}/) — so reading
+ *  `.imageUrl` off the real payload is reading a field that was never there,
+ *  and the reveal card shows no art. That's a wire-shape mismatch, not missing
+ *  data: the catalog has cover art for nearly every released song.
+ *
+ *  Takes `unknown` rather than `HeardleSong` on purpose — the whole point is
+ *  to look past what the type declares and read what's actually on the
+ *  runtime object, trying every field name a reasonable backend might use.
+ *  `buildImageUrl` is idempotent for an already-absolute URL, so this is safe
+ *  to run even where the field genuinely does arrive pre-resolved. */
+export function revealCoverUrl(raw: unknown): string | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  const candidate = r.imageUrl ?? r.image_url ?? r.cover_url ?? r.coverUrl ?? r.image
+  return typeof candidate === 'string' && candidate ? buildImageUrl(candidate) : undefined
+}
+
 function slim(song: JWApiSong): HeardleSong | null {
   // No path means nothing to stream — a song that can't be played can't be
   // guessed, and it must not sit in the pool the daily answer is drawn from.
