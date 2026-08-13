@@ -11,7 +11,7 @@ import type { JWApiSong, JWApiEra } from '../lib/juicewrldApi'
 import type { LibraryTrack } from '../types'
 import * as userApi from '../lib/userApi'
 import { broadcastLibraryTrackUpdate } from '../lib/windowSync'
-import { getVersionMetaForSongs, getOwnVersionMeta, setGroupVersionTitle, setSongVersion } from '../lib/versionsApi'
+import { getVersionMetaForSongs, setOwnVersionTitle } from '../lib/versionsApi'
 import type { SongVersionMeta } from '../lib/versionsApi'
 import { invalidateCompactGroupsCache } from '../lib/compactGroups'
 import { cleanDate } from './EditorPage'
@@ -198,11 +198,10 @@ interface Target<T> {
 
 const API_GROUPS = ['Details', 'Versions', 'Credits', 'Dates']
 
-function apiFields(
-  eras: JWApiEra[],
-  versionMeta: Map<number, SongVersionMeta> | null,
-  versionNote: string,
-): BulkField<JWApiSong>[] {
+const VERSION_TITLE_NOTE =
+  "Retitles just this song. If it's currently linked with others, it's split into its own version group with the new title rather than renaming the shared one — same as the single-song editor. To rename a whole group in place, use that song's Versions card instead."
+
+function apiFields(eras: JWApiEra[], versionMeta: Map<number, SongVersionMeta> | null): BulkField<JWApiSong>[] {
   return [
     { key: 'category', label: 'Category', kind: 'select', group: 'Details', modes: ['set'], read: s => s.category || '',
       options: Object.keys(CATEGORY_LABELS).map(v => ({ value: v, label: CATEGORY_LABELS[v] })) },
@@ -215,15 +214,17 @@ function apiFields(
     { key: 'additional_information', label: 'Add. info', kind: 'textarea', group: 'Details', read: s => s.additional_information || '' },
     { key: 'notes', label: 'Notes', kind: 'textarea', group: 'Details', read: s => s.notes || '' },
 
-    // The shared title of the version group a song belongs to. Unlike every
-    // other field here it does NOT go through the proposal system — it writes
-    // straight to the /versions/ table, the same way the single-song editor's
-    // Versions card does. The per-song "version" label (v1 / TV Mix) is
-    // deliberately absent: stamping one label across a selection would just
-    // claim every song is the same version.
+    // Unlike every other field here this does NOT go through the proposal
+    // system — it writes straight to the /versions/ table, same as the
+    // single-song editor's Versions card, and for the same reason that card
+    // uses setOwnVersionTitle rather than setGroupVersionTitle: retitling one
+    // song shouldn't silently relabel songs the user didn't touch. The
+    // per-song "version" label (v1 / TV Mix) is deliberately absent — stamping
+    // one label across a selection would just claim every song is the same
+    // version.
     { key: 'versionTitle', label: 'Version title', kind: 'text', group: 'Versions',
       modes: ['set', 'fill', 'clear'], placeholder: "e.g. She's The One",
-      pending: !versionMeta, note: versionNote,
+      pending: !versionMeta, note: VERSION_TITLE_NOTE,
       read: s => versionMeta?.get(s.id)?.versionTitle ?? '' },
 
     { key: 'credited_artists', label: 'Artists', kind: 'list', group: 'Credits', placeholder: 'Juice WRLD, Lil Uzi Vert', read: s => s.credited_artists || '' },
@@ -305,39 +306,10 @@ export default function BulkEditModal(): JSX.Element | null {
     if (target?.kind !== 'api') return null
     const canEdit = !!(account?.is_editor || account?.is_administrator)
 
-    // A title belongs to a group, not a song, so setGroupVersionTitle rewrites
-    // every member — including songs the user didn't select. Ungrouped songs
-    // count as a group of one (setSongVersion creates a standalone group for
-    // them, matching what the single-song editor does).
-    const groupIds = new Set<string>()
-    for (const s of target.songs) {
-      const g = versionMeta?.get(s.id)?.groupId
-      groupIds.add(g != null ? `g${g}` : `solo${s.id}`)
-    }
-    const versionNote = groupIds.size > 1
-      ? `These ${target.songs.length} songs span ${groupIds.size} version groups — each gets the title separately, which leaves ${groupIds.size} differently-grouped songs claiming the same title. Link them first if they're meant to be one group. Writing also affects linked songs outside the selection.`
-      : 'Applies to the whole version group, including any linked songs that are not selected.'
-
-    // One write per group, not per song: a selection sharing a group would
-    // otherwise PATCH the same rows once per member. Keyed by group *and*
-    // title so editing the value and resubmitting isn't skipped as done, and
-    // a failure is dropped from the memo so a retry really retries.
-    const titleWrites = new Map<string, Promise<void>>()
-    const writeGroupTitle = (groupId: number, title: string): Promise<void> => {
-      const key = `${groupId}|${title}`
-      let inflight = titleWrites.get(key)
-      if (!inflight) {
-        inflight = setGroupVersionTitle(groupId, title || null).then(() => invalidateCompactGroupsCache())
-        inflight.catch(() => titleWrites.delete(key))
-        titleWrites.set(key, inflight)
-      }
-      return inflight
-    }
-
     return {
       items: target.songs,
       groups: API_GROUPS,
-      fields: apiFields(eras, versionMeta, versionNote),
+      fields: apiFields(eras, versionMeta),
       keyOf: s => String(s.id),
       titleOf: s => s.track_titles?.[0] || s.name,
       noun: ['song', 'songs'],
@@ -349,17 +321,14 @@ export default function BulkEditModal(): JSX.Element | null {
       commit: async (song, patch, note) => {
         // Version titles are written straight to the /versions/ table rather
         // than proposed for review (same as the single-song editor), so they
-        // never belong in proposed_data.
+        // never belong in proposed_data. setOwnVersionTitle re-reads the
+        // song's row itself before deciding what to do, so it's correct even
+        // if the prefetch above failed or is stale — the groupId passed here
+        // is only a hint it uses when the song has no row at all yet.
         const { versionTitle, ...rest } = patch
         if (versionTitle !== undefined) {
-          // Only trust the prefetch for a song it actually knows about. It
-          // swallows its own errors into an empty map, and acting on that
-          // would have setSongVersion create a second row for a song that is
-          // already grouped (the table has no unique constraint on
-          // song_id) — so confirm "ungrouped" against the server first.
-          const existing = versionMeta?.get(song.id) ?? await getOwnVersionMeta(song.id)
-          const groupId = existing ? existing.groupId : await setSongVersion(song.id, null, null)
-          await writeGroupTitle(groupId, versionTitle)
+          await setOwnVersionTitle(song.id, versionTitle || null, versionMeta?.get(song.id)?.groupId ?? null)
+          invalidateCompactGroupsCache()
         }
         if (Object.keys(rest).length === 0) return
 

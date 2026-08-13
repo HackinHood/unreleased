@@ -330,7 +330,7 @@ export default function SongContextMenu({
                     className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors"
                   >
                     <ListMusic size={13} className={`shrink-0 ${alreadyIn ? 'text-accent' : 'text-text-muted'}`} />
-                    <span className="flex-1 truncate text-xs">{p.name}</span>
+                    <span className="flex-1 truncate text-xs" title={p.name}>{p.name}</span>
                     {(localDoneId === p.id || alreadyIn) && <Check size={12} className="text-accent shrink-0" />}
                   </button>
                 )
@@ -361,7 +361,7 @@ export default function SongContextMenu({
                     className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors"
                   >
                     <ListMusic size={13} className={`shrink-0 ${alreadyIn ? 'text-accent' : 'text-text-muted'}`} />
-                    <span className="flex-1 truncate text-xs">{p.name}</span>
+                    <span className="flex-1 truncate text-xs" title={p.name}>{p.name}</span>
                     {busyId === p.id
                       ? <Loader2 size={12} className="animate-spin" />
                       : (doneId === p.id || alreadyIn)

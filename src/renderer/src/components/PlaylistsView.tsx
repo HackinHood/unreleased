@@ -1223,6 +1223,7 @@ export default function PlaylistsView(): JSX.Element {
           <button
             key={f.id}
             onClick={() => { movePlaylistsToFolder(keys, f.id); onDone() }}
+            title={f.name}
             className="w-full flex items-center gap-2 pl-9 pr-3.5 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-overlay transition-colors"
           >
             <Folder size={13} className="text-text-muted shrink-0" />
@@ -1331,7 +1332,7 @@ export default function PlaylistsView(): JSX.Element {
                   const src = cardMenu.playlist as LocalPlaylist
                   setCardMenu(null)
                   src.trackIds.filter(id => !p.trackIds.includes(id)).forEach(id => addToLocalPlaylist(p.id, id))
-                }} className="w-full text-left px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors truncate">
+                }} title={p.name} className="w-full text-left px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors truncate">
                   {p.name}
                 </button>
               ))}
@@ -1469,7 +1470,7 @@ export default function PlaylistsView(): JSX.Element {
                   await Promise.all(srcDetail.items.map(item => userApi.addToPlaylist(p.id, item.song.id).catch(() => {})))
                   await refreshPlaylists()
                   useStore.getState().autoDownloadIfOffline(p.id, srcDetail.items.map(item => item.song.id))
-                }} className="w-full text-left px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors truncate">
+                }} title={p.name} className="w-full text-left px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors truncate">
                   {p.name}
                 </button>
               ))}
@@ -1718,12 +1719,18 @@ export default function PlaylistsView(): JSX.Element {
     )
   }
 
-  const openFolder = (id: string): void => setPlaylistsOpenFolderId(id)
+  // Opening a folder now expands it in place (accordion-style) instead of
+  // navigating to a separate page — clicking the open folder again collapses
+  // it. `playlistsOpenFolderId` still lives in the store so it survives the
+  // tab-unmount-on-switch behavior noted at its declaration.
+  const openFolder = (id: string): void => setPlaylistsOpenFolderId(playlistsOpenFolderId === id ? null : id)
 
   /** The Folders section — one PlaylistCard-styled tile per folder, in the
    *  same grid as the playlists below it, so a folder looks and behaves like
    *  any other playlist tile (click opens it, drag a playlist onto it to file
-   *  it away). `onlyWithMembers` hides folders whose members can't be
+   *  it away). Clicking the open folder's tile expands a panel of its member
+   *  cards directly beneath it, spanning the full grid row, rather than
+   *  navigating away. `onlyWithMembers` hides folders whose members can't be
    *  resolved in the current view — the logged-out library passes true so
    *  folders holding only synced playlists (invisible without an account)
    *  don't render as misleadingly "empty". */
@@ -1736,63 +1743,46 @@ export default function PlaylistsView(): JSX.Element {
       <div className="mb-9">
         <h2 className="text-text-muted text-xs font-semibold uppercase tracking-widest mb-3">Folders</h2>
         <div className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-          {entries.map(({ f, memberCards }) => (
-            <PlaylistCard
-              key={f.id}
-              name={f.name}
-              subtitle={`${memberCards.length} ${memberCards.length === 1 ? 'playlist' : 'playlists'}`}
-              cover={folderCoverNode(f)}
-              badge={<span className="flex items-center gap-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-md"><Folder size={9} /> Folder</span>}
-              selected={false}
-              selectMode={false}
-              onClick={() => openFolder(f.id)}
-              onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setFolderMenu({ folder: f, x: e.clientX, y: e.clientY }) }}
-              onMenuButton={e => setFolderMenu({ folder: f, x: e.clientX, y: e.clientY })}
-              onPlay={() => openFolder(f.id)}
-              isDropTarget={dropTargetFolderId === f.id}
-              onDragOver={e => { if (!draggedPlaylistKey) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDropTargetFolderId(f.id) }}
-              onDragLeave={() => setDropTargetFolderId(prev => (prev === f.id ? null : prev))}
-              onDrop={e => {
-                e.preventDefault()
-                if (draggedPlaylistKey) movePlaylistsToFolder([draggedPlaylistKey], f.id)
-                setDraggedPlaylistKey(null)
-                setDropTargetFolderId(null)
-              }}
-            />
-          ))}
+          {entries.map(({ f, memberCards }) => {
+            const isOpen = playlistsOpenFolderId === f.id
+            return (
+              <React.Fragment key={f.id}>
+                <PlaylistCard
+                  name={f.name}
+                  subtitle={`${memberCards.length} ${memberCards.length === 1 ? 'playlist' : 'playlists'}`}
+                  cover={folderCoverNode(f)}
+                  badge={<span className="flex items-center gap-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-md">{isOpen ? <FolderOpen size={9} /> : <Folder size={9} />} Folder</span>}
+                  selected={isOpen}
+                  selectMode={false}
+                  onClick={() => openFolder(f.id)}
+                  onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setFolderMenu({ folder: f, x: e.clientX, y: e.clientY }) }}
+                  onMenuButton={e => setFolderMenu({ folder: f, x: e.clientX, y: e.clientY })}
+                  onPlay={() => openFolder(f.id)}
+                  isDropTarget={dropTargetFolderId === f.id}
+                  onDragOver={e => { if (!draggedPlaylistKey) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDropTargetFolderId(f.id) }}
+                  onDragLeave={() => setDropTargetFolderId(prev => (prev === f.id ? null : prev))}
+                  onDrop={e => {
+                    e.preventDefault()
+                    if (draggedPlaylistKey) movePlaylistsToFolder([draggedPlaylistKey], f.id)
+                    setDraggedPlaylistKey(null)
+                    setDropTargetFolderId(null)
+                  }}
+                />
+                {isOpen && (
+                  <div style={{ gridColumn: '1 / -1' }} className="rounded-2xl bg-surface-overlay border border-[var(--border)] p-4" onClick={e => e.stopPropagation()}>
+                    {memberCards.length === 0 ? (
+                      <p className="text-text-muted text-sm py-1">This folder is empty. Drag a playlist onto it, or right-click one and choose “Move to folder”.</p>
+                    ) : (
+                      <div className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+                        {memberCards}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </React.Fragment>
+            )
+          })}
         </div>
-      </div>
-    )
-  }
-
-  /** Full-screen view for one open folder — a back button and a grid of its
-   *  member cards, the exact same tiles the top-level library renders, so a
-   *  playlist looks identical whether or not it's filed into a folder. */
-  const renderFolderDetailView = (f: PlaylistFolder): JSX.Element => {
-    const memberCards = folderMemberCards(f)
-    return (
-      <div className="flex-1 flex flex-col min-h-0 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]" onClick={() => { setCardMenu(null); setFolderMenu(null) }}>
-        <div className="px-6 pt-6 pb-10">
-          <button onClick={() => setPlaylistsOpenFolderId(null)} className="flex items-center gap-1.5 text-text-muted hover:text-text-primary text-sm transition-colors mb-5">
-            <ArrowLeft size={15} /> Playlists
-          </button>
-          <div className="flex items-center gap-3 mb-7">
-            <FolderOpen size={26} className="text-accent shrink-0" />
-            <div>
-              <h1 className="text-text-primary text-3xl font-black tracking-tight">{f.name}</h1>
-              <p className="text-text-muted text-sm mt-1">{memberCards.length} {memberCards.length === 1 ? 'playlist' : 'playlists'}</p>
-            </div>
-          </div>
-          {memberCards.length === 0 ? (
-            <p className="text-text-muted text-sm">This folder is empty. Go back and drag a playlist onto it, or right-click one and choose “Move to folder”.</p>
-          ) : (
-            <div className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-              {memberCards}
-            </div>
-          )}
-        </div>
-        {renderCardMenu()}
-        {renderFolderMenu()}
       </div>
     )
   }
@@ -1915,15 +1905,6 @@ export default function PlaylistsView(): JSX.Element {
         </div>
       )
     }
-    // Folders work logged out too — membership is device-local (the API only
-    // ever stores synced-playlist ids). Checked after localSelectedId so
-    // opening a member playlist from inside a folder, then backing out,
-    // returns to the folder rather than the top-level grid.
-    if (playlistsOpenFolderId != null) {
-      const f = playlistFolders.find(x => x.id === playlistsOpenFolderId)
-      if (f) return renderFolderDetailView(f)
-      setPlaylistsOpenFolderId(null)
-    }
     return (
       <div className="flex-1 flex flex-col min-h-0 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]">
         <div className="px-5 pt-5 pb-8">
@@ -1990,6 +1971,7 @@ export default function PlaylistsView(): JSX.Element {
                           <button
                             key={p.id}
                             onClick={() => bulkAddPlaylistsTo({ kind: 'local', id: p.id })}
+                            title={p.name}
                             className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors"
                           >
                             <ListMusic size={14} className="shrink-0 text-text-muted" />
@@ -2043,7 +2025,7 @@ export default function PlaylistsView(): JSX.Element {
                     {localPlaylists.filter(lp => !selectedPlaylistKeys.has(`local:${lp.id}`)).length === 0 ? (
                       <p className="px-3.5 py-2 text-xs text-text-muted">No other playlists</p>
                     ) : localPlaylists.filter(lp => !selectedPlaylistKeys.has(`local:${lp.id}`)).map(p => (
-                      <button key={p.id} onClick={() => bulkAddPlaylistsTo({ kind: 'local', id: p.id })} className="w-full text-left px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors truncate">
+                      <button key={p.id} onClick={() => bulkAddPlaylistsTo({ kind: 'local', id: p.id })} title={p.name} className="w-full text-left px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors truncate">
                         {p.name}
                       </button>
                     ))}
@@ -2351,6 +2333,7 @@ export default function PlaylistsView(): JSX.Element {
                                     <div className="border-t border-b border-[var(--border)] max-h-40 overflow-y-auto">
                                       {otherPlaylists.map(p => (
                                         <button key={p.id} onClick={async () => { setShowAddAllMenu(false); setShowHeroMenu(false); await handleAddAllTo(p.id, detail) }}
+                                          title={p.name}
                                           className="w-full text-left pl-9 pr-3.5 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-overlay transition-colors truncate">
                                           {p.name}
                                         </button>
@@ -2759,6 +2742,7 @@ export default function PlaylistsView(): JSX.Element {
                           <button
                             key={p.id}
                             onClick={() => bulkAddToPlaylist(p.id)}
+                            title={p.name}
                             className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors"
                           >
                             <ListMusic size={14} className="shrink-0 text-text-muted" />
@@ -2981,17 +2965,6 @@ export default function PlaylistsView(): JSX.Element {
     document.body,
   ) : null
 
-  // ── Open folder ────────────────────────────────────────────────────────────
-  // Checked after the selectedId/localSelectedId detail views above, so
-  // opening a member playlist from inside a folder and backing out lands you
-  // back in the folder rather than the top-level grid.
-
-  if (playlistsOpenFolderId != null) {
-    const f = playlistFolders.find(x => x.id === playlistsOpenFolderId)
-    if (f) return renderFolderDetailView(f)
-    setPlaylistsOpenFolderId(null)
-  }
-
   // ── Playlist library ───────────────────────────────────────────────────────
 
   return (
@@ -3201,6 +3174,7 @@ export default function PlaylistsView(): JSX.Element {
                         <button
                           key={p.id}
                           onClick={() => bulkAddPlaylistsTo(selectedPlaylistKind === 'api' ? { kind: 'api', id: p.id as number } : { kind: 'local', id: p.id as string })}
+                          title={p.name}
                           className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors"
                         >
                           <ListMusic size={14} className="shrink-0 text-text-muted" />
@@ -3271,6 +3245,7 @@ export default function PlaylistsView(): JSX.Element {
                     <button
                       key={p.id}
                       onClick={() => bulkAddPlaylistsTo(selectedPlaylistKind === 'api' ? { kind: 'api', id: p.id as number } : { kind: 'local', id: p.id as string })}
+                      title={p.name}
                       className="w-full text-left px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors truncate"
                     >
                       {p.name}
