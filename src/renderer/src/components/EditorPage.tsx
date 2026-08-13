@@ -17,6 +17,7 @@ import {
 } from '../lib/versionsApi'
 import type { VersionTitleSuggestion } from '../lib/versionsApi'
 import { invalidateCompactGroupsCache } from '../lib/compactGroups'
+import { suggestFieldValues, type SuggestField } from '../lib/fieldSuggestions'
 
 type SubmitState = 'idle' | 'submitting' | 'submitted' | 'error'
 type LyricsTab = 'lyrics' | 'synced'
@@ -104,14 +105,60 @@ const fieldInputClass = (changed: boolean, mono: boolean): string =>
     changed ? 'border-accent/40 bg-accent/[0.04]' : 'border-[var(--border)] focus:border-accent/40'
   }`
 
+/* ── Field-value autocomplete ─────────────────────────────────────────────── */
+/* Shared by FieldRow and BasicRow — a value-matching dropdown fed from
+ *  fieldSuggestions.ts (album/credits/location/leak type already used
+ *  elsewhere in the catalog), same idea as the Versions card's title
+ *  autocomplete but backed by song data instead of the /versions/ table. */
+function useValueSuggestions(field: SuggestField | undefined, value: string): {
+  matches: string[]; open: boolean; setOpen: (v: boolean) => void
+} {
+  const [matches, setMatches] = useState<string[]>([])
+  const [open, setOpen] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (!field) return
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      suggestFieldValues(field, value, value).then(setMatches)
+    }, 200)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [field, value])
+
+  return { matches, open, setOpen }
+}
+
+function SuggestDropdown({ matches, onPick }: { matches: string[]; onPick: (v: string) => void }): JSX.Element | null {
+  if (matches.length === 0) return null
+  return (
+    <div className="absolute z-20 top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-lg border border-[var(--border)] bg-surface-raised shadow-2xl py-1">
+      {matches.map(m => (
+        <button
+          key={m}
+          // mousedown (not click) fires before the input's blur, so the
+          // suggestion is still in `matches` when this runs.
+          onMouseDown={e => { e.preventDefault(); onPick(m) }}
+          className="w-full text-left px-2.5 py-1.5 text-xs text-text-secondary hover:bg-surface-overlay hover:text-text-primary transition-colors truncate"
+        >
+          {m}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 /* ── Field ─────────────────────────────────────────────────────────────────── */
-export function FieldRow({ label, value, original, onChange, placeholder, mono = false, span, onBrowse }: {
+export function FieldRow({ label, value, original, onChange, placeholder, mono = false, span, onBrowse, suggest }: {
   label: string; value: string; original: string
   onChange: (v: string) => void; placeholder?: string; mono?: boolean; span?: 2 | 3
   /** Shows a folder button inside the field that opens a file picker. */
   onBrowse?: () => void
+  /** Autocompletes from other songs' values for this field (e.g. "album"). */
+  suggest?: SuggestField
 }): JSX.Element {
   const changed = value !== original && !(value === '' && original === '')
+  const { matches, open, setOpen } = useValueSuggestions(suggest, value)
   return (
     <label className={`flex flex-col min-w-0 ${span === 2 ? 'sm:col-span-2' : span === 3 ? 'sm:col-span-3' : ''}`}>
       <FieldLabel label={label} changed={changed} />
@@ -119,6 +166,8 @@ export function FieldRow({ label, value, original, onChange, placeholder, mono =
         <input
           value={value}
           onChange={e => onChange(e.target.value)}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setOpen(false)}
           placeholder={placeholder ?? (original || '—')}
           className={`${fieldInputClass(changed, mono)} ${onBrowse ? 'pr-9' : ''}`}
         />
@@ -132,6 +181,7 @@ export function FieldRow({ label, value, original, onChange, placeholder, mono =
             <FolderOpen size={14} />
           </button>
         )}
+        {suggest && open && <SuggestDropdown matches={matches} onPick={v => { onChange(v); setOpen(false) }} />}
       </div>
     </label>
   )
@@ -191,15 +241,19 @@ const basicShellClass = (changed: boolean): string =>
 const basicLabelClass =
   'block text-[10px] font-semibold tracking-wide text-text-muted select-none leading-tight'
 
-export function BasicRow({ label, value, original, onChange, rows = 1, placeholder, mono = false, onBrowse }: {
+export function BasicRow({ label, value, original, onChange, rows = 1, placeholder, mono = false, onBrowse, suggest }: {
   label: string; value: string; original?: string
   onChange: (v: string) => void; rows?: number; placeholder?: string; mono?: boolean
   /** Shows a folder button inside the field that opens a file picker. */
   onBrowse?: () => void
+  /** Autocompletes from other songs' values for this field (e.g. "album"). */
+  suggest?: SuggestField
 }): JSX.Element {
   const changed = original != null && value !== original && !(value === '' && original === '')
+  const { matches, open, setOpen } = useValueSuggestions(suggest, value)
   return (
-    <label className={basicShellClass(changed)}>
+    <label className={`${basicShellClass(changed)} relative ${open && matches.length > 0 ? 'z-20' : ''}`}
+      onFocus={() => setOpen(true)} onBlur={() => setOpen(false)}>
       <span className={basicLabelClass}>{label}</span>
       {rows > 1
         ? <textarea
@@ -221,6 +275,7 @@ export function BasicRow({ label, value, original, onChange, rows = 1, placehold
             )}
           </div>
       }
+      {suggest && open && <SuggestDropdown matches={matches} onPick={v => { onChange(v); setOpen(false) }} />}
     </label>
   )
 }
@@ -1122,18 +1177,18 @@ export default function EditorPage({ initialSongId = null }: {
                     onChange={setCat} options={CATEGORIES}
                   />
                 </div>
-                <BasicRow label="Album" value={album} original={String(base.album || '')} onChange={setAlbum} />
+                <BasicRow label="Album" value={album} original={String(base.album || '')} onChange={setAlbum} suggest="album" />
                 <BasicRow
                   label="Alternate titles (one per line)" value={altNames}
                   original={Array.isArray(base.track_titles) ? (base.track_titles as string[]).join('\n') : ''}
                   onChange={setAltNames} rows={3}
                 />
-                <BasicRow label="Credited artists" value={artists} original={String(base.credited_artists || '')} onChange={setArtists} />
+                <BasicRow label="Credited artists" value={artists} original={String(base.credited_artists || '')} onChange={setArtists} suggest="credited_artists" />
                 <div className="grid grid-cols-2 gap-1.5">
-                  <BasicRow label="Producers" value={prod} original={String(base.producers || '')} onChange={setProd} />
-                  <BasicRow label="Engineers" value={eng} original={String(base.engineers || '')} onChange={setEng} />
+                  <BasicRow label="Producers" value={prod} original={String(base.producers || '')} onChange={setProd} suggest="producers" />
+                  <BasicRow label="Engineers" value={eng} original={String(base.engineers || '')} onChange={setEng} suggest="engineers" />
                 </div>
-                <BasicRow label="Recording locations" value={loc} original={String(base.recording_locations || '')} onChange={setLoc} rows={2} />
+                <BasicRow label="Recording locations" value={loc} original={String(base.recording_locations || '')} onChange={setLoc} rows={2} suggest="recording_locations" />
                 <BasicRow label="Record dates" value={recDate} original={String(base.record_dates || '')} onChange={setRecDate} rows={2} />
                 <div className="grid grid-cols-2 gap-1.5">
                   <BasicRow label="Length" value={songLength} original={String(base.length || '')} onChange={setSongLength} mono />
@@ -1205,7 +1260,7 @@ export default function EditorPage({ initialSongId = null }: {
                 })()}
                 <div className="grid grid-cols-2 gap-1.5">
                   <BasicRow label="Date leaked" value={dateLeaked} original={String(base.date_leaked || '')} onChange={setDateLeaked} mono />
-                  <BasicRow label="Leak type" value={leak} original={String(base.leak_type || '')} onChange={setLeak} />
+                  <BasicRow label="Leak type" value={leak} original={String(base.leak_type || '')} onChange={setLeak} suggest="leak_type" />
                 </div>
                 <div className="grid grid-cols-2 gap-1.5">
                   <BasicRow label="Image URL" value={imageUrl} original={String(base.image_url || '')} onChange={setImageUrl} mono />
@@ -1409,11 +1464,11 @@ export default function EditorPage({ initialSongId = null }: {
               {/* ── Right: field cards ── */}
               <div className="flex flex-col gap-5 min-w-0">
 
-                <Card title="Identity">
+                <Card title="Identity" overflowVisible>
                   <FieldGrid>
                     <FieldRow label="Title"    value={name}     original={String(base.name || '')}    onChange={setName} />
-                    <FieldRow label="Artists"  value={artists}  original={String(base.credited_artists || '')} onChange={setArtists} />
-                    <FieldRow label="Album"    value={album}    original={String(base.album || '')}   onChange={setAlbum} />
+                    <FieldRow label="Artists"  value={artists}  original={String(base.credited_artists || '')} onChange={setArtists} suggest="credited_artists" />
+                    <FieldRow label="Album"    value={album}    original={String(base.album || '')}   onChange={setAlbum} suggest="album" />
                     <FieldRow label="Cover URL" value={imageUrl} original={String(base.image_url || '')} onChange={setImageUrl} placeholder="https://…" mono />
                     <FieldRow label="File URL"  value={filePath} original={String(base.path || '')}      onChange={setFilePath} placeholder="Path/URL to the audio file" mono span={2} onBrowse={() => setPickingFile(true)} />
                     <FieldRow label="Length"    value={songLength} original={String(base.length || '')}  onChange={setSongLength} placeholder="3:59" mono />
@@ -1492,10 +1547,10 @@ export default function EditorPage({ initialSongId = null }: {
                   </Card>
                 )}
 
-                <Card title="Credits">
+                <Card title="Credits" overflowVisible>
                   <FieldGrid>
-                    <FieldRow label="Producers" value={prod} original={String(base.producers || '')} onChange={setProd} />
-                    <FieldRow label="Engineers" value={eng}  original={String(base.engineers || '')} onChange={setEng} />
+                    <FieldRow label="Producers" value={prod} original={String(base.producers || '')} onChange={setProd} suggest="producers" />
+                    <FieldRow label="Engineers" value={eng}  original={String(base.engineers || '')} onChange={setEng} suggest="engineers" />
                   </FieldGrid>
                 </Card>
 
@@ -1516,10 +1571,10 @@ export default function EditorPage({ initialSongId = null }: {
                 </button>
 
                 {showMore && (
-                  <Card title="Additional details">
+                  <Card title="Additional details" overflowVisible>
                     <FieldGrid>
-                      <FieldRow label="Location"   value={loc}              original={String(base.recording_locations || '')}   onChange={setLoc} placeholder="Studio / city" />
-                      <FieldRow label="Leak type"  value={leak}             original={String(base.leak_type || '')}             onChange={setLeak} placeholder="HQ, LQ, snippet…" />
+                      <FieldRow label="Location"   value={loc}              original={String(base.recording_locations || '')}   onChange={setLoc} placeholder="Studio / city" suggest="recording_locations" />
+                      <FieldRow label="Leak type"  value={leak}             original={String(base.leak_type || '')}             onChange={setLeak} placeholder="HQ, LQ, snippet…" suggest="leak_type" />
                       <FieldRow label="Date leaked" value={dateLeaked}      original={String(base.date_leaked || '')}           onChange={setDateLeaked} placeholder="YYYY-MM-DD" mono />
                       <FieldRow label="File names" value={fileNames}        original={String(base.file_names || '')}            onChange={setFileNames} />
                       <FieldRow label="Instrumentals" value={instrumentals} original={String(base.instrumentals || '')}       onChange={setInstrumentals} placeholder="Instrumental versions available" />

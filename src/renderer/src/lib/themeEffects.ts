@@ -156,8 +156,8 @@ let songAccentActive = false
 // <html>. Shared by App and the pop-out window shell (FloatApp) so a floating
 // window restyles itself exactly like the main one.
 export function useThemeEffects(): void {
-  const { theme, customSkins, accentColor, appTextScale, appFont, lyricsFont, gradientsEnabled } = useStorePick(
-    'theme', 'customSkins', 'accentColor', 'appTextScale', 'appFont', 'lyricsFont', 'gradientsEnabled',
+  const { theme, customSkins, accentColor, appTextScale, appFont, lyricsFont, gradientsEnabled, surfaceGradientsEnabled } = useStorePick(
+    'theme', 'customSkins', 'accentColor', 'appTextScale', 'appFont', 'lyricsFont', 'gradientsEnabled', 'surfaceGradientsEnabled',
   )
   // `customSkins` is picked so that editing the active custom skin's palette
   // (which mutates the array, not the theme id) still reruns the effect below
@@ -234,6 +234,13 @@ export function useThemeEffects(): void {
   useEffect(() => {
     document.documentElement.classList.toggle('gradients', gradientsEnabled)
   }, [gradientsEnabled])
+
+  // Same idea, split into its own class so bg-surface-overlay boxes (toggle
+  // groups, search bars, badges, menus) can be turned on/off independently
+  // of the shell/sidebar/player/accent gradients above.
+  useEffect(() => {
+    document.documentElement.classList.toggle('surface-gradients', surfaceGradientsEnabled)
+  }, [surfaceGradientsEnabled])
 
   // Palette cross-fades (index.css transitions the registered vars) switch on
   // only after the persisted skin has painted once — two rAFs so the browser

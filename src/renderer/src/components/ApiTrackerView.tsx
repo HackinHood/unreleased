@@ -26,6 +26,7 @@ import type { CompactGroup } from '../lib/compactGroups'
 import { useVirtualWindow } from '../hooks/useVirtualWindow'
 import { runLog } from '../lib/runLog'
 import { formatDuration } from '../lib/format'
+import { parseSearchQuery, matchesFieldFilters, SEARCH_FIELD_HELP } from '../lib/trackerSearch'
 
 type Category = 'released' | 'unreleased' | 'unsurfaced' | 'recording_session' | ''
 type ViewMode = 'list' | 'detail' | 'grid'
@@ -219,6 +220,50 @@ function buildMonthGrid(year: number, month: number): (Date | null)[][] {
   const weeks: (Date | null)[][] = []
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7))
   return weeks
+}
+
+// ─── Search syntax help popover ────────────────────────────────────────────────
+// Explains the field:"value" query syntax (trackerSearch.ts) that the search
+// box's info button opens. Closes on outside click/Escape like the other
+// popovers/menus in this file.
+function SearchHelpPopover({ onClose }: { onClose: () => void }): JSX.Element {
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handle = (e: MouseEvent): void => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    const handleKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('mousedown', handle)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handle)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [onClose])
+
+  return (
+    <div
+      ref={ref}
+      className="absolute right-0 top-full mt-2 w-72 max-h-80 overflow-y-auto bg-surface border border-[var(--border)] rounded-xl shadow-2xl z-50 p-3"
+    >
+      <p className="text-text-primary text-xs font-semibold mb-1">Search syntax</p>
+      <p className="text-text-muted text-xs mb-2.5 leading-snug">
+        Search any field directly with <code className="text-text-secondary bg-surface-overlay px-1 py-0.5 rounded">field:"value"</code>.
+        Combine with plain words and multiple fields — matches are case-insensitive substrings, all filters must match.
+        An optional <code className="text-text-secondary bg-surface-overlay px-1 py-0.5 rounded">&</code> between
+        fields is just for readability, e.g. <code className="text-text-secondary bg-surface-overlay px-1 py-0.5 rounded">artists:"Juice WRLD" &amp; category:unreleased</code>.
+      </p>
+      <div className="grid grid-cols-1 gap-1">
+        {SEARCH_FIELD_HELP.map(({ field, example }) => (
+          <div key={field} className="flex items-center justify-between gap-2 text-xs">
+            <span className="text-text-muted shrink-0">{field}</span>
+            <code className="text-text-secondary bg-surface-overlay px-1.5 py-0.5 rounded truncate">{example}</code>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 // ─── Stats bar ────────────────────────────────────────────────────────────────
@@ -1891,7 +1936,7 @@ export default function ApiTrackerView(): JSX.Element {
     seededRef.current = true
     const initialSearch = getInitialSearch()
     seedRef.current = apiPeek<JWApiPaginatedResponse>('/songs/', {
-      searchall: initialSearch || undefined, category: undefined, era: undefined,
+      searchall: parseSearchQuery(initialSearch).freeText || undefined, category: undefined, era: undefined,
       page: 1, page_size: PAGE_SIZE,
     })
   }
@@ -1966,6 +2011,14 @@ export default function ApiTrackerView(): JSX.Element {
 
   const [search, setSearch] = useState(getInitialSearch)
   const [debouncedSearch, setDebouncedSearch] = useState(getInitialSearch)
+  // Field-qualified tokens (e.g. `artists:"Juice WRLD"`) are stripped out of
+  // the query the server sees (searchall has no per-field concept) and
+  // applied client-side instead — see the fetchAllMode effect below, which
+  // this pushes any field-filtered search into (same as sort/multi-category
+  // search already does).
+  const parsedSearch = useMemo(() => parseSearchQuery(debouncedSearch), [debouncedSearch])
+  const hasFieldFilters = parsedSearch.filters.length > 0
+  const [showSearchHelp, setShowSearchHelp] = useState(false)
   // Sets rather than single values so "Search Settings" can filter by more
   // than one category/era at once (OR'd within each dimension, AND'd across
   // dimensions). The API itself only accepts one `category`/`era` value per
@@ -2245,7 +2298,7 @@ export default function ApiTrackerView(): JSX.Element {
   // — switching which column is active only changes how the already-fetched
   // songs are sorted (see the sortedSongs memo below), so it must not
   // re-trigger this fetch.
-  const fetchAllMode = sortModeActive || multiFilterActive
+  const fetchAllMode = sortModeActive || multiFilterActive || hasFieldFilters
   useEffect(() => {
     if (!fetchAllMode) return
     let cancelled = false
@@ -2254,9 +2307,12 @@ export default function ApiTrackerView(): JSX.Element {
     const t0 = performance.now()
     const PAGE_SIZE_SORT = 200 // bigger batches to reduce round-trips
     const CONCURRENCY = 6 // fetch several pages in parallel instead of one at a time
-    runLog('tracker-sort', `start search=${JSON.stringify(debouncedSearch)} category=${categoryParam || '-'} era=${eraParam || '-'} multi=${multiFilterActive}`)
+    runLog('tracker-sort', `start search=${JSON.stringify(debouncedSearch)} category=${categoryParam || '-'} era=${eraParam || '-'} multi=${multiFilterActive} fields=${parsedSearch.filters.length}`)
+    // Field filters (artists:"...", etc.) can't be sent to the server, so
+    // they're checked here alongside category/era.
+    const passesAll = (s: JWApiSong): boolean => matchesFilters(s) && matchesFieldFilters(s, parsedSearch.filters)
     const fetchPage = (p: number): Promise<JWApiPaginatedResponse> => apiFetch<JWApiPaginatedResponse>('/songs/', {
-      searchall: debouncedSearch || undefined,
+      searchall: parsedSearch.freeText || undefined,
       category: categoryParam || undefined,
       era: eraParam || undefined,
       page: p,
@@ -2267,7 +2323,7 @@ export default function ApiTrackerView(): JSX.Element {
         const first = await fetchPage(1)
         if (cancelled) return
         const all: JWApiSong[] = [...first.results]
-        setSongs(all.filter(matchesFilters))
+        setSongs(all.filter(passesAll))
         setCount(first.count)
         runLog('tracker-sort', `page 1 loaded, accumulated ${all.length}/${first.count}`)
 
@@ -2280,7 +2336,7 @@ export default function ApiTrackerView(): JSX.Element {
             const data = await fetchPage(p)
             if (cancelled) return
             all.push(...data.results)
-            setSongs(all.filter(matchesFilters)) // progressive display while loading
+            setSongs(all.filter(passesAll)) // progressive display while loading
             runLog('tracker-sort', `page ${p} loaded, accumulated ${all.length}/${first.count}`)
           }
         }
@@ -2289,7 +2345,7 @@ export default function ApiTrackerView(): JSX.Element {
           // Once everything is in, the real total is however many actually
           // pass the (possibly multi-value) filter, not the server's raw
           // category/era-agnostic-or-partial count.
-          setCount(all.filter(matchesFilters).length)
+          setCount(all.filter(passesAll).length)
           runLog('tracker-sort', `done ${all.length} songs in ${Math.round(performance.now() - t0)}ms`)
         }
       } catch (e) {
@@ -2299,7 +2355,7 @@ export default function ApiTrackerView(): JSX.Element {
       }
     })()
     return () => { cancelled = true }
-  }, [fetchAllMode, debouncedSearch, categoryParam, eraParam, matchesFilters])
+  }, [fetchAllMode, debouncedSearch, parsedSearch, categoryParam, eraParam, matchesFilters])
 
   // ── SCROLL MODE: infinite scroll, accumulates pages ──────────────────────────
   useEffect(() => {
@@ -2308,7 +2364,7 @@ export default function ApiTrackerView(): JSX.Element {
     loadingRef.current = true
     setLoading(true); setError(null)
     apiFetch<JWApiPaginatedResponse>('/songs/', {
-      searchall: debouncedSearch || undefined,
+      searchall: parsedSearch.freeText || undefined,
       category: categoryParam || undefined,
       era: eraParam || undefined,
       page,
@@ -2334,7 +2390,7 @@ export default function ApiTrackerView(): JSX.Element {
         }
       })
     return () => { cancelled = true }
-  }, [debouncedSearch, categoryParam, eraParam, page, fetchAllMode])
+  }, [debouncedSearch, parsedSearch, categoryParam, eraParam, page, fetchAllMode])
 
   // Observe sentinel for infinite scroll
   useEffect(() => {
@@ -2391,10 +2447,19 @@ export default function ApiTrackerView(): JSX.Element {
   // title/artist here made legitimate searches (e.g. by producer) come up
   // empty even though the normal (non-compact) list found them fine.
   const filteredCompactGroups = useMemo(() => {
-    let filtered = filterCompactGroups(compactGroups, debouncedSearch, s => [
+    let filtered = filterCompactGroups(compactGroups, parsedSearch.freeText, s => [
       s.track_titles?.join(' '), s.name, s.credited_artists, s.producers, s.engineers,
       s.era?.name, s.notes, s.additional_information, s.session_titles, s.original_key,
     ].filter(Boolean).join(' '))
+    // Field-qualified tokens (artists:"...", etc.) aren't handled by
+    // filterCompactGroups' plain free-text match, so apply them here as an
+    // extra member-level pass — a group survives only if at least one
+    // version still matches after this.
+    if (parsedSearch.filters.length > 0) {
+      filtered = filtered
+        .map(g => ({ ...g, members: g.members.filter(m => matchesFieldFilters(m.item, parsedSearch.filters)) }))
+        .filter(g => g.members.length > 0)
+    }
     // Category/era filters aren't sent server-side for compact view (the
     // whole catalog is always fetched — see fetchAllCompactGroups above), so
     // apply them here instead. A group counts as a match if any of its
@@ -2413,7 +2478,7 @@ export default function ApiTrackerView(): JSX.Element {
       sorted.sort((a, b) => (a.members.length - b.members.length) * dir || a.title.localeCompare(b.title))
     }
     return sorted
-  }, [compactGroups, debouncedSearch, compactSort, categoryFilter, eraFilter, matchesFilters])
+  }, [compactGroups, parsedSearch, compactSort, categoryFilter, eraFilter, matchesFilters])
 
   const handlePlay = useCallback((song: JWApiSong) => {
     const track = songToTrack(song)
@@ -2466,6 +2531,30 @@ export default function ApiTrackerView(): JSX.Element {
     return () => window.removeEventListener('keydown', onKeyDown)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectMode])
+
+  // Ctrl/Cmd+A selects every currently-visible song (entering select mode if
+  // it isn't already active) instead of the browser's page-text select-all.
+  // Skipped while focus is in a text field (search box, notes, etc.) so
+  // normal text selection still works there.
+  useEffect(() => {
+    if (trackerTab !== 'songs') return
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'a') return
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+      e.preventDefault()
+      if (compactView) {
+        const all = new Map<number, JWApiSong>()
+        for (const g of filteredCompactGroups) for (const m of g.members) all.set(m.item.id, m.item)
+        setSelected(all)
+      } else {
+        setSelected(new Map(sortedSongs.map((s) => [s.id, s])))
+      }
+      setSelectMode(true)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [trackerTab, compactView, filteredCompactGroups, sortedSongs])
 
   const selectedSongs = useMemo(() => [...selected.values()], [selected])
   // Sessions/unsurfaced songs can't go in playlists or the queue — same rule
@@ -2639,21 +2728,34 @@ export default function ApiTrackerView(): JSX.Element {
         {trackerTab === 'songs' && <StatsBar stats={stats} />}
 
         {trackerTab === 'songs' && <div className="flex flex-col gap-2">
-          {/* Search — uses searchall to include producers */}
-          <div className="relative w-full">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Search songs, artists, producers…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-surface-overlay text-text-primary text-sm pl-8 pr-8 py-2.5 md:py-2 rounded-lg outline-none focus:ring-1 ring-accent border border-transparent focus:border-accent/40 placeholder:text-text-muted"
-            />
-            {search && (
-              <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary">
-                <X size={13} />
+          {/* Search — uses searchall to include producers; field:"value" tokens
+              (see trackerSearch.ts) are parsed out and applied client-side. */}
+          <div className="flex items-center gap-1.5 w-full">
+            <div className="relative flex-1 min-w-0">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+              <input
+                type="text"
+                placeholder='Search, or artists:"Juice WRLD"…'
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full bg-surface-overlay text-text-primary text-sm pl-8 pr-8 py-2.5 md:py-2 rounded-lg outline-none focus:ring-1 ring-accent border border-transparent focus:border-accent/40 placeholder:text-text-muted"
+              />
+              {search && (
+                <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary">
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+            <div className="relative shrink-0">
+              <button
+                onClick={() => setShowSearchHelp((v) => !v)}
+                className={`p-2.5 md:p-2 rounded-lg transition-colors ${showSearchHelp ? 'bg-accent/15 text-accent' : 'bg-surface-overlay text-text-muted hover:text-text-secondary'}`}
+                title="Search syntax help"
+              >
+                <Info size={15} />
               </button>
-            )}
+              {showSearchHelp && <SearchHelpPopover onClose={() => setShowSearchHelp(false)} />}
+            </div>
           </div>
 
           {/* Second row */}

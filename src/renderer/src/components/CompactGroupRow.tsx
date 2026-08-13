@@ -49,6 +49,16 @@ export const CompactGroupRow = memo(function CompactGroupRow({
   categoryLabel?: string
   categoryClassName?: string
 }): JSX.Element {
+  // Playlists' list-view rows use a fixed 40px (2.5rem) cover on every
+  // breakpoint — the Tracker's own rows use a 36px cover that shrinks further
+  // on desktop (36 → effectively smaller via the md:w-9/h-9 wrapper), which is
+  // what this component matched by default. Without this, a Playlists compact
+  // row's cover (and therefore the whole row) rendered visibly smaller than
+  // the same song's row in normal/grid view. Keyed off `index` for the same
+  // reason as the spacer above: only Playlists passes it.
+  const isPlaylists = index !== undefined
+  const coverSize = isPlaylists ? 40 : 36
+  const coverBoxClass = isPlaylists ? 'w-10 h-10' : 'w-10 h-10 md:w-9 md:h-9'
   return (
     <div
       onClick={onToggle}
@@ -59,12 +69,22 @@ export const CompactGroupRow = memo(function CompactGroupRow({
           since this row is flex (not the fixed-column grid the list view
           uses), that swap made the number vanish and the cover jump left.
           The play button now overlays the cover art instead, matching how
-          the grid view's tiles already do it. */}
+          the grid view's tiles already do it.
+
+          The leading blank spacer + the # column's width (w-7, not w-4) only
+          render when `index` is passed (Playlists) — they exist purely to
+          match Playlists' list-view row, which has a drag-handle column
+          (1rem) before its 1.75rem # column. Tracker never passes `index`,
+          so its rows (which have no such drag column) render exactly as
+          before. */}
       {index !== undefined && (
-        <span className="w-4 shrink-0 text-center text-xs text-text-muted tabular-nums">{index}</span>
+        <>
+          <span className="w-4 shrink-0" />
+          <span className="w-7 shrink-0 text-center text-xs text-text-muted tabular-nums">{index}</span>
+        </>
       )}
-      <div className="relative shrink-0 w-10 h-10 md:w-9 md:h-9 rounded overflow-hidden bg-surface-overlay">
-        <AlbumArtThumbnail track={coverTrack} size={36} shimmer={false} eager />
+      <div className={`relative shrink-0 ${coverBoxClass} rounded overflow-hidden bg-surface-overlay`}>
+        <AlbumArtThumbnail track={coverTrack} size={coverSize} shimmer={false} eager />
         {onPlay && (
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
             <button
