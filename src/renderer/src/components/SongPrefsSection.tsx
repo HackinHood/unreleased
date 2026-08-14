@@ -97,7 +97,7 @@ export default function SongPrefsSection({
       out.push({ label, title })
     }
     push(ownMeta?.version, apiTitle, ownHasFile)
-    for (const v of versions) push(v.meta.version, v.song.track_titles?.[0] || v.song.name, !!v.song.path)
+    for (const v of versions) push(v.meta.version, v.song.name, !!v.song.path)
     return out
   }, [ownMeta, versions, apiTitle, ownHasFile])
 
@@ -149,7 +149,7 @@ export default function SongPrefsSection({
       out.push({ raw, url, title })
     }
     push(ownImageRaw, apiTitle)
-    for (const v of versions) push(v.song.image_url, v.song.track_titles?.[0] || v.song.name)
+    for (const v of versions) push(v.song.image_url, v.song.name)
     return out
   }, [ownImageRaw, versions, apiTitle])
 
@@ -163,7 +163,7 @@ export default function SongPrefsSection({
   useEffect(() => { setSearchedCovers(null) }, [songId])
   useEffect(() => {
     if (!coverOpen || searchedCovers != null) return
-    const queries = [apiTitle, ...versions.map((v) => v.song.track_titles?.[0] || v.song.name)]
+    const queries = [apiTitle, ...versions.map((v) => v.song.name)]
       .map(cleanTitleForSearch)
       .filter((q, i, arr) => q && arr.indexOf(q) === i)
     if (queries.length === 0) { setSearchedCovers([]); return }

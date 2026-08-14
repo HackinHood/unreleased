@@ -489,7 +489,7 @@ export function parseDuration(length: string | null | undefined): number {
 // work from that shape, so an editor never sees another user's personal rename
 // in a field they might propose upstream.
 export function songToTrack(song: JWApiSong): Track {
-  const apiTitle = song.track_titles?.[0] || song.name
+  const apiTitle = song.name
   const apiImageUrl = buildImageUrl(song.image_url)
   const pref = peekSongPref(song.id)
   // A user-set cover always wins; a rotated suggestion only fills in where

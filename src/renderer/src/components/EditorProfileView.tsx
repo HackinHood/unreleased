@@ -85,7 +85,7 @@ function CopyFromSong({ onCopy, copiedFrom, onClear }: {
               onClick={() => pick(r)}
               className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 text-xs text-text-secondary hover:bg-[var(--surface-overlay)] hover:text-text-primary transition-colors"
             >
-              <span className="flex-1 min-w-0 truncate">{r.track_titles?.[0] || r.name}</span>
+              <span className="flex-1 min-w-0 truncate">{r.name}</span>
               {r.era?.name && <span className="text-[10px] text-text-muted opacity-60 shrink-0">{r.era.name}</span>}
               {loadingId === r.id && <Loader2 size={11} className="animate-spin shrink-0" />}
             </button>
@@ -145,7 +145,7 @@ function AddSongModal({ onClose, onSubmitted }: { onClose: () => void; onSubmitt
   // specific audio file — a new version has its own file, length and bitrate,
   // and silently inheriting those would submit wrong data for the common case.
   const copyFrom = (s: JWApiSong): void => {
-    setName(s.track_titles?.[0] || s.name || '')
+    setName(s.name || '')
     setArtists(s.credited_artists || '')
     setAlbum(s.album ?? s.era?.name ?? '')
     setCat(s.category || '')
@@ -167,7 +167,7 @@ function AddSongModal({ onClose, onSubmitted }: { onClose: () => void; onSubmitt
     setFileNames(s.file_names || '')
     setAddInfo(s.additional_information || '')
     setNotes(s.notes || '')
-    setCopiedFrom(s.track_titles?.[0] || s.name || null)
+    setCopiedFrom(s.name || null)
     setShowMore(true)
   }
 

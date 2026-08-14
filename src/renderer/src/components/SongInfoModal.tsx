@@ -154,9 +154,14 @@ export default function SongInfoModal({ song, onClose, onEdit, floating = false,
   const pref = songPrefs[displaySong.id]
   const apiCoverUrl = buildImageUrl(displaySong.image_url)
   const coverUrl = resolvePrefCoverUrl(pref?.cover_url) ?? apiCoverUrl
-  const apiPrimaryTitle = displaySong.track_titles?.[0] || displaySong.name
+  const apiPrimaryTitle = displaySong.name
   const primaryTitle = pref?.name || apiPrimaryTitle
-  const altTitles = displaySong.track_titles?.slice(1).filter(Boolean) ?? []
+  // Every OTHER known title, not just track_titles[1:] — track_titles is an
+  // unordered alias list, so its first entry isn't reliably the primary name
+  // (see EditorPage's baseline() for the same mismatch). Excluding by value
+  // rather than by index keeps a real alias from vanishing off this list just
+  // because it happened to sort first.
+  const altTitles = (displaySong.track_titles ?? []).filter(t => t && t !== apiPrimaryTitle)
   const duration = formatDuration(parseDuration(displaySong.length), '—')
   const catColor = CATEGORY_COLORS[displaySong.category] ?? 'bg-surface-overlay text-text-muted border-[var(--border)]'
   const catLabel = CATEGORY_LABELS[displaySong.category] ?? displaySong.category
@@ -438,7 +443,7 @@ export default function SongInfoModal({ song, onClose, onEdit, floating = false,
                       className="w-full text-left cursor-pointer hover:bg-surface-overlay rounded-lg px-1.5 py-1 -mx-1.5 transition-colors"
                     >
                       <span className="text-text-primary text-xs truncate block">
-                        {v.track_titles?.[0] || v.name}
+                        {v.name}
                         {meta.version && <span className="text-text-muted"> ({meta.version}{meta.versionTitle ? ` — ${meta.versionTitle}` : ''})</span>}
                         {!meta.version && meta.versionTitle && <span className="text-text-muted"> ({meta.versionTitle})</span>}
                       </span>

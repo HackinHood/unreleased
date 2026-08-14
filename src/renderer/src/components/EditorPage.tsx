@@ -548,6 +548,14 @@ export default function EditorPage({ initialSongId = null }: {
   const [lyricsError,   setLyricsError]   = useState<string | null>(null)
   const [submitState,  setSubmitState]  = useState<SubmitState>('idle')
   const [submitError,  setSubmitError]  = useState<string | null>(null)
+  // The patch (JSON-stringified) last successfully submitted, so the button
+  // can stay disabled after submitState's 3s "submitted" flash resets back to
+  // idle. Without this, an untouched proposal could be resubmitted verbatim
+  // by clicking again once that flash wore off — nothing else marks the
+  // still-pending proposal as "already sent" for this exact set of edits.
+  // Cleared wherever the field state itself is reset (populate/cancel), since
+  // a stale value there would just as wrongly block a legitimately new patch.
+  const lastSubmittedPatchRef = useRef<string | null>(null)
   const [deleteState,  setDeleteState]  = useState<'idle' | 'confirm' | 'submitting' | 'submitted' | 'error'>('idle')
   const [deleteError,  setDeleteError]  = useState<string | null>(null)
   const [showMore,     setShowMore]     = useState(false)
@@ -589,7 +597,14 @@ export default function EditorPage({ initialSongId = null }: {
   const baseline = (s: JWApiSong | null): Record<string, unknown> => {
     if (!s) return {}
     return {
-      name:                   s.track_titles?.[0] || s.name,
+      // `name` is the API's own canonical title — NOT track_titles[0]. They
+      // usually agree, but track_titles is an unordered alias list and for
+      // ~6% of released songs its first entry is an alias, not the title
+      // people know the song by (see heardle.ts's slim() for the same
+      // mismatch). Populating the Title field from track_titles[0] meant the
+      // editor sometimes showed — and would silently rewrite `name` to — an
+      // alt title if the user touched the field without noticing.
+      name:                   s.name,
       credited_artists:       s.credited_artists || '',
       album:                  s.album ?? s.era?.name ?? '',
       category:               s.category || '',
@@ -618,7 +633,7 @@ export default function EditorPage({ initialSongId = null }: {
   }
 
   const populate = useCallback((s: JWApiSong): void => {
-    setName(s.track_titles?.[0] || s.name)
+    setName(s.name)
     setArtists(s.credited_artists || '')
     setAlbum(s.album ?? s.era?.name ?? '')
     setCat(s.category || '')
@@ -648,6 +663,7 @@ export default function EditorPage({ initialSongId = null }: {
     setSubmitError(null)
     setDeleteState('idle')
     setDeleteError(null)
+    lastSubmittedPatchRef.current = null
   }, [])
 
   const loadSong = useCallback(async (id: number): Promise<void> => {
@@ -859,6 +875,11 @@ export default function EditorPage({ initialSongId = null }: {
       // 'create' proposal — new song, no backing song record exists yet
       setSong(null)
       setIsNewSongDraft(true)
+      // Doesn't go through populate() (there's no song to populate from), so
+      // clear this by hand — otherwise a leftover value from whatever was
+      // open before could, in a rare coincidence, match this draft's patch
+      // and wrongly show it as already submitted.
+      lastSubmittedPatchRef.current = null
       applyProposedData()
     } else {
       setIsNewSongDraft(false)
@@ -896,15 +917,19 @@ export default function EditorPage({ initialSongId = null }: {
   const patch        = diff(baseline(song), current)
   const changedCount = Object.keys(patch).length
   const base         = baseline(song)
+  // True once changedCount > 0 has already been sent and nothing has been
+  // edited since — see lastSubmittedPatchRef above.
+  const alreadySubmitted = changedCount > 0 && JSON.stringify(patch) === lastSubmittedPatchRef.current
 
   const cancelEditProposal = (): void => {
     setEditingPropId(null)
     setIsNewSongDraft(false)
+    lastSubmittedPatchRef.current = null
     if (song) populate(song)
   }
 
   const submit = async (): Promise<void> => {
-    if ((!song && !isNewSongDraft) || changedCount === 0) return
+    if ((!song && !isNewSongDraft) || changedCount === 0 || alreadySubmitted) return
     setSubmitState('submitting')
     setSubmitError(null)
     try {
@@ -921,6 +946,7 @@ export default function EditorPage({ initialSongId = null }: {
       // Lyrics may have changed (and auto-approve admins make it live instantly)
       // — drop the cached copy so the next play reflects the edit.
       if (song && ('lyrics' in patch || 'synced_lyrics' in patch)) invalidateLyricsCache(song.id)
+      lastSubmittedPatchRef.current = JSON.stringify(patch)
       setSubmitState('submitted')
       setTimeout(() => setSubmitState('idle'), 3000)
     } catch (e) {
@@ -1282,17 +1308,18 @@ export default function EditorPage({ initialSongId = null }: {
                 <div className="flex items-center gap-2.5 mt-2">
                   <button
                     onClick={submit}
-                    disabled={submitState === 'submitting' || submitState === 'submitted' || changedCount === 0}
+                    disabled={submitState === 'submitting' || submitState === 'submitted' || changedCount === 0 || alreadySubmitted}
                     className={`px-3 py-1.5 rounded-md text-[11px] font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${
                       submitState === 'submitted' ? 'bg-emerald-500/20 text-emerald-400' :
                       submitState === 'error'     ? 'bg-red-500/20 text-red-400' :
-                      changedCount === 0          ? 'bg-surface-overlay text-text-muted opacity-30 cursor-not-allowed' :
+                      changedCount === 0 || alreadySubmitted ? 'bg-surface-overlay text-text-muted opacity-30 cursor-not-allowed' :
                       'bg-surface-overlay border border-[var(--border)] text-text-primary hover:border-accent/40'
                     }`}>
                     {submitState === 'submitting' && <Loader2 size={12} className="animate-spin" />}
                     {submitState === 'submitted'  && <Check size={12} />}
                     {submitState === 'error'      && <AlertCircle size={12} />}
-                    {submitState === 'idle'       && (editingPropId != null ? 'Update proposal' : 'Submit update proposal')}
+                    {submitState === 'idle' && alreadySubmitted && 'Submitted'}
+                    {submitState === 'idle' && !alreadySubmitted && (editingPropId != null ? 'Update proposal' : 'Submit update proposal')}
                     {submitState === 'submitting' && 'Submitting…'}
                     {submitState === 'submitted'  && 'Submitted!'}
                     {submitState === 'error'      && 'Try again'}
@@ -1349,7 +1376,7 @@ export default function EditorPage({ initialSongId = null }: {
                       }
                       <div className="min-w-0 w-full text-center">
                         <p className="text-text-primary font-bold text-sm leading-snug truncate">
-                          {name || song?.track_titles?.[0] || song?.name || 'Untitled'}
+                          {name || song?.name || 'Untitled'}
                         </p>
                         <div className="flex items-center justify-center gap-1.5 mt-2 flex-wrap">
                           <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${CAT_BADGE[cat] || 'bg-surface-overlay text-text-muted'}`}>
@@ -1418,17 +1445,18 @@ export default function EditorPage({ initialSongId = null }: {
                   </div>
                   <button
                     onClick={submit}
-                    disabled={submitState === 'submitting' || submitState === 'submitted' || changedCount === 0}
+                    disabled={submitState === 'submitting' || submitState === 'submitted' || changedCount === 0 || alreadySubmitted}
                     className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                       submitState === 'submitted' ? 'bg-emerald-500/20 text-emerald-400' :
                       submitState === 'error'     ? 'bg-red-500/20 text-red-400' :
-                      changedCount === 0          ? 'bg-surface-overlay text-text-muted opacity-30 cursor-not-allowed' :
+                      changedCount === 0 || alreadySubmitted ? 'bg-surface-overlay text-text-muted opacity-30 cursor-not-allowed' :
                       'bg-accent text-white hover:bg-accent/90 shadow-lg shadow-accent/20'
                     }`}>
                     {submitState === 'submitting' && <Loader2 size={12} className="animate-spin" />}
                     {submitState === 'submitted'  && <Check size={12} />}
                     {submitState === 'error'      && <AlertCircle size={12} />}
-                    {submitState === 'idle'       && (editingPropId != null ? 'Update proposal' : 'Submit proposal')}
+                    {submitState === 'idle' && alreadySubmitted && 'Submitted'}
+                    {submitState === 'idle' && !alreadySubmitted && (editingPropId != null ? 'Update proposal' : 'Submit proposal')}
                     {submitState === 'submitting' && 'Submitting…'}
                     {submitState === 'submitted'  && 'Submitted!'}
                     {submitState === 'error'      && 'Try again'}

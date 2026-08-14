@@ -133,7 +133,7 @@ function SongSearch({ onPick, onClose }: { onPick: (s: WrldSong) => void; onClos
           {results.map((s, i) => (
             <button
               key={s.id}
-              onClick={() => { onPick({ name: s.track_titles?.[0] || s.name, id: s.id }); onClose() }}
+              onClick={() => { onPick({ name: s.name, id: s.id }); onClose() }}
               className={`w-full text-left px-4 py-2.5 hover:bg-[var(--surface-overlay)] transition-colors flex items-center gap-3 ${i > 0 ? 'border-t border-[var(--border)]' : ''}`}
             >
               <div className="w-7 h-7 rounded-md bg-[var(--surface-overlay)] flex items-center justify-center shrink-0 overflow-hidden">
@@ -144,7 +144,7 @@ function SongSearch({ onPick, onClose }: { onPick: (s: WrldSong) => void; onClos
               </div>
               <div className="min-w-0">
                 <p className="text-sm text-[var(--text-primary)] truncate font-medium">
-                  {s.track_titles?.[0] || s.name}
+                  {s.name}
                 </p>
                 <p className="text-xs text-[var(--text-muted)] truncate">
                   {s.credited_artists} · ID {s.id}

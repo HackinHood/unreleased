@@ -24,7 +24,6 @@ import type { Track } from '../types'
 export interface StatsSong {
   id: number
   name: string
-  track_titles: string[]
   path: string
   length: string
   credited_artists: string
@@ -41,9 +40,6 @@ export function slimSong(song: JWApiSong): StatsSong {
   return {
     id: song.id,
     name: song.name,
-    // Only the first alias is ever read (songToTrack uses it as the display
-    // title); keeping the rest costs ~15% of the cached catalogue for nothing.
-    track_titles: song.track_titles?.[0] ? [song.track_titles[0]] : [],
     path: song.path,
     length: song.length,
     credited_artists: song.credited_artists,
@@ -62,6 +58,9 @@ export function slimSong(song: JWApiSong): StatsSong {
 export function statsSongToTrack(s: StatsSong): Track {
   return songToTrack({
     ...s,
+    // songToTrack's display title comes from `name` alone (see its own
+    // comment) — this only exists to satisfy JWApiSong's shape.
+    track_titles: [],
     era: s.era,
     album: s.album ?? null,
     lyrics: null,

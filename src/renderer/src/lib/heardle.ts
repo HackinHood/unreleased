@@ -188,13 +188,14 @@ function slim(song: JWApiSong): HeardleSong | null {
   const titles = [song.name, ...(song.track_titles ?? [])].filter(Boolean)
   return {
     id: song.id,
-    // The API's own `name`, NOT track_titles[0] — the rest of the app treats
-    // the first track title as the display title, but here that surfaced
-    // aliases in place of the names people actually know: "Breakthrough" for
-    // Man Of The Year, "AGATS (Pt. 1)" for All Girls Are The Same, "GTA Love"
-    // for Wasted (20 of 321 released songs disagree). `name` also carries the
-    // "(1)"/"(2)" suffixes that tell four identically-titled rows apart.
-    // Every alias still counts as a guess — see `titles`.
+    // The API's own `name`, NOT track_titles[0] — track_titles is an
+    // unordered alias list, and using its first entry as the display title
+    // (once the pattern elsewhere in the app, since fixed) surfaced aliases in
+    // place of the names people actually know: "Breakthrough" for Man Of The
+    // Year, "AGATS (Pt. 1)" for All Girls Are The Same, "GTA Love" for Wasted
+    // (20 of 321 released songs disagree). `name` also carries the "(1)"/"(2)"
+    // suffixes that tell four identically-titled rows apart. Every alias
+    // still counts as a guess — see `titles`.
     name: song.name,
     titles: [...new Set(titles)],
     path: song.path,

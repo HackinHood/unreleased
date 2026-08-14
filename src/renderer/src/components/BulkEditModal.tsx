@@ -311,7 +311,7 @@ export default function BulkEditModal(): JSX.Element | null {
       groups: API_GROUPS,
       fields: apiFields(eras, versionMeta),
       keyOf: s => String(s.id),
-      titleOf: s => s.track_titles?.[0] || s.name,
+      titleOf: s => s.name,
       noun: ['song', 'songs'],
       subtitle: 'Files one edit proposal per song.',
       notePlaceholder: 'Editor notes (shared by every proposal)…',
@@ -339,7 +339,7 @@ export default function BulkEditModal(): JSX.Element | null {
         await userApi.createProposal({
           song: song.id,
           change_type: 'update',
-          title: song.track_titles?.[0] || song.name,
+          title: song.name,
           proposed_data: proposed,
           editor_notes: note,
         })

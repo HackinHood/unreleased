@@ -2414,8 +2414,8 @@ export default function ApiTrackerView(): JSX.Element {
       let av: string | number, bv: string | number
       switch (orderField) {
         case 'name':
-          av = (a.track_titles?.[0] || a.name).toLowerCase()
-          bv = (b.track_titles?.[0] || b.name).toLowerCase()
+          av = a.name.toLowerCase()
+          bv = b.name.toLowerCase()
           break
         case 'credited_artists':
           av = (a.credited_artists || '').toLowerCase()

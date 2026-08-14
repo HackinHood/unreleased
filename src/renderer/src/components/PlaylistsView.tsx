@@ -2386,7 +2386,7 @@ export default function PlaylistsView(): JSX.Element {
                 knocks the duration header out of line with the rows.
                 -mx-2 px-6 backs the full container width while keeping the
                 grid's content box lined up with the rows' px-4. */}
-            <div className="sticky top-0 z-20 -mx-2 px-6 pt-2 pb-1 bg-surface">
+            <div className="sticky top-0 z-20 -mx-2 px-6 pt-2 pb-1 bg-surface bg-surface-toolbar">
               <div className="flex items-center gap-2 mb-2">
                 {searchOpen ? (
                   <div className="relative w-64">

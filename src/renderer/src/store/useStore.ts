@@ -2382,7 +2382,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
           const song = await apiFetch<JWApiSong>(`/songs/${songId}/`)
           const ext = (song.path.split('.').pop() || 'mp3').toLowerCase()
           const meta = {
-            title: song.track_titles?.[0] || song.name,
+            title: song.name,
             artist: song.credited_artists || 'Juice WRLD',
             album: song.album || song.era?.name || '',
             imageUrl: buildImageUrl(song.image_url) ?? null,
@@ -2477,7 +2477,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
         const song = await apiFetch<JWApiSong>(`/songs/${songId}/`)
         const ext = (song.path.split('.').pop() || 'mp3').toLowerCase()
         const meta = {
-          title: song.track_titles?.[0] || song.name,
+          title: song.name,
           artist: song.credited_artists || 'Juice WRLD',
           album: song.album || song.era?.name || '',
           imageUrl: buildImageUrl(song.image_url) ?? null,

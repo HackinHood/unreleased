@@ -144,7 +144,7 @@ export default function ChangeVersionMenuItem({
                     onClick={(e) => { e.stopPropagation(); onChangeVersion(song) }}
                     className="flex-1 min-w-0 text-left pl-3.5 py-2 text-sm text-text-secondary hover:text-text-primary truncate"
                   >
-                    {song.track_titles?.[0] || song.name}
+                    {song.name}
                     {label && <span className="text-text-muted text-xs"> — {label}</span>}
                   </button>
                   {version && (
