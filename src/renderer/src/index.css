@@ -156,16 +156,6 @@ html.surface-gradients .bg-surface-overlay {
   background-image: linear-gradient(180deg, rgb(var(--accent-rgb) / 0.10), transparent 75%);
 }
 
-/* Opaque sticky toolbars pinned inside a gradient-washed scroll area (e.g.
-   the Playlists track-list header) need a solid backer to occlude rows
-   scrolling underneath, but a flat `bg-surface` then reads as a mismatched
-   box against the app-shell's radial glow around it. Same top-down wash as
-   the sidebar so it blends instead of standing out — gated on the main
-   `gradients` toggle since this is shell-level structure, not a small pill. */
-html.gradients .bg-surface-toolbar {
-  background-image: linear-gradient(180deg, rgb(var(--accent-rgb) / 0.10), transparent 75%);
-}
-
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body, #root {

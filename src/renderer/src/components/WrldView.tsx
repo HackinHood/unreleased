@@ -40,6 +40,7 @@ export default function WrldView(): JSX.Element {
     nextTrack, prevTrack,
     showQueue, setShowQueue,
     audioOutput, setAudioOutput,
+    wrldThemeBackground,
     toggleEqPanel, eqFxActive,
   } = useStore(useShallow(s => ({
     currentTrack: s.currentTrack,
@@ -72,6 +73,7 @@ export default function WrldView(): JSX.Element {
     setShowQueue: s.setShowQueue,
     audioOutput: s.audioOutput,
     setAudioOutput: s.setAudioOutput,
+    wrldThemeBackground: s.wrldThemeBackground,
     toggleEqPanel: s.toggleEqPanel,
     // Same "anything non-neutral" indicator as the player bar's EQ button.
     eqFxActive: s.eqEnabled || s.playbackSpeed !== 1 || s.eqBalance !== 0 || s.eqMono || s.skipSilence || s.reverbEnabled,
@@ -347,6 +349,9 @@ export default function WrldView(): JSX.Element {
   }
 
   useEffect(() => {
+    // On the theme background there's no art to read a contrast from — the tab
+    // is sitting on --surface, so the skin's own polarity is the answer.
+    if (wrldThemeBackground) { setTextIsDark(!isDarkSkin); return }
     if (!artSrc || artError) {
       setTextIsDark(!isDarkSkin && !radioFmActive)
       return
@@ -371,7 +376,7 @@ export default function WrldView(): JSX.Element {
     }
     img.onerror = () => setTextIsDark(false)
     img.src = artSrc
-  }, [artSrc, artError, isDarkSkin, radioFmActive])
+  }, [artSrc, artError, isDarkSkin, radioFmActive, wrldThemeBackground])
 
   const rawLyrics = radioFmActive
     ? (radioFmMatchedSong?.syncedLyrics || radioFmMatchedSong?.lyrics || null)
@@ -379,10 +384,19 @@ export default function WrldView(): JSX.Element {
   const isSynced  = rawLyrics ? isLrcFormat(rawLyrics) : false
   const isEditor  = account?.is_editor || account?.is_administrator
 
-  const txtPri   = textIsDark ? 'rgba(0,0,0,0.85)'  : 'rgba(255,255,255,1)'
-  const txtSec   = textIsDark ? 'rgba(0,0,0,0.5)'   : 'rgba(255,255,255,0.5)'
-  const txtTer   = textIsDark ? 'rgba(0,0,0,0.35)'  : 'rgba(255,255,255,0.3)'
+  // On the theme background these come from the skin's own text vars, so the
+  // tab matches the rest of the app (and follows a skin change live) instead
+  // of the fixed black/white pair the art treatment picks between. The two
+  // faintest steps stay alpha-based — there's no theme var that dim, and
+  // fading the primary color keeps them right on any skin.
+  const txtPri   = wrldThemeBackground ? 'var(--text-primary)'   : textIsDark ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,1)'
+  const txtSec   = wrldThemeBackground ? 'var(--text-secondary)' : textIsDark ? 'rgba(0,0,0,0.5)'  : 'rgba(255,255,255,0.5)'
+  const txtTer   = wrldThemeBackground ? 'var(--text-muted)'     : textIsDark ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.3)'
   const txtFaint = textIsDark ? 'rgba(0,0,0,0.22)'  : 'rgba(255,255,255,0.2)'
+  // Unplayed part of the progress/volume troughs. It used to be a hardcoded
+  // white wash, which is invisible on a light surface — now it follows the
+  // same polarity as the text.
+  const trackBg  = textIsDark ? 'rgba(0,0,0,0.15)'  : 'rgba(255,255,255,0.18)'
 
   const handleAddToPlaylist = async (playlistId: number) => {
     if (!currentTrack?.id) return
@@ -866,9 +880,13 @@ export default function WrldView(): JSX.Element {
       </div>
 
       <>
-          {/* Blurred background */}
+          {/* Background — the cover's blurred art, or (Settings ▸ Appearance)
+              the app's own surface color, which also skips the darkening wash
+              on top of it since there's no art there to pull text off of. */}
           <div className="absolute inset-0 overflow-hidden">
-            {artSrc && !artError ? (
+            {wrldThemeBackground ? (
+              <div className="absolute inset-0 bg-surface" />
+            ) : artSrc && !artError ? (
               // Blurred to 60px, so resolution is meaningless here — always the
               // degraded copy, which also gets the backdrop up on the first frame.
               <img src={smallCoverUrl(artSrc)} alt=""
@@ -879,7 +897,9 @@ export default function WrldView(): JSX.Element {
             ) : (
               <div className={`absolute inset-0 ${radioFmActive ? 'bg-gradient-to-br from-red-950/60 to-black dark:from-red-950/60 dark:to-black' : 'bg-gradient-to-br from-gray-200 to-gray-100 dark:from-gray-900 dark:to-black'}`} />
             )}
-            <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/20 dark:from-black/40 dark:via-transparent dark:to-black/70" />
+            {!wrldThemeBackground && (
+              <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/20 dark:from-black/40 dark:via-transparent dark:to-black/70" />
+            )}
           </div>
 
           {/* Mobile layout */}
@@ -935,10 +955,10 @@ export default function WrldView(): JSX.Element {
                 this is the only way to control playback here. FM has no
                 local play/pause/seek, so that mode is volume-only. */}
             <div className="shrink-0 px-4 pt-2" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}>
-              {radioFmActive && <FmProgressBar txtPri={txtPri} txtTer={txtTer} />}
+              {radioFmActive && <FmProgressBar txtPri={txtPri} txtTer={txtTer} trackBg={trackBg} />}
               {!radioFmActive && (
                 <>
-                  <ProgressBar txtPri={txtPri} txtTer={txtTer} />
+                  <ProgressBar txtPri={txtPri} txtTer={txtTer} trackBg={trackBg} />
                   <div className={`flex items-center justify-between mt-2 mb-1 transition-opacity ${noTrack ? 'opacity-35 pointer-events-none' : ''}`}>
                     <button
                       onClick={toggleShuffle}
@@ -1006,7 +1026,7 @@ export default function WrldView(): JSX.Element {
                   {volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
                 </button>
                 <div className="relative flex-1 h-1 rounded-full cursor-pointer group/vol"
-                  style={{ background: 'rgba(255,255,255,0.18)' }}
+                  style={{ background: trackBg }}
                   onMouseDown={e => {
                     const track = e.currentTarget
                     const compute = (clientX: number) => {
@@ -1115,8 +1135,8 @@ export default function WrldView(): JSX.Element {
               {/* Progress bar — FM gets a read-only version (no scrubbing on live radio) */}
               <div className="w-full" style={{ maxWidth: 320 }}>
                 {radioFmActive
-                  ? <FmProgressBar txtPri={txtPri} txtTer={txtTer} />
-                  : <ProgressBar txtPri={txtPri} txtTer={txtTer} />}
+                  ? <FmProgressBar txtPri={txtPri} txtTer={txtTer} trackBg={trackBg} />
+                  : <ProgressBar txtPri={txtPri} txtTer={txtTer} trackBg={trackBg} />}
               </div>
 
               {/* Playback controls */}
@@ -1202,7 +1222,7 @@ export default function WrldView(): JSX.Element {
                     {volume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
                   </button>
                   <div className="relative flex-1 h-1 rounded-full cursor-pointer group/vol"
-                    style={{ background: 'rgba(255,255,255,0.18)' }}
+                    style={{ background: trackBg }}
                     onMouseDown={e => {
                       const track = e.currentTarget
                       const compute = (clientX: number) => {
@@ -1651,7 +1671,7 @@ const WrldQueuePanel = memo(function WrldQueuePanel({ onClose, variant }: {
   // 'panel' fills the desktop right column in place of the lyrics view.
   variant: 'inline' | 'sheet' | 'panel'
 }): JSX.Element {
-  const { queue, queueIndex, currentTrack, isPlaying, shuffle, radioMode, playTrack, jumpToTrack, removeFromQueue, clearQueue, reorderQueue } = useStore(useShallow(s => ({
+  const { queue, queueIndex, currentTrack, isPlaying, shuffle, radioMode, playTrack, jumpToTrack, removeFromQueue, clearQueue, reorderQueue, onLightBackdrop } = useStore(useShallow(s => ({
     queue: s.queue,
     queueIndex: s.queueIndex,
     currentTrack: s.currentTrack,
@@ -1663,6 +1683,12 @@ const WrldQueuePanel = memo(function WrldQueuePanel({ onClose, variant }: {
     removeFromQueue: s.removeFromQueue,
     clearQueue: s.clearQueue,
     reorderQueue: s.reorderQueue,
+    // Every label in here is hardcoded white, which only works over something
+    // dark. The art background always is (it's dimmed to 0.22/0.45 brightness),
+    // but the theme background is whatever the skin's surface is — so on a
+    // light skin the glass has to darken instead of brighten, leaving a dark
+    // card on a light page, the same way the notch drawer already looks.
+    onLightBackdrop: s.wrldThemeBackground && !getSkin(s.theme).dark,
   })))
 
   const history = queue.slice(0, queueIndex) // played tracks, oldest first
@@ -1693,9 +1719,12 @@ const WrldQueuePanel = memo(function WrldQueuePanel({ onClose, variant }: {
           flat black with no glass effect. */}
       <div
         className="absolute inset-0"
-        style={{ backdropFilter: 'blur(40px) saturate(1.8) brightness(1.4)', WebkitBackdropFilter: 'blur(40px) saturate(1.8) brightness(1.4)' }}
+        style={{
+          backdropFilter: `blur(40px) saturate(1.8) brightness(${onLightBackdrop ? 0.55 : 1.4})`,
+          WebkitBackdropFilter: `blur(40px) saturate(1.8) brightness(${onLightBackdrop ? 0.55 : 1.4})`,
+        }}
       />
-      <div className="absolute inset-0 bg-white/[0.06]" />
+      <div className={`absolute inset-0 ${onLightBackdrop ? 'bg-black/30' : 'bg-white/[0.06]'}`} />
       {/* Soft top sheen — reads as light catching the top edge of the glass. */}
       <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-white/[0.07] to-transparent pointer-events-none" />
 
@@ -1859,7 +1888,7 @@ function WrldQueueRow({ track, isActive, isPlaying, showDrag, onPlay, onRemove }
 // Read-only playback bar for 999FM — it's a live stream, so no scrubbing,
 // but elapsed/duration are still known (from the radio WS) and ticked
 // locally between updates the same way the bottom Player bar does.
-const FmProgressBar = memo(function FmProgressBar({ txtPri, txtTer }: { txtPri: string; txtTer: string }) {
+const FmProgressBar = memo(function FmProgressBar({ txtPri, txtTer, trackBg }: { txtPri: string; txtTer: string; trackBg: string }) {
   const radioFmNowPlaying = useStore(s => s.radioFmNowPlaying)
   const [elapsedMs, setElapsedMs] = useState(0)
   const baseRef = useRef<{ elapsed: number; at: number }>({ elapsed: 0, at: 0 })
@@ -1891,7 +1920,7 @@ const FmProgressBar = memo(function FmProgressBar({ txtPri, txtTer }: { txtPri: 
 
   return (
     <div className="w-full flex flex-col gap-1.5 select-none">
-      <div className="relative h-1 rounded-full" style={{ background: 'rgba(255,255,255,0.18)' }}>
+      <div className="relative h-1 rounded-full" style={{ background: trackBg }}>
         <div className="h-full rounded-full" style={{ width: `${pct}%`, background: txtPri }} />
       </div>
       <div className="flex justify-between">
@@ -1902,7 +1931,7 @@ const FmProgressBar = memo(function FmProgressBar({ txtPri, txtTer }: { txtPri: 
   )
 })
 
-const ProgressBar = memo(function ProgressBar({ txtPri, txtTer }: { txtPri: string; txtTer: string }) {
+const ProgressBar = memo(function ProgressBar({ txtPri, txtTer, trackBg }: { txtPri: string; txtTer: string; trackBg: string }) {
   const { progress, currentTime } = useStore(useShallow(s => ({ progress: s.progress, currentTime: s.currentTime })))
   const barRef = useRef<HTMLDivElement>(null)
   // Buffer the scrub position visually while dragging — only call seekAudio
@@ -1929,7 +1958,7 @@ const ProgressBar = memo(function ProgressBar({ txtPri, txtTer }: { txtPri: stri
         // a scroll/pan gesture and the bar never gets to scrub (why dragging to
         // seek did nothing on mobile). Paired with the onTouchStart handler.
         className="relative h-1 rounded-full cursor-pointer group/bar touch-none"
-        style={{ background: 'rgba(255,255,255,0.18)' }}
+        style={{ background: trackBg }}
         onMouseDown={e => {
           const startPct = pctFromClientX(e.clientX)
           if (startPct !== null) setDragPct(startPct)

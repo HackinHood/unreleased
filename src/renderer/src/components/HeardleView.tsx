@@ -678,7 +678,19 @@ export default function HeardleView(): JSX.Element {
   const ladder = useServerRound && serverLadder && serverLadder.length > 0
     ? serverLadder
     : localLadder
-  const categories = rules.categories
+  // Daily/Personal pin `rules.categories` to ['released'] — right for the
+  // *difficulty* rules (settingsForMode), wrong for the *guess pool*: a
+  // server-graded round is drawn from the server's own catalog, not the
+  // client's, and there's no reason to believe that stays inside 'released'.
+  // If it doesn't, an answer outside this pool is one the player can never
+  // type in — searchPool below only ever sees what's fetched here, so a
+  // missing category isn't a harder guess, it's an unwinnable one. Search
+  // every category on a server round; only the local fallback (signed out,
+  // or Unlimited) needs the restriction, since there the same pool is what
+  // picks the answer in the first place.
+  const categories: PoolId[] = useServerRound
+    ? (Object.keys(POOL_LABELS) as PoolId[])
+    : rules.categories
 
   const finished = status !== 'playing'
   const unlocked = unlockedSeconds(guesses.length, finished, ladder)

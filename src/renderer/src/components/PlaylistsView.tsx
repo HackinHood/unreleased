@@ -276,7 +276,7 @@ export default function PlaylistsView(): JSX.Element {
     // Subscribed purely so the track memo below re-derives when a custom
     // name/cover changes — liteSongToTrack bakes the override in at conversion
     // time, so without this the rows keep the old name until a refetch.
-    songPrefs } = useStorePick('account', 'playlists', 'refreshPlaylists', 'playTrack', 'playCollection', 'addToQueue', 'setShowUserAuth', 'likedTrackIds', 'toggleLike', 'setActiveView', 'setPendingEditorSongId', 'localPlaylists', 'libraryTracks', 'libraryArt', 'loadLibrary', 'deleteLocalPlaylist', 'renameLocalPlaylist', 'updateLocalPlaylist', 'addToLocalPlaylist', 'importM3uEntriesLocal', 'exportLocalPlaylistM3u', 'pendingPlaylistId', 'setPendingPlaylistId', 'playlistsSelectedId', 'setPlaylistsSelectedId', 'playlistsSelectedLocalId', 'setPlaylistsSelectedLocalId', 'playlistsSort', 'setPlaylistsSort', 'playlistsOpenFolderId', 'setPlaylistsOpenFolderId', 'offlinePlaylists', 'offlineSync', 'offlineTracks', 'downloadPlaylistOffline', 'removePlaylistOffline', 'followedPlaylists', 'followPlaylist', 'unfollowPlaylist', 'updateFollowedPlaylistMeta', 'playlistFolders', 'createFolder', 'renameFolder', 'deleteFolder', 'movePlaylistsToFolder', 'appTextScale', 'songPrefs')
+    songPrefs, openBulkEditor } = useStorePick('account', 'playlists', 'refreshPlaylists', 'playTrack', 'playCollection', 'addToQueue', 'setShowUserAuth', 'likedTrackIds', 'toggleLike', 'setActiveView', 'setPendingEditorSongId', 'localPlaylists', 'libraryTracks', 'libraryArt', 'loadLibrary', 'deleteLocalPlaylist', 'renameLocalPlaylist', 'updateLocalPlaylist', 'addToLocalPlaylist', 'importM3uEntriesLocal', 'exportLocalPlaylistM3u', 'pendingPlaylistId', 'setPendingPlaylistId', 'playlistsSelectedId', 'setPlaylistsSelectedId', 'playlistsSelectedLocalId', 'setPlaylistsSelectedLocalId', 'playlistsSort', 'setPlaylistsSort', 'playlistsOpenFolderId', 'setPlaylistsOpenFolderId', 'offlinePlaylists', 'offlineSync', 'offlineTracks', 'downloadPlaylistOffline', 'removePlaylistOffline', 'followedPlaylists', 'followPlaylist', 'unfollowPlaylist', 'updateFollowedPlaylistMeta', 'playlistFolders', 'createFolder', 'renameFolder', 'deleteFolder', 'movePlaylistsToFolder', 'appTextScale', 'songPrefs', 'openBulkEditor')
   // Cast back to the component's own SortField union — the store keeps the
   // field as a plain string so it doesn't have to import this component's type.
   const sort = sortRaw as SortState
@@ -905,6 +905,36 @@ export default function PlaylistsView(): JSX.Element {
     useStore.getState().autoDownloadIfOffline(targetId, ids)
     exitSelectMode()
   }, [selectedTrackList, refreshPlaylists, exitSelectMode])
+
+  // "Edit" needs full song objects (producers, dates, lyrics, …), but a
+  // playlist's own items only carry the lite shape the list endpoint returns
+  // (title/artist/path — enough for a row, not enough for the editor). Fetch
+  // each selected song in full before opening the dialog, same endpoint
+  // EditorPage.loadSong uses. A handful at a time so a large selection
+  // doesn't fire fifty requests at once.
+  const [bulkEditLoading, setBulkEditLoading] = useState(false)
+  const bulkEdit = useCallback(async () => {
+    const ids = selectedTrackList
+      .map(t => (t.id ? userApi.trackIdToSongId(t.id) : null))
+      .filter((id): id is number => id != null && id > 0)
+    if (!ids.length) return
+    setBulkEditLoading(true)
+    try {
+      const songs: JWApiSong[] = []
+      const POOL = 6
+      let next = 0
+      await Promise.all(Array.from({ length: Math.min(POOL, ids.length) }, async () => {
+        for (;;) {
+          const i = next++
+          if (i >= ids.length) return
+          try { songs.push(await apiFetch<JWApiSong>(`/songs/${ids[i]}/`)) } catch {}
+        }
+      }))
+      if (songs.length) openBulkEditor(songs)
+    } finally {
+      setBulkEditLoading(false)
+    }
+  }, [selectedTrackList, openBulkEditor])
 
   // Remove every selected track in one pass, then refresh once (rather than
   // per-track like removeTrack) — otherwise a large selection fires a refresh
@@ -2386,7 +2416,7 @@ export default function PlaylistsView(): JSX.Element {
                 knocks the duration header out of line with the rows.
                 -mx-2 px-6 backs the full container width while keeping the
                 grid's content box lined up with the rows' px-4. */}
-            <div className="sticky top-0 z-20 -mx-2 px-6 pt-2 pb-1 bg-surface bg-surface-toolbar">
+            <div className="sticky top-0 z-20 -mx-2 px-6 pt-2 pb-1 backdrop-blur-md">
               <div className="flex items-center gap-2 mb-2">
                 {searchOpen ? (
                   <div className="relative w-64">
@@ -2754,6 +2784,16 @@ export default function PlaylistsView(): JSX.Element {
                   </>
                 )}
               </div>
+            )}
+            {canEdit && (
+              <button
+                onClick={bulkEdit}
+                disabled={selectedTracks.size === 0 || bulkEditLoading}
+                title="Edit fields across every selected song"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-overlay hover:bg-surface-raised text-text-primary rounded-lg text-xs font-medium disabled:opacity-50 transition-colors"
+              >
+                {bulkEditLoading ? <Loader2 size={13} className="animate-spin" /> : <Pencil size={13} />} Edit
+              </button>
             )}
             {!isSharedView && (
               <button

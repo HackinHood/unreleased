@@ -433,7 +433,12 @@ export async function matchLocalSongCover(title: string | null | undefined): Pro
  *  `search` is a loose substring match, so its top hit is not proof of
  *  anything — a candidate only counts when its name or one of its
  *  `track_titles` aliases normalizes to the same string. Returning null (rather
- *  than a wrong guess) is what lets the importer report "not in the API". */
+ *  than a wrong guess) is what lets the importer report "not in the API".
+ *
+ *  'unsurfaced' and 'recording_session' songs are never returned — same
+ *  exclusion as handleImportPlaylist/handleAddAllTo elsewhere in the app, since
+ *  those categories aren't meant to be dropped into a normal playlist. A title
+ *  that only matches one of those reports as "not found" rather than adding it. */
 export async function resolveTitleToSong(title: string): Promise<JWApiSong | null> {
   const raw = (title ?? '').trim()
   const wanted = normalizeSongTitle(raw)
@@ -442,7 +447,7 @@ export async function resolveTitleToSong(title: string): Promise<JWApiSong | nul
   if (!search) return null
   try {
     const data = await apiFetch<JWApiPaginatedResponse>('/songs/', { search, page_size: 10 })
-    const results = data.results ?? []
+    const results = (data.results ?? []).filter((s) => !['unsurfaced', 'recording_session'].includes(s.category))
     const namesOf = (s: JWApiSong): string[] => [s.name, ...(s.track_titles ?? [])]
     const wantedLoose = normalizeSongTitleLoose(raw)
     return (

@@ -252,6 +252,12 @@ interface AppState {
   // since those boxes are everywhere, and someone who likes the shell/sidebar/
   // player gradients may not want every small pill tinted too.
   surfaceGradientsEnabled: boolean
+  // WRLD tab only. Off (the default) it paints itself from the playing song's
+  // cover — blurred art behind, text color picked from the art's brightness.
+  // On, it drops both and uses the app's own skin instead: theme surface
+  // behind, theme text colors on top, so the tab stops recoloring itself every
+  // track.
+  wrldThemeBackground: boolean
   // When enabled, if a track has a linked "OG" version (same song, grouped via
   // the versions system, labeled e.g. "OG"/"OG File"), play that version's
   // file instead of the currently selected one.
@@ -510,6 +516,7 @@ interface AppActions {
   setLyricsColorInactive: (color: string | null) => void
   setGradientsEnabled: (enabled: boolean) => void
   setSurfaceGradientsEnabled: (enabled: boolean) => void
+  setWrldThemeBackground: (enabled: boolean) => void
   setPreferOgVersion: (enabled: boolean) => void
   setRotateSuggestedCovers: (enabled: boolean) => void
   /** Rotates a song onto its next suggested cover, if the setting is on and
@@ -1204,6 +1211,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
   lyricsColorInactive: ls.get<string>('lyricsColorInactive'),
   gradientsEnabled: ls.get<boolean>('gradientsEnabled') ?? true,
   surfaceGradientsEnabled: ls.get<boolean>('surfaceGradientsEnabled') ?? true,
+  wrldThemeBackground: ls.get<boolean>('wrldThemeBackground') ?? false,
   preferOgVersion: ls.get<boolean>('preferOgVersion') ?? false,
   rotateSuggestedCovers: ls.get<boolean>('rotateSuggestedCovers') ?? false,
   mediaOverlayEnabled: ls.get<boolean>('mediaOverlayEnabled') ?? true,
@@ -1288,6 +1296,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
   setLyricsColorInactive: (lyricsColorInactive) => { set({ lyricsColorInactive }); ls.set('lyricsColorInactive', lyricsColorInactive) },
   setGradientsEnabled: (gradientsEnabled) => { set({ gradientsEnabled }); ls.set('gradientsEnabled', gradientsEnabled) },
   setSurfaceGradientsEnabled: (surfaceGradientsEnabled) => { set({ surfaceGradientsEnabled }); ls.set('surfaceGradientsEnabled', surfaceGradientsEnabled) },
+  setWrldThemeBackground: (wrldThemeBackground) => { set({ wrldThemeBackground }); ls.set('wrldThemeBackground', wrldThemeBackground) },
 
   setHotkeyBinding: (actionId, combo) => {
     const current = get().hotkeyBindings
