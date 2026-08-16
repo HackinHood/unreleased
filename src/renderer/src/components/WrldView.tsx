@@ -41,6 +41,7 @@ export default function WrldView(): JSX.Element {
     showQueue, setShowQueue,
     audioOutput, setAudioOutput,
     wrldThemeBackground,
+    gradientsEnabled,
     toggleEqPanel, eqFxActive,
   } = useStore(useShallow(s => ({
     currentTrack: s.currentTrack,
@@ -74,6 +75,7 @@ export default function WrldView(): JSX.Element {
     audioOutput: s.audioOutput,
     setAudioOutput: s.setAudioOutput,
     wrldThemeBackground: s.wrldThemeBackground,
+    gradientsEnabled: s.gradientsEnabled,
     toggleEqPanel: s.toggleEqPanel,
     // Same "anything non-neutral" indicator as the player bar's EQ button.
     eqFxActive: s.eqEnabled || s.playbackSpeed !== 1 || s.eqBalance !== 0 || s.eqMono || s.skipSilence || s.reverbEnabled,
@@ -882,10 +884,22 @@ export default function WrldView(): JSX.Element {
       <>
           {/* Background — the cover's blurred art, or (Settings ▸ Appearance)
               the app's own surface color, which also skips the darkening wash
-              on top of it since there's no art there to pull text off of. */}
+              on top of it since there's no art there to pull text off of. Gets
+              the same accent radials as `html.gradients .app-shell` (index.css)
+              rather than that class itself — this page suppresses the app
+              shell underneath it, so the class's own selector never applies
+              here, and unlike the shell this surface is full-bleed with no
+              sidebar/player strips to leave uncovered, so both radials are
+              centered on it instead of pinned to the shell's corners. */}
           <div className="absolute inset-0 overflow-hidden">
             {wrldThemeBackground ? (
-              <div className="absolute inset-0 bg-surface" />
+              <div
+                className="absolute inset-0 bg-surface"
+                style={gradientsEnabled ? {
+                  backgroundImage: `radial-gradient(120% 90% at 100% 0%, rgb(var(--accent-rgb) / 0.16), transparent 55%),
+                                     radial-gradient(100% 85% at 0% 100%, rgb(var(--accent-rgb) / 0.10), transparent 55%)`,
+                } : undefined}
+              />
             ) : artSrc && !artError ? (
               // Blurred to 60px, so resolution is meaningless here — always the
               // degraded copy, which also gets the backdrop up on the first frame.

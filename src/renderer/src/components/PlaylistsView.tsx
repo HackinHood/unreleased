@@ -155,16 +155,27 @@ function ClampedMenu({ x, y, className = '', children }: {
 }): JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ left: x, top: y })
-  // No dep array: re-clamp whenever content changes size; the equality guard
-  // stops the re-render loop.
+  // Re-clamp whenever the menu's actual box size changes (a submenu opening,
+  // content growing) via ResizeObserver, rather than after every render —
+  // running unconditionally on every render previously caused an infinite
+  // setState loop ("Maximum update depth exceeded") when a subpixel rounding
+  // difference in getBoundingClientRect kept the equality guard from ever
+  // converging. ResizeObserver only fires on genuine size changes, so it
+  // can't feed back into itself the same way.
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
-    const rect = el.getBoundingClientRect()
-    const left = Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))
-    const top = Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))
-    setPos(prev => (prev.left === left && prev.top === top ? prev : { left, top }))
-  })
+    const clamp = (): void => {
+      const rect = el.getBoundingClientRect()
+      const left = Math.round(Math.max(8, Math.min(x, window.innerWidth - rect.width - 8)))
+      const top = Math.round(Math.max(8, Math.min(y, window.innerHeight - rect.height - 8)))
+      setPos(prev => (prev.left === left && prev.top === top ? prev : { left, top }))
+    }
+    clamp()
+    const ro = new ResizeObserver(clamp)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [x, y])
   return (
     <div
       ref={ref}
@@ -1755,66 +1766,61 @@ export default function PlaylistsView(): JSX.Element {
   // tab-unmount-on-switch behavior noted at its declaration.
   const openFolder = (id: string): void => setPlaylistsOpenFolderId(playlistsOpenFolderId === id ? null : id)
 
-  /** The Folders section — one PlaylistCard-styled tile per folder, in the
-   *  same grid as the playlists below it, so a folder looks and behaves like
-   *  any other playlist tile (click opens it, drag a playlist onto it to file
-   *  it away). Clicking the open folder's tile expands a panel of its member
-   *  cards directly beneath it, spanning the full grid row, rather than
-   *  navigating away. `onlyWithMembers` hides folders whose members can't be
-   *  resolved in the current view — the logged-out library passes true so
-   *  folders holding only synced playlists (invisible without an account)
-   *  don't render as misleadingly "empty". */
-  const renderFoldersSection = (onlyWithMembers: boolean): React.ReactNode => {
+  /** Folder tiles — one PlaylistCard-styled tile per folder, meant to be
+   *  spread directly into the same grid as the playlists (not a separate
+   *  "Folders" section), so a folder sits right next to the playlists it
+   *  groups and behaves like any other tile (click opens it, drag a playlist
+   *  onto it to file it away). Clicking the open folder's tile expands a
+   *  panel of its member cards directly beneath it, spanning the full grid
+   *  row, rather than navigating away. `onlyWithMembers` hides folders whose
+   *  members can't be resolved in the current view — the logged-out library
+   *  passes true so folders holding only synced playlists (invisible without
+   *  an account) don't render as misleadingly "empty". Returns a flat node
+   *  array (folder tile + optional expand panel per folder) for the caller
+   *  to splice into its grid; empty array when there are no folders to show. */
+  const renderFolderTiles = (onlyWithMembers: boolean): React.ReactNode[] => {
     const entries = playlistFolders
       .map(f => ({ f, memberCards: folderMemberCards(f) }))
       .filter(({ memberCards }) => !onlyWithMembers || memberCards.length > 0)
-    if (entries.length === 0) return null
-    return (
-      <div className="mb-9">
-        <h2 className="text-text-muted text-xs font-semibold uppercase tracking-widest mb-3">Folders</h2>
-        <div className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-          {entries.map(({ f, memberCards }) => {
-            const isOpen = playlistsOpenFolderId === f.id
-            return (
-              <React.Fragment key={f.id}>
-                <PlaylistCard
-                  name={f.name}
-                  subtitle={`${memberCards.length} ${memberCards.length === 1 ? 'playlist' : 'playlists'}`}
-                  cover={folderCoverNode(f)}
-                  badge={<span className="flex items-center gap-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-md">{isOpen ? <FolderOpen size={9} /> : <Folder size={9} />} Folder</span>}
-                  selected={isOpen}
-                  selectMode={false}
-                  onClick={() => openFolder(f.id)}
-                  onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setFolderMenu({ folder: f, x: e.clientX, y: e.clientY }) }}
-                  onMenuButton={e => setFolderMenu({ folder: f, x: e.clientX, y: e.clientY })}
-                  onPlay={() => openFolder(f.id)}
-                  isDropTarget={dropTargetFolderId === f.id}
-                  onDragOver={e => { if (!draggedPlaylistKey) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDropTargetFolderId(f.id) }}
-                  onDragLeave={() => setDropTargetFolderId(prev => (prev === f.id ? null : prev))}
-                  onDrop={e => {
-                    e.preventDefault()
-                    if (draggedPlaylistKey) movePlaylistsToFolder([draggedPlaylistKey], f.id)
-                    setDraggedPlaylistKey(null)
-                    setDropTargetFolderId(null)
-                  }}
-                />
-                {isOpen && (
-                  <div style={{ gridColumn: '1 / -1' }} className="rounded-2xl bg-surface-overlay border border-[var(--border)] p-4" onClick={e => e.stopPropagation()}>
-                    {memberCards.length === 0 ? (
-                      <p className="text-text-muted text-sm py-1">This folder is empty. Drag a playlist onto it, or right-click one and choose “Move to folder”.</p>
-                    ) : (
-                      <div className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-                        {memberCards}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </React.Fragment>
-            )
-          })}
-        </div>
-      </div>
-    )
+    return entries.map(({ f, memberCards }) => {
+      const isOpen = playlistsOpenFolderId === f.id
+      return (
+        <React.Fragment key={f.id}>
+          <PlaylistCard
+            name={f.name}
+            subtitle={`${memberCards.length} ${memberCards.length === 1 ? 'playlist' : 'playlists'}`}
+            cover={folderCoverNode(f)}
+            badge={<span className="flex items-center gap-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-md">{isOpen ? <FolderOpen size={9} /> : <Folder size={9} />} Folder</span>}
+            selected={isOpen}
+            selectMode={false}
+            onClick={() => openFolder(f.id)}
+            onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setFolderMenu({ folder: f, x: e.clientX, y: e.clientY }) }}
+            onMenuButton={e => setFolderMenu({ folder: f, x: e.clientX, y: e.clientY })}
+            onPlay={() => openFolder(f.id)}
+            isDropTarget={dropTargetFolderId === f.id}
+            onDragOver={e => { if (!draggedPlaylistKey) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDropTargetFolderId(f.id) }}
+            onDragLeave={() => setDropTargetFolderId(prev => (prev === f.id ? null : prev))}
+            onDrop={e => {
+              e.preventDefault()
+              if (draggedPlaylistKey) movePlaylistsToFolder([draggedPlaylistKey], f.id)
+              setDraggedPlaylistKey(null)
+              setDropTargetFolderId(null)
+            }}
+          />
+          {isOpen && (
+            <div style={{ gridColumn: '1 / -1' }} className="rounded-2xl bg-surface-overlay border border-[var(--border)] p-4" onClick={e => e.stopPropagation()}>
+              {memberCards.length === 0 ? (
+                <p className="text-text-muted text-sm py-1">This folder is empty. Drag a playlist onto it, or right-click one and choose “Move to folder”.</p>
+              ) : (
+                <div className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+                  {memberCards}
+                </div>
+              )}
+            </div>
+          )}
+        </React.Fragment>
+      )
+    })
   }
 
   /** Folder context menu (right-click a folder header / its ⋯ button) —
@@ -1944,12 +1950,14 @@ export default function PlaylistsView(): JSX.Element {
             <p className="text-text-muted text-sm">No local playlists yet. Add music to your library first.</p>
           ) : (
             <>
-              {/* Folders work logged out too — membership is device-local (the
-                  API only ever stores synced-playlist ids). Folders holding
-                  only synced playlists are hidden here since their members
-                  can't render without an account. */}
-              {renderFoldersSection(true)}
+              {/* Folders sit right in the same grid as the playlists they
+                  group, rather than a separate section. They work logged out
+                  too — membership is device-local (the API only ever stores
+                  synced-playlist ids) — folders holding only synced
+                  playlists are hidden here since their members can't render
+                  without an account. */}
               <div className="grid gap-4 mb-8" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+                {renderFolderTiles(true)}
                 {ungroupedLocal.map(renderLocalCard)}
               </div>
             </>
@@ -3118,10 +3126,8 @@ export default function PlaylistsView(): JSX.Element {
           </div>
         )}
 
-        {/* ── Folders section ── */}
-        {renderFoldersSection(false)}
-
-        {/* ── Playlists section ── */}
+        {/* ── Playlists section — folders sit right in the same grid as the
+            playlists they group, rather than a separate section above it. ── */}
         <h2 className="text-text-muted text-xs font-semibold uppercase tracking-widest mb-3">Playlists</h2>
         <div className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
           <button onClick={() => setShowLiked(true)} className="group text-left cursor-pointer">
@@ -3131,6 +3137,8 @@ export default function PlaylistsView(): JSX.Element {
             <p className="text-text-primary text-sm font-semibold truncate">Liked Songs</p>
             <p className="text-text-muted text-xs mt-0.5">{likedTrackIds.length} {likedTrackIds.length === 1 ? 'track' : 'tracks'}</p>
           </button>
+
+          {renderFolderTiles(false)}
 
           {ungroupedApi.map(renderApiCard)}
 

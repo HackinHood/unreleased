@@ -5,6 +5,7 @@ import {
   lastfmConfigured, lastfmUpdateNowPlaying, lastfmEnqueueScrobble, lastfmFlushQueue,
   lastfmQueueSize, setLastfmSessionInvalidHandler, type LastfmTrackInfo,
 } from '../lib/lastfm'
+import { apiFileIdToPath } from '../lib/juicewrldApi'
 
 // Last.fm's scrobbling rules (https://www.last.fm/api/scrobbling): a track
 // qualifies once it's been listened to for half its length or 4 minutes,
@@ -91,12 +92,18 @@ export default function LastfmScrobbler(): JSX.Element | null {
       playing = true
     }
   } else if (currentTrack?.title && currentTrack.artist) {
+    // Raw file-browser tracks (unreleased sessions/leaks with no proper song
+    // entry — see apiFilePathToTrack) stuff the containing folder name into
+    // `album` as a display fallback (e.g. "10. Outsiders (Session)"). That's
+    // fine for the app's own UI but not a real album title, so it's dropped
+    // here rather than scrobbled as one.
+    const isRawFile = apiFileIdToPath(currentTrack.id) !== null
     item = {
       key: `track:${currentTrack.id}`,
       info: {
         artist: currentTrack.artist,
         track: currentTrack.title,
-        album: currentTrack.album || undefined,
+        album: isRawFile ? undefined : (currentTrack.album || undefined),
         duration: currentTrack.duration || undefined,
       },
     }
