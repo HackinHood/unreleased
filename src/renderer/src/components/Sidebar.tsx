@@ -152,6 +152,13 @@ export default function Sidebar(): JSX.Element {
             <span aria-hidden={collapsed} className={labelCls}>Diagnostics</span>
           </button>
         )
+      case 'download':
+        return (
+          <button key="download" onClick={() => setActiveView('download')} title={collapsed ? 'Download desktop app' : undefined} className={rowCls}>
+            <span className={iconWrap}><Download size={18} /></span>
+            <span aria-hidden={collapsed} className={labelCls}>Download app</span>
+          </button>
+        )
       case 'settings':
         return (
           <button key="settings" onClick={() => toggleSettings()} title={collapsed ? 'Settings' : undefined} className={rowCls}>
@@ -181,6 +188,8 @@ export default function Sidebar(): JSX.Element {
         return <button key="logout" onClick={() => logoutAccount()} title="Log out" className={barIconBtn}><LogOut size={16} /></button>
       case 'diagnostics':
         return <button key="diagnostics" onClick={() => setShowDiagnostics(true)} title="Diagnostics" className={barIconBtn}><Info size={18} /></button>
+      case 'download':
+        return <button key="download" onClick={() => setActiveView('download')} title="Download desktop app" className={barIconBtn}><Download size={18} /></button>
       case 'settings':
         return <button key="settings" onClick={() => toggleSettings()} title="Settings" className={barIconBtn}><Settings size={18} /></button>
     }

@@ -1,4 +1,4 @@
-import { SearchCode, HardDrive, Library, ListMusic, Heart, BookOpen, Newspaper, Gamepad2, BarChart3, User, LogOut, Info, Settings } from 'lucide-react'
+import { SearchCode, HardDrive, Library, ListMusic, Heart, BookOpen, Newspaper, Gamepad2, BarChart3, User, LogOut, Download, Info, Settings } from 'lucide-react'
 import type { ReactNode } from 'react'
 import logo from '../assets/logo.png'
 import type { ViewType } from '../types'
@@ -107,7 +107,7 @@ export function isNavItemVisible(item: NavItemDef, visibility: Record<string, bo
 // the Sidebar owns their behavior and renders each by id. `login` and the
 // collapse toggle are deliberately NOT here: they stay pinned so the user can
 // never hide the only ways to sign in or re-expand a collapsed menu.
-export type NavControlId = 'profile' | 'logout' | 'diagnostics' | 'settings'
+export type NavControlId = 'profile' | 'logout' | 'diagnostics' | 'download' | 'settings'
 
 export interface NavControlDef {
   id: NavControlId
@@ -120,6 +120,7 @@ export const NAV_CONTROLS: NavControlDef[] = [
   { id: 'profile', label: 'Profile', icon: <User size={18} /> },
   { id: 'logout', label: 'Log out', icon: <LogOut size={18} /> },
   { id: 'diagnostics', label: 'Diagnostics', icon: <Info size={18} /> },
+  { id: 'download', label: 'Download app', icon: <Download size={18} /> },
   { id: 'settings', label: 'Settings', icon: <Settings size={18} /> },
 ]
 
@@ -144,12 +145,13 @@ export function orderedNavControls(order: string[]): NavControlDef[] {
 export interface NavControlCtx { account: boolean; isElectron: boolean; developerMode: boolean }
 
 // Whether a control applies to the current session at all (regardless of the
-// user's show/hide choice): profile/logout need an account, diagnostics needs
-// developer mode, settings is always available.
+// user's show/hide choice): profile/logout need an account, download is web
+// only, diagnostics needs developer mode, settings is always available.
 export function isNavControlAvailable(id: NavControlId, ctx: NavControlCtx): boolean {
   switch (id) {
     case 'profile':
     case 'logout': return ctx.account
+    case 'download': return !ctx.isElectron
     case 'diagnostics': return ctx.developerMode
     case 'settings': return true
   }

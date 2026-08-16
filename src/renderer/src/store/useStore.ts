@@ -1032,12 +1032,11 @@ export const useStore = create<AppStore>((set, get, store) => ({
   navVisibility: { ...DEFAULT_NAV_VISIBILITY, ...(ls.get<Record<string, boolean>>('navVisibility') ?? {}) },
   navControlOrder: (() => {
     const saved = ls.get<string[]>('navControlOrder') ?? DEFAULT_NAV_CONTROL_ORDER
-    return saved.filter((id) => id !== 'download' && id !== 'return-api')
+    return saved.filter((id) => id !== 'return-api')
   })(),
   navControlVisibility: (() => {
     const saved = ls.get<Record<string, boolean>>('navControlVisibility') ?? {}
     const merged = { ...DEFAULT_NAV_CONTROL_VISIBILITY, ...saved }
-    delete merged['download']
     delete merged['return-api']
     return merged
   })(),

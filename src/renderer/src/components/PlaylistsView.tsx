@@ -272,6 +272,86 @@ function LocalPlaylistMosaic({ trackIds, className = '' }: {
   )
 }
 
+// ── PlaylistExpandPanel ───────────────────────────────────────────────────────
+// The inline "quick view" that opens below a clicked card's row, spanning the
+// full grid width (col-span-full breaks the CSS grid's auto-flow onto its own
+// row right there, pushing later cards down onto the row after it — no need
+// to know how many columns are actually rendered).
+function PlaylistExpandPanel({ name, subtitle, cover, tracks, loading, onClose, onPlayTrack }: {
+  name: string
+  subtitle: string
+  cover: React.ReactNode
+  tracks: Track[]
+  loading: boolean
+  onClose: () => void
+  onPlayTrack: (track: Track) => void
+}): JSX.Element {
+  const currentTrack = useStore(s => s.currentTrack)
+  const mid = Math.ceil(tracks.length / 2)
+  const columns = [tracks.slice(0, mid), tracks.slice(mid)]
+
+  return (
+    <div
+      className="col-span-full rounded-2xl overflow-hidden relative bg-surface-raised border border-[var(--border)] p-5 md:p-6 animate-in fade-in slide-in-from-top-1 duration-150"
+      onClick={e => e.stopPropagation()}
+    >
+      <button
+        onClick={onClose}
+        className="absolute top-3.5 right-3.5 w-7 h-7 rounded-full bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 flex items-center justify-center text-text-muted hover:text-text-primary transition-colors z-10"
+        title="Close"
+      >
+        <X size={15} />
+      </button>
+
+      <div className="flex items-center gap-4 mb-5 pr-8">
+        <div className="w-16 h-16 md:w-20 md:h-20 rounded-xl overflow-hidden shrink-0 shadow-lg bg-surface-overlay">{cover}</div>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-text-primary text-base md:text-lg font-bold truncate">{name}</h3>
+          <p className="text-text-muted text-sm mt-0.5">{subtitle}</p>
+        </div>
+        <button
+          onClick={() => tracks.length && onPlayTrack(tracks[0])}
+          disabled={tracks.length === 0}
+          className="w-10 h-10 md:w-11 md:h-11 rounded-full bg-accent text-black flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform shrink-0 disabled:opacity-40 disabled:hover:scale-100"
+          title="Play"
+        >
+          <Play size={16} fill="currentColor" className="ml-0.5" />
+        </button>
+      </div>
+
+      {loading && tracks.length === 0 ? (
+        <TrackSkeleton />
+      ) : tracks.length === 0 ? (
+        <p className="text-text-muted text-sm py-2">No tracks yet.</p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
+          {columns.map((col, colIdx) => (
+            <div key={colIdx} className="flex flex-col">
+              {col.map((t, i) => {
+                const isActive = currentTrack?.id === t.id
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => onPlayTrack(t)}
+                    className="flex items-center gap-3 px-1.5 py-1.5 rounded-lg hover:bg-surface-overlay text-left group/track transition-colors"
+                  >
+                    <span className={`w-5 text-xs tabular-nums text-right shrink-0 ${isActive ? 'text-accent' : 'text-text-muted'}`}>
+                      {isActive ? '▶' : colIdx * mid + i + 1}
+                    </span>
+                    <span className={`flex-1 truncate text-sm ${isActive ? 'text-accent font-semibold' : 'text-text-primary'}`} title={t.title}>
+                      {t.title}
+                    </span>
+                    <span className="text-xs text-text-muted tabular-nums shrink-0">{formatDuration(t.duration, '')}</span>
+                  </button>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function PlaylistsView(): JSX.Element {
   const { account, playlists, refreshPlaylists, playTrack, playCollection, addToQueue, setShowUserAuth, likedTrackIds, toggleLike, setActiveView, setPendingEditorSongId,
@@ -297,6 +377,14 @@ export default function PlaylistsView(): JSX.Element {
   const [showLiked, setShowLiked] = useState(false)
   const [detail, setDetail] = useState<PlaylistDetail | null>(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
+
+  // Inline "quick view" expansion — clicking a card in the grid expands a
+  // panel below its row (Apple Music-style) instead of navigating away.
+  // Keyed the same way as the multi-select set ("api:<id>" / "local:<id>")
+  // so it's unambiguous across the two playlist kinds.
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  const [expandedTracks, setExpandedTracks] = useState<Track[]>([])
+  const [expandedLoading, setExpandedLoading] = useState(false)
 
   // Create / rename
   const [creating, setCreating] = useState(false)
@@ -708,10 +796,43 @@ export default function PlaylistsView(): JSX.Element {
 
   // Listen for sidebar "Playlists" re-click → go back to library
   useEffect(() => {
-    const h = () => { setSelectedId(null); setLocalSelectedId(null); setRenaming(false); setSearch(''); setSearchOpen(false); setSort({ field: 'default', dir: 'asc' }); setIsSharedView(false) }
+    const h = () => { setSelectedId(null); setLocalSelectedId(null); setRenaming(false); setSearch(''); setSearchOpen(false); setSort({ field: 'default', dir: 'asc' }); setIsSharedView(false); setExpandedKey(null) }
     window.addEventListener('playlists:back', h)
     return () => window.removeEventListener('playlists:back', h)
   }, [])
+
+  // Collapse the inline quick-view whenever a full playlist page opens (e.g.
+  // via the card's "⋯ → Open" menu) — otherwise it'd sit there stale under
+  // the grid the user just navigated away from.
+  useEffect(() => {
+    if (selectedId != null || localSelectedId != null) setExpandedKey(null)
+  }, [selectedId, localSelectedId])
+
+  // Load the quick-view panel's tracklist whenever it opens. API playlists
+  // render instantly from cache (see loadDetail's same pattern) then refresh
+  // in the background; local playlists resolve synchronously from the store.
+  useEffect(() => {
+    if (!expandedKey) { setExpandedTracks([]); return }
+    const sep = expandedKey.indexOf(':')
+    const kind = expandedKey.slice(0, sep)
+    const idStr = expandedKey.slice(sep + 1)
+    if (kind === 'api') {
+      const id = Number(idStr)
+      const cached = userApi.peekPlaylistDetail(id)
+      if (cached) { setExpandedTracks(cached.items.map(it => userApi.liteSongToTrack(it.song))); setExpandedLoading(false) }
+      else { setExpandedTracks([]); setExpandedLoading(true) }
+      let cancelled = false
+      userApi.getPlaylist(id).then(d => {
+        if (cancelled) return
+        setExpandedTracks(d.items.map(it => userApi.liteSongToTrack(it.song)))
+      }).catch(() => {}).finally(() => { if (!cancelled) setExpandedLoading(false) })
+      return () => { cancelled = true }
+    }
+    const lp = localPlaylists.find(p => p.id === idStr)
+    setExpandedTracks(lp ? lp.trackIds.map(id => libraryTracks.find(t => t.id === id)).filter((t): t is LibraryTrack => !!t).map(libTrackToTrack) : [])
+    setExpandedLoading(false)
+    return undefined
+  }, [expandedKey, localPlaylists, libraryTracks])
 
   // Autofocus the search input when it expands from the icon
   useEffect(() => {
@@ -1593,82 +1714,107 @@ export default function PlaylistsView(): JSX.Element {
     const offSync = offlineSync[offKey]
     const offlined = !!offlinePlaylists[offKey]
     return (
-      <PlaylistCard
-        key={p.id}
-        name={p.name}
-        subtitle={`${p.track_count} ${p.track_count === 1 ? 'track' : 'tracks'}`}
-        cover={apiCoverNode(p)}
-        badge={offSync?.state === 'syncing' ? (
-          <span className="flex items-center gap-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-md" title={`Downloading ${offSync.current}/${offSync.total}`}>
-            <Loader2 size={9} className="animate-spin" /> {offSync.current}/{offSync.total}
-          </span>
-        ) : offlined ? (
-          <span className="flex items-center gap-1 bg-black/60 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded-md" title="Downloaded for offline playback">
-            <Download size={9} /> Offline
-          </span>
-        ) : undefined}
-        selected={plSelected}
-        selectMode={plSelectMode}
-        onClick={e => {
-          if (e.ctrlKey || e.metaKey) { togglePlaylistSelect(plKey); return }
-          if (plSelectMode) { togglePlaylistSelect(plKey); return }
-          setSelectedId(p.id)
-        }}
-        onContextMenu={e => {
-          e.preventDefault(); e.stopPropagation()
-          if (plSelectMode) {
-            if (!plSelected) setSelectedPlaylistKeys(prev => new Set(prev).add(plKey))
-            setPlBulkMenu({ x: e.clientX, y: e.clientY })
-          } else {
-            setCardMenu({ kind: 'api', playlist: p, x: e.clientX, y: e.clientY, showPlaylists: false })
-          }
-        }}
-        onMenuButton={e => setCardMenu({ kind: 'api', playlist: p, x: e.clientX, y: e.clientY, showPlaylists: false })}
-        onPlay={async () => {
-          const d = await userApi.getPlaylist(p.id).catch(() => null)
-          const trks = d ? d.items.map(i => userApi.liteSongToTrack(i.song)) : []
-          if (trks.length) playCollection(trks)
-        }}
-        {...dragSourceProps(plKey)}
-      />
+      <React.Fragment key={p.id}>
+        <PlaylistCard
+          name={p.name}
+          subtitle={`${p.track_count} ${p.track_count === 1 ? 'track' : 'tracks'}`}
+          cover={apiCoverNode(p)}
+          badge={offSync?.state === 'syncing' ? (
+            <span className="flex items-center gap-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-md" title={`Downloading ${offSync.current}/${offSync.total}`}>
+              <Loader2 size={9} className="animate-spin" /> {offSync.current}/{offSync.total}
+            </span>
+          ) : offlined ? (
+            <span className="flex items-center gap-1 bg-black/60 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded-md" title="Downloaded for offline playback">
+              <Download size={9} /> Offline
+            </span>
+          ) : undefined}
+          selected={plSelected}
+          selectMode={plSelectMode}
+          onClick={e => {
+            if (e.ctrlKey || e.metaKey) { togglePlaylistSelect(plKey); return }
+            if (plSelectMode) { togglePlaylistSelect(plKey); return }
+            setExpandedKey(k => k === plKey ? null : plKey)
+          }}
+          onContextMenu={e => {
+            e.preventDefault(); e.stopPropagation()
+            if (plSelectMode) {
+              if (!plSelected) setSelectedPlaylistKeys(prev => new Set(prev).add(plKey))
+              setPlBulkMenu({ x: e.clientX, y: e.clientY })
+            } else {
+              setCardMenu({ kind: 'api', playlist: p, x: e.clientX, y: e.clientY, showPlaylists: false })
+            }
+          }}
+          onMenuButton={e => setCardMenu({ kind: 'api', playlist: p, x: e.clientX, y: e.clientY, showPlaylists: false })}
+          onPlay={async () => {
+            const d = await userApi.getPlaylist(p.id).catch(() => null)
+            const trks = d ? d.items.map(i => userApi.liteSongToTrack(i.song)) : []
+            if (trks.length) playCollection(trks)
+          }}
+          {...dragSourceProps(plKey)}
+        />
+        {expandedKey === plKey && (
+          <PlaylistExpandPanel
+            name={p.name}
+            subtitle={`${p.track_count} ${p.track_count === 1 ? 'track' : 'tracks'}`}
+            cover={apiCoverNode(p)}
+            tracks={expandedTracks}
+            loading={expandedLoading}
+            onClose={() => setExpandedKey(null)}
+            onPlayTrack={t => playTrack(t, expandedTracks)}
+          />
+        )}
+      </React.Fragment>
     )
   }
 
   const renderLocalCard = (lp: LocalPlaylist): JSX.Element => {
     const plKey = `local:${lp.id}`
     const plSelected = selectedPlaylistKeys.has(plKey)
+    const localCover = lp.coverImage
+      ? <img src={lp.coverImage} alt="" className="w-full h-full object-cover" />
+      : <LocalPlaylistMosaic trackIds={lp.trackIds} className="w-full h-full" />
     return (
-      <PlaylistCard
-        key={lp.id}
-        name={lp.name}
-        subtitle={`${lp.trackIds.length} ${lp.trackIds.length === 1 ? 'track' : 'tracks'}`}
-        cover={lp.coverImage
-          ? <img src={lp.coverImage} alt="" className="w-full h-full object-cover" />
-          : <LocalPlaylistMosaic trackIds={lp.trackIds} className="w-full h-full" />}
-        badge={<span className="flex items-center gap-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-md"><HardDrive size={9} /> Local</span>}
-        selected={plSelected}
-        selectMode={plSelectMode}
-        onClick={e => {
-          if (e.ctrlKey || e.metaKey) { togglePlaylistSelect(plKey); return }
-          if (plSelectMode) { togglePlaylistSelect(plKey); return }
-          setLocalSelectedId(lp.id)
-        }}
-        onContextMenu={e => {
-          e.preventDefault(); e.stopPropagation()
-          if (plSelectMode) {
-            if (!plSelected) setSelectedPlaylistKeys(prev => new Set(prev).add(plKey))
-            setPlBulkMenu({ x: e.clientX, y: e.clientY })
-          } else {
-            setCardMenu({ kind: 'local', playlist: lp, x: e.clientX, y: e.clientY, showPlaylists: false })
-          }
-        }}
-        onMenuButton={e => setCardMenu({ kind: 'local', playlist: lp, x: e.clientX, y: e.clientY, showPlaylists: false })}
-        onPlay={() => {
-          const qt = lp.trackIds.map(id => libraryTracks.find(t => t.id === id)).filter((t): t is LibraryTrack => !!t).map(libTrackToTrack)
-          if (qt.length) playCollection(qt)
-        }}
-        {...dragSourceProps(plKey)}
-      />
+      <React.Fragment key={lp.id}>
+        <PlaylistCard
+          name={lp.name}
+          subtitle={`${lp.trackIds.length} ${lp.trackIds.length === 1 ? 'track' : 'tracks'}`}
+          cover={localCover}
+          badge={<span className="flex items-center gap-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-md"><HardDrive size={9} /> Local</span>}
+          selected={plSelected}
+          selectMode={plSelectMode}
+          onClick={e => {
+            if (e.ctrlKey || e.metaKey) { togglePlaylistSelect(plKey); return }
+            if (plSelectMode) { togglePlaylistSelect(plKey); return }
+            setExpandedKey(k => k === plKey ? null : plKey)
+          }}
+          onContextMenu={e => {
+            e.preventDefault(); e.stopPropagation()
+            if (plSelectMode) {
+              if (!plSelected) setSelectedPlaylistKeys(prev => new Set(prev).add(plKey))
+              setPlBulkMenu({ x: e.clientX, y: e.clientY })
+            } else {
+              setCardMenu({ kind: 'local', playlist: lp, x: e.clientX, y: e.clientY, showPlaylists: false })
+            }
+          }}
+          onMenuButton={e => setCardMenu({ kind: 'local', playlist: lp, x: e.clientX, y: e.clientY, showPlaylists: false })}
+          onPlay={() => {
+            const qt = lp.trackIds.map(id => libraryTracks.find(t => t.id === id)).filter((t): t is LibraryTrack => !!t).map(libTrackToTrack)
+            if (qt.length) playCollection(qt)
+          }}
+          {...dragSourceProps(plKey)}
+        />
+        {expandedKey === plKey && (
+          <PlaylistExpandPanel
+            name={lp.name}
+            subtitle={`${lp.trackIds.length} ${lp.trackIds.length === 1 ? 'track' : 'tracks'}`}
+            cover={localCover}
+            tracks={expandedTracks}
+            loading={expandedLoading}
+            onClose={() => setExpandedKey(null)}
+            onPlayTrack={t => playTrack(t, expandedTracks)}
+          />
+        )}
+      </React.Fragment>
     )
   }
 
