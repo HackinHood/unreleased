@@ -312,6 +312,48 @@ export default function EqualizerPanel({ floating = false }: { floating?: boolea
         </>
       )}
 
+      {/* A-B loop — repeats a marked portion of the current track. Pure
+          audio.currentTime manipulation (no Web Audio graph involved), so it
+          works even where EFFECTS_SUPPORTED is false (iOS) — lives outside
+          that gated block. Hidden during FM: a live stream has no positions
+          to mark. One button cycles Set A → Set B → Looping → clear, mirroring
+          the classic single-button A-B repeat control. */}
+      {!radioFmActive && (
+        <>
+          <div className="border-t border-[var(--border)] mx-4" />
+          <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+            <div className="min-w-0">
+              <p className="text-xs text-text-secondary">A-B loop</p>
+              <p className="text-[10px] text-text-muted truncate">
+                {abLoopStart == null
+                  ? 'Repeat a portion of this song'
+                  : abLoopEnd == null
+                    ? `Point A at ${formatDuration(abLoopStart)} — pick point B`
+                    : `Looping ${formatDuration(abLoopStart)}–${formatDuration(abLoopEnd)}`}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={setAbLoopPoint}
+                title={abLoopStart == null ? 'Mark the start of the loop' : abLoopEnd == null ? 'Mark the end of the loop' : 'Click again to clear'}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  abLoopEnd != null
+                    ? 'bg-accent/15 text-accent hover:bg-accent/25'
+                    : 'bg-[var(--surface-overlay)] text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                {abLoopStart == null ? 'Set A' : abLoopEnd == null ? 'Set B' : 'Looping'}
+              </button>
+              {abLoopStart != null && (
+                <button onClick={clearAbLoop} title="Clear loop" className="text-text-muted hover:text-text-primary transition-colors">
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Prefer OG version — a playback preference rather than an effect, so
           it sits with the sleep timer / output group at the bottom. */}
       <div className="border-t border-[var(--border)] mx-4" />

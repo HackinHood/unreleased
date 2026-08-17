@@ -33,17 +33,24 @@ function SongChip({ song, selected, onClick, onDragStart }: {
       onDragStart={onDragStart}
       onClick={(e) => { e.stopPropagation(); onClick() }}
       title={song.name}
-      className={`relative shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden border-2 cursor-pointer transition-all ${
-        selected ? 'border-accent ring-2 ring-accent/50 scale-95' : 'border-[var(--border)] hover:border-accent/50'
-      }`}
+      className="shrink-0 w-14 sm:w-16 cursor-pointer"
     >
-      {song.imageUrl ? (
-        <img src={smallCoverUrl(song.imageUrl)} alt="" draggable={false} className="w-full h-full object-cover" />
-      ) : (
-        <div className="w-full h-full bg-[var(--surface-overlay)] flex items-center justify-center">
-          <Music2 size={18} className="text-text-muted" />
-        </div>
-      )}
+      <div
+        className={`relative w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden border-2 transition-all ${
+          selected ? 'border-accent ring-2 ring-accent/50 scale-95' : 'border-[var(--border)] hover:border-accent/50'
+        }`}
+      >
+        {song.imageUrl ? (
+          <img src={smallCoverUrl(song.imageUrl)} alt="" draggable={false} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full bg-[var(--surface-overlay)] flex items-center justify-center">
+            <Music2 size={18} className="text-text-muted" />
+          </div>
+        )}
+      </div>
+      <div className="mt-1 text-[9px] leading-tight text-text-muted text-center line-clamp-2 break-words">
+        {song.name}
+      </div>
     </div>
   )
 }
@@ -75,7 +82,7 @@ function TierRow({ tier, songs, isFirst, isLast, selectedSongId, onDrop, onClick
         onDragOver={(e) => e.preventDefault()}
         onDrop={onDrop}
         onClick={onClickRow}
-        className={`flex-1 min-h-[4.5rem] bg-[var(--surface-overlay)]/30 p-1.5 flex flex-wrap gap-1.5 content-start ${
+        className={`flex-1 min-h-[6.5rem] bg-[var(--surface-overlay)]/30 p-1.5 flex flex-wrap gap-1.5 content-start ${
           selectedSongId !== null ? 'cursor-copy' : ''
         }`}
       >
@@ -376,7 +383,7 @@ export default function TierlistView(): JSX.Element {
               onDragOver={(e) => e.preventDefault()}
               onDrop={handleDrop(null)}
               onClick={clickRow(null)}
-              className={`min-h-[5.5rem] flex flex-wrap gap-1.5 content-start ${selectedSongId !== null ? 'cursor-copy' : ''}`}
+              className={`min-h-[7.5rem] flex flex-wrap gap-1.5 content-start ${selectedSongId !== null ? 'cursor-copy' : ''}`}
             >
               {poolLoading ? (
                 <span className="text-xs text-text-muted py-4">Loading songs…</span>

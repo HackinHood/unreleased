@@ -376,10 +376,16 @@ function PlaylistExpandPanel({ name, subtitle, cover, tracks, loading, onClose, 
 
 type GridEntry = { key: string; tile: JSX.Element; panel: JSX.Element | null }
 
-function useGridColumnCount(ref: React.RefObject<HTMLDivElement>): number {
+// Takes the element itself (state, not a mutable ref object) so the
+// measuring effect re-runs when a conditionally-rendered grid — like a
+// folder's member grid, which doesn't exist in the DOM until the folder is
+// opened — actually mounts. A plain useRef's identity never changes, so an
+// effect keyed on it only ever runs once at the owning component's initial
+// mount, back when such a grid's ref.current was still null; it would then
+// silently stay stuck at the default column count forever.
+function useGridColumnCount(el: HTMLDivElement | null): number {
   const [cols, setCols] = useState(1)
   useEffect(() => {
-    const el = ref.current
     if (!el) return
     const measure = (): void => {
       const n = getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length
@@ -389,7 +395,7 @@ function useGridColumnCount(ref: React.RefObject<HTMLDivElement>): number {
     const ro = new ResizeObserver(measure)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [ref])
+  }, [el])
   return cols
 }
 
@@ -445,18 +451,20 @@ export default function PlaylistsView(): JSX.Element {
   const [expandedTracks, setExpandedTracks] = useState<Track[]>([])
   const [expandedLoading, setExpandedLoading] = useState(false)
   // One column-count measurement per distinct grid container that can host a
-  // quick-view panel — see useGridColumnCount above. authGridRef covers the
-  // logged-out library grid, mainGridRef the logged-in one, deviceGridRef
-  // "On This Device", and folderGridRef the (single, since only one folder is
-  // ever open at once) currently-open folder's member grid.
-  const authGridRef = useRef<HTMLDivElement>(null)
-  const authGridCols = useGridColumnCount(authGridRef)
-  const mainGridRef = useRef<HTMLDivElement>(null)
-  const mainGridCols = useGridColumnCount(mainGridRef)
-  const deviceGridRef = useRef<HTMLDivElement>(null)
-  const deviceGridCols = useGridColumnCount(deviceGridRef)
-  const folderGridRef = useRef<HTMLDivElement>(null)
-  const folderGridCols = useGridColumnCount(folderGridRef)
+  // quick-view panel — see useGridColumnCount above. State (not useRef) so
+  // the measuring effect re-fires when the element actually mounts — needed
+  // for folderGridEl, whose grid doesn't exist until a folder is opened.
+  // authGridEl covers the logged-out library grid, mainGridEl the logged-in
+  // one, deviceGridEl "On This Device", and folderGridEl the (single, since
+  // only one folder is ever open at once) currently-open folder's member grid.
+  const [authGridEl, setAuthGridEl] = useState<HTMLDivElement | null>(null)
+  const authGridCols = useGridColumnCount(authGridEl)
+  const [mainGridEl, setMainGridEl] = useState<HTMLDivElement | null>(null)
+  const mainGridCols = useGridColumnCount(mainGridEl)
+  const [deviceGridEl, setDeviceGridEl] = useState<HTMLDivElement | null>(null)
+  const deviceGridCols = useGridColumnCount(deviceGridEl)
+  const [folderGridEl, setFolderGridEl] = useState<HTMLDivElement | null>(null)
+  const folderGridCols = useGridColumnCount(folderGridEl)
 
   // Create / rename
   const [creating, setCreating] = useState(false)
@@ -2055,7 +2063,7 @@ export default function PlaylistsView(): JSX.Element {
           {memberEntries.length === 0 ? (
             <p className="text-text-muted text-sm py-1">This folder is empty. Drag a playlist onto it, or right-click one and choose “Move to folder”.</p>
           ) : (
-            <div ref={folderGridRef} className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+            <div ref={setFolderGridEl} className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
               {layoutGridEntries(memberEntries, folderGridCols)}
             </div>
           )}
@@ -2198,7 +2206,7 @@ export default function PlaylistsView(): JSX.Element {
                   synced-playlist ids) — folders holding only synced
                   playlists are hidden here since their members can't render
                   without an account. */}
-              <div ref={authGridRef} className="grid gap-4 mb-8" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+              <div ref={setAuthGridEl} className="grid gap-4 mb-8" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
                 {layoutGridEntries([...folderTileEntries(true), ...ungroupedLocal.map(localEntry)], authGridCols)}
               </div>
             </>
@@ -3370,7 +3378,7 @@ export default function PlaylistsView(): JSX.Element {
         {/* ── Playlists section — folders sit right in the same grid as the
             playlists they group, rather than a separate section above it. ── */}
         <h2 className="text-text-muted text-xs font-semibold uppercase tracking-widest mb-3">Playlists</h2>
-        <div ref={mainGridRef} className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+        <div ref={setMainGridEl} className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
           {layoutGridEntries([
             {
               key: 'liked',
@@ -3424,7 +3432,7 @@ export default function PlaylistsView(): JSX.Element {
         {ungroupedLocal.length > 0 && (
           <>
             <h2 className="text-text-muted text-xs font-semibold uppercase tracking-widest mb-3 mt-9">On This Device</h2>
-            <div ref={deviceGridRef} className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+            <div ref={setDeviceGridEl} className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
               {layoutGridEntries(ungroupedLocal.map(localEntry), deviceGridCols)}
             </div>
           </>
