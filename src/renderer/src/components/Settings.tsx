@@ -200,6 +200,7 @@ interface AppSettings {
   confirmCloseWhilePlaying: boolean
   windowTitleNowPlaying: boolean
   rememberWindowSizes: boolean
+  updateSource: 'fork' | 'legacy'
 }
 
 // `floating` — rendered as the sole content of a pop-out BrowserWindow (see
@@ -391,6 +392,7 @@ export default function Settings({ floating = false }: { floating?: boolean }): 
     confirmCloseWhilePlaying: true,
     windowTitleNowPlaying: true,
     rememberWindowSizes: true,
+    updateSource: 'fork',
   })
   const [movingOfflinePath, setMovingOfflinePath] = useState(false)
   const [offlinePathError, setOfflinePathError] = useState<string | null>(null)
@@ -1969,6 +1971,23 @@ export default function Settings({ floating = false }: { floating?: boolean }): 
                     <Trash2 size={13} />
                     {cacheCleared !== null ? `Cleared ${cacheCleared}` : 'Clear cache'}
                   </button>
+                </Row>
+                <Row
+                  icon={Github}
+                  iconColor="#6b7280"
+                  label="Update source"
+                  sub={appSettings.updateSource === 'legacy'
+                    ? 'Checking leanwrldd/unreleased for updates'
+                    : 'Checking Juice-WRLD-API/Unreleased for updates'}
+                >
+                  <select
+                    value={appSettings.updateSource}
+                    onChange={(e) => setSetting('updateSource', e.target.value)}
+                    className="bg-[var(--surface-overlay)] text-text-primary text-xs rounded-lg px-2 py-1.5 border border-[var(--border)]"
+                  >
+                    <option value="fork">Juice-WRLD-API/Unreleased</option>
+                    <option value="legacy">leanwrldd/unreleased</option>
+                  </select>
                 </Row>
                 <Row icon={DownloadCloud} iconColor="#0ea5e9" label="Online installer" sub="Ships with the app — repairs or reinstalls even if the app won't launch">
                   <button

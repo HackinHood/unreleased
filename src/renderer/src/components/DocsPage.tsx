@@ -390,7 +390,7 @@ function SongsTab() {
         <p className="text-sm text-text-secondary">Paginated — same envelope as /songs/. 34 eras total. Era names use short abbreviation strings.</p>
         <Pre>{`{
   "count": 34,
-  "next": "http://juicewrldapi.com/juicewrld/eras/?page=2",
+  "next": "https://juicewrldapi.com/juicewrld/eras/?page=2",
   "previous": null,
   "results": [
     { "id": 101, "name": "jute",        "description": "JUICED UP THE EP era (~2014-February 2017)", "time_frame": "(January 2014-February 2017)", "play_count": 2980 },

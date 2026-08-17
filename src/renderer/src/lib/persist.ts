@@ -18,6 +18,10 @@ export const ls = {
   set: <T>(key: string, value: T): void => {
     try {
       localStorage.setItem(`unreleased:${key}`, JSON.stringify(value))
-    } catch {}
+    } catch (e) {
+      // Visible in DevTools instead of vanishing — most commonly quota
+      // exhaustion, which otherwise silently drops the write.
+      console.warn(`[persist] failed to save "${key}":`, e)
+    }
   },
 }

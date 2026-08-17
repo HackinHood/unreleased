@@ -148,6 +148,7 @@ export default function Player(): JSX.Element {
   const { mediaOverlayEnabled } = useStorePick('mediaOverlayEnabled')
   const { eqEnabled, eqGains, eqBalance, eqMono, skipSilence } = useStorePick('eqEnabled', 'eqGains', 'eqBalance', 'eqMono', 'skipSilence')
   const { reverbEnabled, reverbMix, reverbDecay, pitchShift } = useStorePick('reverbEnabled', 'reverbMix', 'reverbDecay', 'pitchShift')
+  const { abLoopStart, abLoopEnd, setAbLoopPoint, clearAbLoop } = useStorePick('abLoopStart', 'abLoopEnd', 'setAbLoopPoint', 'clearAbLoop')
 
   // Applies the playback rate to an element, letting the pitch follow the
   // rate while the pitch-shift option is on.
@@ -817,6 +818,13 @@ export default function Player(): JSX.Element {
     silenceJumpStart.current = null
     skipCooldownUntil.current = 0
   }, [currentTrack?.id])
+
+  // A-B loop points are positions within one track — meaningless (and
+  // possibly out of range) once the track changes, so clear them whenever it
+  // does. Deliberately not keyed on abLoopStart/End too, or this would fight
+  // the very set/clear it's meant to react to.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { clearAbLoop() }, [currentTrack?.id])
   useEffect(() => {
     if (!skipSilence) return
     const JUMP_S = 1.5
@@ -1027,11 +1035,22 @@ export default function Player(): JSX.Element {
       return
     }
 
+    // A-B loop: keep playback pinned inside the marked region. Checked before
+    // (and — via the guard below — instead of) the crossfade logic, so a
+    // looped section can never bleed into the next track.
+    const abLooping = abLoopStart != null && abLoopEnd != null
+    if (abLooping && audio.currentTime >= abLoopEnd!) {
+      audio.currentTime = abLoopStart!
+      setCurrentTime(abLoopStart!)
+      if (dur > 0) setProgress(abLoopStart! / dur)
+      return
+    }
+
     // Start crossfade when approaching end. A queued timeupdate event can
     // still fire right after the user pauses (it was already in flight),
     // so without this guard a crossfade — and the next song's playback —
     // could kick off even though playback was just paused.
-    if (crossfadeEnabled && crossfadeDuration > 0 && !cfActive.current && useStore.getState().isPlaying && dur > 0) {
+    if (!abLooping && crossfadeEnabled && crossfadeDuration > 0 && !cfActive.current && useStore.getState().isPlaying && dur > 0) {
       const remaining = dur - audio.currentTime
 
       if (remaining > 0 && remaining <= crossfadeDuration) {
@@ -1348,6 +1367,7 @@ export default function Player(): JSX.Element {
     'speed-up':    () => setPlaybackSpeed(clampSpeed(playbackSpeed + 0.25)),
     'speed-down':  () => setPlaybackSpeed(clampSpeed(playbackSpeed - 0.25)),
     'equalizer':   () => useStore.getState().toggleEqPanel(),
+    'ab-loop':     () => { if (currentTrack && !radioFmActive) setAbLoopPoint() },
     'crossfade':   () => { const s = useStore.getState(); s.setCrossfade(!s.crossfadeEnabled, s.crossfadeDuration) },
     'smooth-playback': () => { const s = useStore.getState(); s.setPauseFade(!s.pauseFadeEnabled) },
     'prefer-og':   () => { const s = useStore.getState(); s.setPreferOgVersion(!s.preferOgVersion) },

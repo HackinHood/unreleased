@@ -13,7 +13,7 @@ import type { PlaylistDetail, PlaylistSummary } from '../lib/userApi'
 import { Track, LocalPlaylist, LibraryTrack, FollowedPlaylist } from '../types'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { ProgressiveCover } from './ProgressiveCover'
-import { buildImageUrl, buildStreamUrl, JWAPI_BASE, apiFetch, JWApiSong, playlistCoverUrl, smallCoverUrl, resolveTitleToSong, CATEGORY_LABELS, CATEGORY_COLORS } from '../lib/juicewrldApi'
+import { buildImageUrl, buildStreamUrl, JWAPI_BASE, apiFetch, JWApiSong, playlistCoverUrl, smallCoverUrl, resolveTitleToSong, CATEGORY_LABELS, CATEGORY_COLORS, apiFileIdToPath, apiFilePathToTrack } from '../lib/juicewrldApi'
 import { toFileUrl, libraryTrackToTrack as libTrackToTrack } from '../lib/fileTypes'
 import { formatDuration, formatTotalDuration } from '../lib/format'
 import { fisherYates } from '../store/queueSlice'
@@ -277,7 +277,7 @@ function LocalPlaylistMosaic({ trackIds, className = '' }: {
 // full grid width (col-span-full breaks the CSS grid's auto-flow onto its own
 // row right there, pushing later cards down onto the row after it — no need
 // to know how many columns are actually rendered).
-function PlaylistExpandPanel({ name, subtitle, cover, tracks, loading, onClose, onPlayTrack }: {
+function PlaylistExpandPanel({ name, subtitle, cover, tracks, loading, onClose, onPlayTrack, onOpenFull }: {
   name: string
   subtitle: string
   cover: React.ReactNode
@@ -285,6 +285,10 @@ function PlaylistExpandPanel({ name, subtitle, cover, tracks, loading, onClose, 
   loading: boolean
   onClose: () => void
   onPlayTrack: (track: Track) => void
+  /** Jumps to the old full-page playlist view (drag-reorder, sort, share,
+   *  offline download, etc.) — this quick-view panel is deliberately a
+   *  lighter subset, not a replacement for it. */
+  onOpenFull: () => void
 }): JSX.Element {
   const currentTrack = useStore(s => s.currentTrack)
   const mid = Math.ceil(tracks.length / 2)
@@ -308,6 +312,12 @@ function PlaylistExpandPanel({ name, subtitle, cover, tracks, loading, onClose, 
         <div className="min-w-0 flex-1">
           <h3 className="text-text-primary text-base md:text-lg font-bold truncate">{name}</h3>
           <p className="text-text-muted text-sm mt-0.5">{subtitle}</p>
+          <button
+            onClick={onOpenFull}
+            className="flex items-center gap-0.5 text-accent text-xs font-medium mt-1 hover:underline"
+          >
+            Open full playlist <ChevronRight size={12} />
+          </button>
         </div>
         <button
           onClick={() => tracks.length && onPlayTrack(tracks[0])}
@@ -353,6 +363,55 @@ function PlaylistExpandPanel({ name, subtitle, cover, tracks, loading, onClose, 
   )
 }
 
+// ── Row-aware grid expansion ──────────────────────────────────────────────────
+// A CSS grid item with `grid-column: 1 / -1` (the "spans the full row" trick
+// used to break a quick-view panel onto its own row) forces auto-placement to
+// restart at column 1 for everything that comes after it — so inserting one
+// right after the clicked card mid-row shoves every card to its right down
+// onto the row below, instead of leaving that row intact. Fix: figure out how
+// many columns the grid is actually rendering right now (auto-fill decides
+// this per pixel width, so it has to be measured, not assumed), then insert
+// the panel after the LAST card of the clicked card's row instead — nothing
+// in that row moves, and the panel still lands directly beneath it.
+
+type GridEntry = { key: string; tile: JSX.Element; panel: JSX.Element | null }
+
+function useGridColumnCount(ref: React.RefObject<HTMLDivElement>): number {
+  const [cols, setCols] = useState(1)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const measure = (): void => {
+      const n = getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length
+      setCols(prev => (n > 0 && n !== prev ? n : prev))
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [ref])
+  return cols
+}
+
+function layoutGridEntries(entries: GridEntry[], columns: number): JSX.Element[] {
+  const panelsAtRowEnd = new Map<number, JSX.Element[]>()
+  entries.forEach((e, i) => {
+    if (!e.panel) return
+    const row = Math.floor(i / columns)
+    const rowEnd = Math.min(entries.length - 1, row * columns + columns - 1)
+    const arr = panelsAtRowEnd.get(rowEnd) ?? []
+    arr.push(e.panel)
+    panelsAtRowEnd.set(rowEnd, arr)
+  })
+  const out: JSX.Element[] = []
+  entries.forEach((e, i) => {
+    out.push(e.tile)
+    const panels = panelsAtRowEnd.get(i)
+    if (panels) out.push(...panels)
+  })
+  return out
+}
+
 export default function PlaylistsView(): JSX.Element {
   const { account, playlists, refreshPlaylists, playTrack, playCollection, addToQueue, setShowUserAuth, likedTrackIds, toggleLike, setActiveView, setPendingEditorSongId,
     localPlaylists, libraryTracks, libraryArt, loadLibrary, deleteLocalPlaylist, renameLocalPlaylist, updateLocalPlaylist, addToLocalPlaylist, importM3uEntriesLocal, exportLocalPlaylistM3u,
@@ -385,6 +444,19 @@ export default function PlaylistsView(): JSX.Element {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [expandedTracks, setExpandedTracks] = useState<Track[]>([])
   const [expandedLoading, setExpandedLoading] = useState(false)
+  // One column-count measurement per distinct grid container that can host a
+  // quick-view panel — see useGridColumnCount above. authGridRef covers the
+  // logged-out library grid, mainGridRef the logged-in one, deviceGridRef
+  // "On This Device", and folderGridRef the (single, since only one folder is
+  // ever open at once) currently-open folder's member grid.
+  const authGridRef = useRef<HTMLDivElement>(null)
+  const authGridCols = useGridColumnCount(authGridRef)
+  const mainGridRef = useRef<HTMLDivElement>(null)
+  const mainGridCols = useGridColumnCount(mainGridRef)
+  const deviceGridRef = useRef<HTMLDivElement>(null)
+  const deviceGridCols = useGridColumnCount(deviceGridRef)
+  const folderGridRef = useRef<HTMLDivElement>(null)
+  const folderGridCols = useGridColumnCount(folderGridRef)
 
   // Create / rename
   const [creating, setCreating] = useState(false)
@@ -813,6 +885,25 @@ export default function PlaylistsView(): JSX.Element {
   // in the background; local playlists resolve synchronously from the store.
   useEffect(() => {
     if (!expandedKey) { setExpandedTracks([]); return }
+    if (expandedKey === 'liked') {
+      // Same three sources LikedSongsView combines: API favorites (fetched
+      // fresh — likedTrackIds only carries local/file ids, not synced ones),
+      // scanned local-library likes, and liked API-browser files.
+      const localLiked = new Set(likedTrackIds)
+      const localTracks = libraryTracks.filter(t => localLiked.has(t.id)).map(libTrackToTrack)
+      const fileTracks = likedTrackIds
+        .map(id => { const path = apiFileIdToPath(id); return path ? apiFilePathToTrack(path) : null })
+        .filter((t): t is Track => t != null)
+      if (!account) { setExpandedTracks([...localTracks, ...fileTracks]); setExpandedLoading(false); return undefined }
+      setExpandedLoading(true)
+      let cancelled = false
+      userApi.getFavorites().then(favs => {
+        if (cancelled) return
+        setExpandedTracks([...favs.map(f => userApi.liteSongToTrack(f.song)), ...localTracks, ...fileTracks])
+      }).catch(() => { if (!cancelled) setExpandedTracks([...localTracks, ...fileTracks]) })
+        .finally(() => { if (!cancelled) setExpandedLoading(false) })
+      return () => { cancelled = true }
+    }
     const sep = expandedKey.indexOf(':')
     const kind = expandedKey.slice(0, sep)
     const idStr = expandedKey.slice(sep + 1)
@@ -832,7 +923,7 @@ export default function PlaylistsView(): JSX.Element {
     setExpandedTracks(lp ? lp.trackIds.map(id => libraryTracks.find(t => t.id === id)).filter((t): t is LibraryTrack => !!t).map(libTrackToTrack) : [])
     setExpandedLoading(false)
     return undefined
-  }, [expandedKey, localPlaylists, libraryTracks])
+  }, [expandedKey, localPlaylists, libraryTracks, likedTrackIds, account])
 
   // Autofocus the search input when it expands from the icon
   useEffect(() => {
@@ -1705,7 +1796,7 @@ export default function PlaylistsView(): JSX.Element {
     isDragging: draggedPlaylistKey === plKey,
   })
 
-  const renderApiCard = (p: PlaylistSummary): JSX.Element => {
+  const apiEntry = (p: PlaylistSummary): GridEntry => {
     const plKey = `api:${p.id}`
     const plSelected = selectedPlaylistKeys.has(plKey)
     // Offline state gets a corner badge so you can tell at a glance which
@@ -1713,9 +1804,9 @@ export default function PlaylistsView(): JSX.Element {
     const offKey = `api-${p.id}`
     const offSync = offlineSync[offKey]
     const offlined = !!offlinePlaylists[offKey]
-    return (
-      <React.Fragment key={p.id}>
+    const tile = (
         <PlaylistCard
+          key={plKey}
           name={p.name}
           subtitle={`${p.track_count} ${p.track_count === 1 ? 'track' : 'tracks'}`}
           cover={apiCoverNode(p)}
@@ -1752,30 +1843,32 @@ export default function PlaylistsView(): JSX.Element {
           }}
           {...dragSourceProps(plKey)}
         />
-        {expandedKey === plKey && (
-          <PlaylistExpandPanel
-            name={p.name}
-            subtitle={`${p.track_count} ${p.track_count === 1 ? 'track' : 'tracks'}`}
-            cover={apiCoverNode(p)}
-            tracks={expandedTracks}
-            loading={expandedLoading}
-            onClose={() => setExpandedKey(null)}
-            onPlayTrack={t => playTrack(t, expandedTracks)}
-          />
-        )}
-      </React.Fragment>
     )
+    const panel = expandedKey === plKey ? (
+        <PlaylistExpandPanel
+          key={`panel-${plKey}`}
+          name={p.name}
+          subtitle={`${p.track_count} ${p.track_count === 1 ? 'track' : 'tracks'}`}
+          cover={apiCoverNode(p)}
+          tracks={expandedTracks}
+          loading={expandedLoading}
+          onClose={() => setExpandedKey(null)}
+          onPlayTrack={t => playTrack(t, expandedTracks)}
+          onOpenFull={() => setSelectedId(p.id)}
+        />
+    ) : null
+    return { key: plKey, tile, panel }
   }
 
-  const renderLocalCard = (lp: LocalPlaylist): JSX.Element => {
+  const localEntry = (lp: LocalPlaylist): GridEntry => {
     const plKey = `local:${lp.id}`
     const plSelected = selectedPlaylistKeys.has(plKey)
     const localCover = lp.coverImage
       ? <img src={lp.coverImage} alt="" className="w-full h-full object-cover" />
       : <LocalPlaylistMosaic trackIds={lp.trackIds} className="w-full h-full" />
-    return (
-      <React.Fragment key={lp.id}>
+    const tile = (
         <PlaylistCard
+          key={plKey}
           name={lp.name}
           subtitle={`${lp.trackIds.length} ${lp.trackIds.length === 1 ? 'track' : 'tracks'}`}
           cover={localCover}
@@ -1803,19 +1896,21 @@ export default function PlaylistsView(): JSX.Element {
           }}
           {...dragSourceProps(plKey)}
         />
-        {expandedKey === plKey && (
-          <PlaylistExpandPanel
-            name={lp.name}
-            subtitle={`${lp.trackIds.length} ${lp.trackIds.length === 1 ? 'track' : 'tracks'}`}
-            cover={localCover}
-            tracks={expandedTracks}
-            loading={expandedLoading}
-            onClose={() => setExpandedKey(null)}
-            onPlayTrack={t => playTrack(t, expandedTracks)}
-          />
-        )}
-      </React.Fragment>
     )
+    const panel = expandedKey === plKey ? (
+        <PlaylistExpandPanel
+          key={`panel-${plKey}`}
+          name={lp.name}
+          subtitle={`${lp.trackIds.length} ${lp.trackIds.length === 1 ? 'track' : 'tracks'}`}
+          cover={localCover}
+          tracks={expandedTracks}
+          loading={expandedLoading}
+          onClose={() => setExpandedKey(null)}
+          onPlayTrack={t => playTrack(t, expandedTracks)}
+          onOpenFull={() => setLocalSelectedId(lp.id)}
+        />
+    ) : null
+    return { key: plKey, tile, panel }
   }
 
   const openFollowedPlaylist = (id: number): void => { setSelectedId(id); setIsSharedView(true) }
@@ -1850,13 +1945,13 @@ export default function PlaylistsView(): JSX.Element {
   // shows just its device-local playlists — membership itself is unaffected.
   const apiById = new Map(playlists.map(p => [p.id, p]))
   const localById = new Map(localPlaylists.map(lp => [lp.id, lp]))
-  const folderMemberCards = (f: PlaylistFolder): JSX.Element[] => {
-    const out: JSX.Element[] = []
+  const folderMemberEntries = (f: PlaylistFolder): GridEntry[] => {
+    const out: GridEntry[] = []
     for (const key of f.playlistKeys) {
       const parsed = parsePlaylistKey(key)
       if (!parsed) continue
-      if (parsed.kind === 'api') { const p = apiById.get(Number(parsed.id)); if (p) out.push(renderApiCard(p)) }
-      else { const lp = localById.get(parsed.id); if (lp) out.push(renderLocalCard(lp)) }
+      if (parsed.kind === 'api') { const p = apiById.get(Number(parsed.id)); if (p) out.push(apiEntry(p)) }
+      else { const lp = localById.get(parsed.id); if (lp) out.push(localEntry(lp)) }
     }
     return out
   }
@@ -1866,7 +1961,7 @@ export default function PlaylistsView(): JSX.Element {
   const ungroupedLocal = localPlaylists.filter(lp => !foldered.has(`local:${lp.id}`))
 
   /** A folder's cover — a 2x2 mosaic of up to its first 4 members' own cover
-   *  nodes (reusing apiCoverNode / the same local-cover logic renderLocalCard
+   *  nodes (reusing apiCoverNode / the same local-cover logic localEntry
    *  uses), so a folder reads as "a playlist made of playlists" instead of a
    *  plain icon. Falls back to a Folder icon tile when it has no resolvable
    *  members yet. */
@@ -1921,51 +2016,52 @@ export default function PlaylistsView(): JSX.Element {
    *  row, rather than navigating away. `onlyWithMembers` hides folders whose
    *  members can't be resolved in the current view — the logged-out library
    *  passes true so folders holding only synced playlists (invisible without
-   *  an account) don't render as misleadingly "empty". Returns a flat node
-   *  array (folder tile + optional expand panel per folder) for the caller
-   *  to splice into its grid; empty array when there are no folders to show. */
-  const renderFolderTiles = (onlyWithMembers: boolean): React.ReactNode[] => {
+   *  an account) don't render as misleadingly "empty". Returns a GridEntry per
+   *  folder (tile + optional member-panel) for the caller to lay out
+   *  alongside the playlist tiles via layoutGridEntries; empty array when
+   *  there are no folders to show. */
+  const folderTileEntries = (onlyWithMembers: boolean): GridEntry[] => {
     const entries = playlistFolders
-      .map(f => ({ f, memberCards: folderMemberCards(f) }))
-      .filter(({ memberCards }) => !onlyWithMembers || memberCards.length > 0)
-    return entries.map(({ f, memberCards }) => {
+      .map(f => ({ f, memberEntries: folderMemberEntries(f) }))
+      .filter(({ memberEntries }) => !onlyWithMembers || memberEntries.length > 0)
+    return entries.map(({ f, memberEntries }) => {
       const isOpen = playlistsOpenFolderId === f.id
-      return (
-        <React.Fragment key={f.id}>
-          <PlaylistCard
-            name={f.name}
-            subtitle={`${memberCards.length} ${memberCards.length === 1 ? 'playlist' : 'playlists'}`}
-            cover={folderCoverNode(f)}
-            badge={<span className="flex items-center gap-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-md">{isOpen ? <FolderOpen size={9} /> : <Folder size={9} />} Folder</span>}
-            selected={isOpen}
-            selectMode={false}
-            onClick={() => openFolder(f.id)}
-            onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setFolderMenu({ folder: f, x: e.clientX, y: e.clientY }) }}
-            onMenuButton={e => setFolderMenu({ folder: f, x: e.clientX, y: e.clientY })}
-            onPlay={() => openFolder(f.id)}
-            isDropTarget={dropTargetFolderId === f.id}
-            onDragOver={e => { if (!draggedPlaylistKey) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDropTargetFolderId(f.id) }}
-            onDragLeave={() => setDropTargetFolderId(prev => (prev === f.id ? null : prev))}
-            onDrop={e => {
-              e.preventDefault()
-              if (draggedPlaylistKey) movePlaylistsToFolder([draggedPlaylistKey], f.id)
-              setDraggedPlaylistKey(null)
-              setDropTargetFolderId(null)
-            }}
-          />
-          {isOpen && (
-            <div style={{ gridColumn: '1 / -1' }} className="rounded-2xl bg-surface-overlay border border-[var(--border)] p-4" onClick={e => e.stopPropagation()}>
-              {memberCards.length === 0 ? (
-                <p className="text-text-muted text-sm py-1">This folder is empty. Drag a playlist onto it, or right-click one and choose “Move to folder”.</p>
-              ) : (
-                <div className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-                  {memberCards}
-                </div>
-              )}
+      const tile = (
+        <PlaylistCard
+          key={f.id}
+          name={f.name}
+          subtitle={`${memberEntries.length} ${memberEntries.length === 1 ? 'playlist' : 'playlists'}`}
+          cover={folderCoverNode(f)}
+          badge={<span className="flex items-center gap-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-md">{isOpen ? <FolderOpen size={9} /> : <Folder size={9} />} Folder</span>}
+          selected={isOpen}
+          selectMode={false}
+          onClick={() => openFolder(f.id)}
+          onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setFolderMenu({ folder: f, x: e.clientX, y: e.clientY }) }}
+          onMenuButton={e => setFolderMenu({ folder: f, x: e.clientX, y: e.clientY })}
+          onPlay={() => openFolder(f.id)}
+          isDropTarget={dropTargetFolderId === f.id}
+          onDragOver={e => { if (!draggedPlaylistKey) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDropTargetFolderId(f.id) }}
+          onDragLeave={() => setDropTargetFolderId(prev => (prev === f.id ? null : prev))}
+          onDrop={e => {
+            e.preventDefault()
+            if (draggedPlaylistKey) movePlaylistsToFolder([draggedPlaylistKey], f.id)
+            setDraggedPlaylistKey(null)
+            setDropTargetFolderId(null)
+          }}
+        />
+      )
+      const panel = isOpen ? (
+        <div key={`panel-folder-${f.id}`} className="col-span-full rounded-2xl bg-surface-overlay border border-[var(--border)] p-4" onClick={e => e.stopPropagation()}>
+          {memberEntries.length === 0 ? (
+            <p className="text-text-muted text-sm py-1">This folder is empty. Drag a playlist onto it, or right-click one and choose “Move to folder”.</p>
+          ) : (
+            <div ref={folderGridRef} className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+              {layoutGridEntries(memberEntries, folderGridCols)}
             </div>
           )}
-        </React.Fragment>
-      )
+        </div>
+      ) : null
+      return { key: f.id, tile, panel }
     })
   }
 
@@ -2102,9 +2198,8 @@ export default function PlaylistsView(): JSX.Element {
                   synced-playlist ids) — folders holding only synced
                   playlists are hidden here since their members can't render
                   without an account. */}
-              <div className="grid gap-4 mb-8" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-                {renderFolderTiles(true)}
-                {ungroupedLocal.map(renderLocalCard)}
+              <div ref={authGridRef} className="grid gap-4 mb-8" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+                {layoutGridEntries([...folderTileEntries(true), ...ungroupedLocal.map(localEntry)], authGridCols)}
               </div>
             </>
           )}
@@ -3275,18 +3370,36 @@ export default function PlaylistsView(): JSX.Element {
         {/* ── Playlists section — folders sit right in the same grid as the
             playlists they group, rather than a separate section above it. ── */}
         <h2 className="text-text-muted text-xs font-semibold uppercase tracking-widest mb-3">Playlists</h2>
-        <div className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-          <button onClick={() => setShowLiked(true)} className="group text-left cursor-pointer">
-            <div className="aspect-square rounded-2xl bg-gradient-to-br from-accent/50 to-accent/10 flex items-center justify-center mb-2.5 shadow-md group-hover:shadow-xl group-hover:-translate-y-1 transition-all duration-200">
-              <Heart size={44} className="text-accent" fill="currentColor" />
-            </div>
-            <p className="text-text-primary text-sm font-semibold truncate">Liked Songs</p>
-            <p className="text-text-muted text-xs mt-0.5">{likedTrackIds.length} {likedTrackIds.length === 1 ? 'track' : 'tracks'}</p>
-          </button>
-
-          {renderFolderTiles(false)}
-
-          {ungroupedApi.map(renderApiCard)}
+        <div ref={mainGridRef} className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+          {layoutGridEntries([
+            {
+              key: 'liked',
+              tile: (
+                <button key="liked" onClick={() => setExpandedKey(k => k === 'liked' ? null : 'liked')} className="group text-left cursor-pointer">
+                  <div className="aspect-square rounded-2xl bg-gradient-to-br from-accent/50 to-accent/10 flex items-center justify-center mb-2.5 shadow-md group-hover:shadow-xl group-hover:-translate-y-1 transition-all duration-200">
+                    <Heart size={44} className="text-accent" fill="currentColor" />
+                  </div>
+                  <p className="text-text-primary text-sm font-semibold truncate">Liked Songs</p>
+                  <p className="text-text-muted text-xs mt-0.5">{likedTrackIds.length} {likedTrackIds.length === 1 ? 'track' : 'tracks'}</p>
+                </button>
+              ),
+              panel: expandedKey === 'liked' ? (
+                <PlaylistExpandPanel
+                  key="panel-liked"
+                  name="Liked Songs"
+                  subtitle={`${expandedTracks.length} ${expandedTracks.length === 1 ? 'track' : 'tracks'}`}
+                  cover={<div className="w-full h-full bg-gradient-to-br from-accent/50 to-accent/10 flex items-center justify-center"><Heart size={28} className="text-accent" fill="currentColor" /></div>}
+                  tracks={expandedTracks}
+                  loading={expandedLoading}
+                  onClose={() => setExpandedKey(null)}
+                  onPlayTrack={t => playTrack(t, expandedTracks)}
+                  onOpenFull={() => { setExpandedKey(null); setShowLiked(true) }}
+                />
+              ) : null,
+            },
+            ...folderTileEntries(false),
+            ...ungroupedApi.map(apiEntry),
+          ], mainGridCols)}
 
           {playlists.length === 0 && (
             <p className="text-text-muted text-sm col-span-full py-2">No synced playlists yet — click "New Playlist" to create one.</p>
@@ -3311,8 +3424,8 @@ export default function PlaylistsView(): JSX.Element {
         {ungroupedLocal.length > 0 && (
           <>
             <h2 className="text-text-muted text-xs font-semibold uppercase tracking-widest mb-3 mt-9">On This Device</h2>
-            <div className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-              {ungroupedLocal.map(renderLocalCard)}
+            <div ref={deviceGridRef} className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+              {layoutGridEntries(ungroupedLocal.map(localEntry), deviceGridCols)}
             </div>
           </>
         )}

@@ -18,6 +18,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <link rel="icon" type="image/png" href="/favicon.png" />
 
+    <!-- Nothing in this app needs remote script/style execution, eval, or a
+         plugin/object embed, so this closes off the main injection→escalation
+         path for a compromised dependency or an XSS in rendered content
+         (react-markdown here is already sanitized — see lib/Markdown.tsx —
+         this is the second layer). The two inline <script> blocks below are
+         pinned by hash rather than 'unsafe-inline'; if either one's source
+         changes, its hash here has to be recomputed or it silently stops
+         running (the CSP violation shows as a console error, not a crash).
+         local-media: is the custom scheme the desktop build streams local
+         audio/video through (see electron/main.js); it's a no-op origin on
+         the web build. connect-src lists every host the renderer actually
+         calls: the API, its match-play websocket, Last.fm scrobbling, and
+         the two lyrics CORS proxies (see EditorPage.tsx). -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self' 'sha256-xjpTVCo7o4K9QG8ZmAgfjVUbc2OdYbdKgT/ClSf5AWE=' 'sha256-b1jw+VU6Z+2+MRzlWRKIER82x08obZjR7Y3a9A7hu74=';
+      style-src 'self';
+      img-src 'self' data: blob: local-media: https:;
+      media-src 'self' blob: local-media: https:;
+      font-src 'self';
+      connect-src 'self' https://juicewrldapi.com wss://juicewrldapi.com https://ws.audioscrobbler.com https://api.allorigins.win https://corsproxy.io https://api.github.com local-media:;
+      worker-src 'self';
+      object-src 'none';
+      base-uri 'self';
+      form-action 'self';
+    " />
+
     <!-- SEO — web build only in effect, though the tags ship in the packaged
          HTML too (same bundle, same index.html; they are inert there, exactly
          like the PWA tags below). These are what every non-JS scraper reads —

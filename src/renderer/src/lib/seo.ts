@@ -70,6 +70,12 @@ const ROUTES: Record<ViewType, SeoEntry> = {
     description:
       'Guess the Juice WRLD song title letter by letter. A new title every day, and every guess is a real track from the released and unreleased catalog.',
   },
+  tierlist: {
+    path: '/tierlist',
+    title: 'Tier List — rank Juice WRLD songs',
+    description:
+      'Build a tier list of Juice WRLD songs, released and unreleased. Drag tracks into S through D tiers and save your ranking.',
+  },
   docs: {
     path: '/docs',
     title: 'Docs',

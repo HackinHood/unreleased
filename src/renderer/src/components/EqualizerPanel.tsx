@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { RotateCcw, PictureInPicture2 } from 'lucide-react'
+import { RotateCcw, PictureInPicture2, X } from 'lucide-react'
 import { useStorePick } from '../store/useStore'
 import { EQ_BANDS, EQ_GAIN_LIMIT, EQ_PRESETS, EFFECTS_SUPPORTED } from '../lib/audioEffects'
+import { formatDuration } from '../lib/format'
 
 // Short axis labels for the band sliders (32 … 16K).
 function bandLabel(freq: number): string {
@@ -37,11 +38,12 @@ export default function EqualizerPanel({ floating = false }: { floating?: boolea
     reverbMix, setReverbMix,
     reverbDecay, setReverbDecay,
     communityEdits, playCommunityEdit,
+    abLoopStart, abLoopEnd, setAbLoopPoint, clearAbLoop,
     preferOgVersion, setPreferOgVersion,
     sleepTimerEnd, setSleepTimer,
     audioOutput, setAudioOutput,
     radioFmActive, setShowEqPanel,
-  } = useStorePick('eqEnabled', 'setEqEnabled', 'eqGains', 'setEqBand', 'eqPreset', 'setEqPreset', 'eqBalance', 'setEqBalance', 'eqMono', 'setEqMono', 'skipSilence', 'setSkipSilence', 'playbackSpeed', 'setPlaybackSpeed', 'pitchShift', 'setPitchShift', 'reverbEnabled', 'setReverbEnabled', 'reverbMix', 'setReverbMix', 'reverbDecay', 'setReverbDecay', 'communityEdits', 'playCommunityEdit', 'preferOgVersion', 'setPreferOgVersion', 'sleepTimerEnd', 'setSleepTimer', 'audioOutput', 'setAudioOutput', 'radioFmActive', 'setShowEqPanel')
+  } = useStorePick('eqEnabled', 'setEqEnabled', 'eqGains', 'setEqBand', 'eqPreset', 'setEqPreset', 'eqBalance', 'setEqBalance', 'eqMono', 'setEqMono', 'skipSilence', 'setSkipSilence', 'playbackSpeed', 'setPlaybackSpeed', 'pitchShift', 'setPitchShift', 'reverbEnabled', 'setReverbEnabled', 'reverbMix', 'setReverbMix', 'reverbDecay', 'setReverbDecay', 'communityEdits', 'playCommunityEdit', 'abLoopStart', 'abLoopEnd', 'setAbLoopPoint', 'clearAbLoop', 'preferOgVersion', 'setPreferOgVersion', 'sleepTimerEnd', 'setSleepTimer', 'audioOutput', 'setAudioOutput', 'radioFmActive', 'setShowEqPanel')
 
   const balancePct = Math.round(eqBalance * 100)
   const balanceLabel = balancePct === 0 ? 'C' : balancePct < 0 ? `L ${-balancePct}` : `R ${balancePct}`

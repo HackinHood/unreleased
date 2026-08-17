@@ -10,11 +10,12 @@ import { useStorePick } from '../store/useStore'
 import { rememberTabView } from '../lib/navItems'
 import type { ViewType } from '../types'
 
-export type GameId = Extract<ViewType, 'heardle' | 'wordle'>
+export type GameId = Extract<ViewType, 'heardle' | 'wordle' | 'tierlist'>
 
 const GAMES: { id: GameId; label: string }[] = [
   { id: 'heardle', label: 'Heardle' },
   { id: 'wordle', label: 'Wordle' },
+  { id: 'tierlist', label: 'Tier List' },
 ]
 
 /** The games in the tab, as a pill row. Sits above each game's hero — the

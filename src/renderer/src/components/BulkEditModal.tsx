@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Loader2, Check, AlertCircle, X, Pencil, ChevronDown, ChevronRight, Eraser, ArrowRight,
@@ -11,7 +11,7 @@ import type { JWApiSong, JWApiEra } from '../lib/juicewrldApi'
 import type { LibraryTrack } from '../types'
 import * as userApi from '../lib/userApi'
 import { broadcastLibraryTrackUpdate } from '../lib/windowSync'
-import { getVersionMetaForSongs, setOwnVersionTitle } from '../lib/versionsApi'
+import { getVersionMetaForSongs, getOwnVersionMeta, setOwnVersionTitle, linkSongVersion, setGroupVersionTitle } from '../lib/versionsApi'
 import type { SongVersionMeta } from '../lib/versionsApi'
 import { invalidateCompactGroupsCache } from '../lib/compactGroups'
 import { cleanDate } from './EditorPage'
@@ -75,6 +75,18 @@ interface BulkField<T> {
   /** This field's current values are still loading; it reads as empty until
    *  they arrive, so it can't be ticked yet. */
   pending?: boolean
+  /** A one-click alternative to the normal per-item Submit flow, for
+   *  operations the item-by-item diff/patch model can't express (linking
+   *  several items into one group before titling them, say). Runs
+   *  immediately on click rather than waiting for Submit; once it succeeds,
+   *  Submit stops trying to also apply this field per-item (see the 'done'
+   *  guard on activeFields) so it can't undo what the action just did. Shown
+   *  only once `minItems` items are selected. */
+  customAction?: {
+    minItems: number
+    label: (n: number) => string
+    run: (items: T[], value: string) => Promise<void>
+  }
 }
 
 /** Everything one source has to supply for the dialog to drive it. */
@@ -201,7 +213,26 @@ const API_GROUPS = ['Details', 'Versions', 'Credits', 'Dates']
 const VERSION_TITLE_NOTE =
   "Retitles just this song. If it's currently linked with others, it's split into its own version group with the new title rather than renaming the shared one — same as the single-song editor. To rename a whole group in place, use that song's Versions card instead."
 
-function apiFields(eras: JWApiEra[], versionMeta: Map<number, SongVersionMeta> | null): BulkField<JWApiSong>[] {
+/** Links every song in `songs` into one version group and sets its title,
+ *  regardless of whatever groups they were each in before — the explicit,
+ *  opt-in counterpart to the per-song split setOwnVersionTitle does by
+ *  default. Same pairwise-merge as the Tracker's "Link versions" button
+ *  (linking each song to the first one merges all of their groups), plus the
+ *  title write "Link versions" leaves as a follow-up prompt. */
+async function linkAndTitle(songs: JWApiSong[], title: string): Promise<void> {
+  if (songs.length < 2) return
+  const [first, ...rest] = songs
+  for (const s of rest) await linkSongVersion(first.id, s.id)
+  const meta = await getOwnVersionMeta(first.id)
+  if (meta) await setGroupVersionTitle(meta.groupId, title || null)
+  invalidateCompactGroupsCache()
+}
+
+function apiFields(
+  eras: JWApiEra[],
+  versionMeta: Map<number, SongVersionMeta> | null,
+  refreshVersionMeta: () => Promise<void>,
+): BulkField<JWApiSong>[] {
   return [
     { key: 'category', label: 'Category', kind: 'select', group: 'Details', modes: ['set'], read: s => s.category || '',
       options: Object.keys(CATEGORY_LABELS).map(v => ({ value: v, label: CATEGORY_LABELS[v] })) },
@@ -225,7 +256,24 @@ function apiFields(eras: JWApiEra[], versionMeta: Map<number, SongVersionMeta> |
     { key: 'versionTitle', label: 'Version title', kind: 'text', group: 'Versions',
       modes: ['set', 'fill', 'clear'], placeholder: "e.g. She's The One",
       pending: !versionMeta, note: VERSION_TITLE_NOTE,
-      read: s => versionMeta?.get(s.id)?.versionTitle ?? '' },
+      read: s => versionMeta?.get(s.id)?.versionTitle ?? '',
+      // The per-song default above means typing the same title on several
+      // *unlinked* songs gives each its own identical-looking-but-separate
+      // group rather than one shared one — this is the one-click fix for
+      // when that's not what was wanted: merge the whole selection into a
+      // single group and write the title once.
+      customAction: {
+        minItems: 2,
+        label: n => `Link all ${n} as one group`,
+        run: async (songs, value) => {
+          await linkAndTitle(songs, value)
+          // Awaited: the "done" status this unblocks must not show until the
+          // field's read() reflects the merge — otherwise a subsequent Submit
+          // could still see the pre-merge snapshot and undo it (see
+          // fetchVersionMeta's comment).
+          await refreshVersionMeta()
+        },
+      } },
 
     { key: 'credited_artists', label: 'Artists', kind: 'list', group: 'Credits', placeholder: 'Juice WRLD, Lil Uzi Vert', read: s => s.credited_artists || '' },
     { key: 'producers', label: 'Producers', kind: 'list', group: 'Credits', placeholder: 'Nick Mira, Taz Taylor', read: s => s.producers || '' },
@@ -293,13 +341,25 @@ export default function BulkEditModal(): JSX.Element | null {
       .catch(() => undefined)
   }, [isApi, eras.length])
 
+  // Also used to refresh after linkAndTitle changes the server's grouping out
+  // from under the initial fetch — without this the field would keep reading
+  // its stale pre-link snapshot, and setOwnVersionTitle (which doesn't check
+  // whether a song's title already matches before deciding to split) would
+  // undo the very merge that action just made the next time Submit runs.
+  // Returns the promise so the customAction can await the refresh completing
+  // before it reports itself done.
+  const fetchVersionMeta = useCallback(async (): Promise<void> => {
+    if (target?.kind !== 'api') return
+    try { setVersionMeta(await getVersionMetaForSongs(target.songs.map(s => s.id))) }
+    catch { setVersionMeta(new Map()) }
+  }, [target])
+
   useEffect(() => {
     if (target?.kind !== 'api') { setVersionMeta(null); return }
-    let cancelled = false
-    getVersionMetaForSongs(target.songs.map(s => s.id))
-      .then(m => { if (!cancelled) setVersionMeta(m) })
-      .catch(() => { if (!cancelled) setVersionMeta(new Map()) })
-    return () => { cancelled = true }
+    fetchVersionMeta()
+    // fetchVersionMeta is stable per `target` (see its own deps), so this only
+    // needs to key off target itself to avoid re-fetching on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target])
 
   const apiSpec = useMemo<BulkSpec<JWApiSong> | null>(() => {
@@ -309,7 +369,7 @@ export default function BulkEditModal(): JSX.Element | null {
     return {
       items: target.songs,
       groups: API_GROUPS,
-      fields: apiFields(eras, versionMeta),
+      fields: apiFields(eras, versionMeta, fetchVersionMeta),
       keyOf: s => String(s.id),
       titleOf: s => s.name,
       noun: ['song', 'songs'],
@@ -345,7 +405,7 @@ export default function BulkEditModal(): JSX.Element | null {
         })
       },
     }
-  }, [target, account, eras, versionMeta])
+  }, [target, account, eras, versionMeta, fetchVersionMeta])
 
   const localSpec = useMemo<BulkSpec<LibraryTrack> | null>(() => {
     if (target?.kind !== 'local') return null
@@ -422,12 +482,17 @@ function BulkEditor<T>({ spec, onClose }: { spec: BulkSpec<T>; onClose: () => vo
    *  doesn't redo the ones that already went through. */
   const [retryTargets, setRetryTargets] = useState<Target<T>[] | null>(null)
   const [succeeded, setSucceeded] = useState(0)
+  // Per-field status for customAction buttons — 'done' shouldn't linger once
+  // the value it applied to has been edited again.
+  const [customActionStatus, setCustomActionStatus] = useState<Record<string, 'running' | 'done' | 'error'>>({})
+  const [customActionError, setCustomActionError] = useState<Record<string, string>>({})
 
   // Touching the form after a run invalidates that run's outcome — the patches
   // it was built from no longer describe what's on screen.
   useEffect(() => {
     setStatus(s => (s === 'submitting' ? s : 'idle'))
     setRetryTargets(null); setError(null); setSucceeded(0); setConfirmClose(false)
+    setCustomActionStatus({}); setCustomActionError({})
   }, [enabled, values, modes])
 
   /** Items this source can't write at all, split out so they're reported as a
@@ -452,8 +517,14 @@ function BulkEditor<T>({ spec, onClose }: { spec: BulkSpec<T>; onClose: () => vo
   }, [fields, writable])
 
   const activeFields = useMemo(
-    () => fields.filter(f => enabled[f.key] && isActionable(modes[f.key] ?? 'set', values[f.key] ?? '')),
-    [fields, enabled, modes, values]
+    () => fields.filter(f =>
+      enabled[f.key]
+      && isActionable(modes[f.key] ?? 'set', values[f.key] ?? '')
+      // A field whose customAction just ran is already applied — Submit
+      // shouldn't also patch it per-item against data the action changed.
+      && customActionStatus[f.key] !== 'done'
+    ),
+    [fields, enabled, modes, values, customActionStatus]
   )
 
   const display = (f: BulkField<T>, value: string): string => {
@@ -555,6 +626,21 @@ function BulkEditor<T>({ spec, onClose }: { spec: BulkSpec<T>; onClose: () => vo
 
   const setValue = (key: string, v: string): void => setValues(prev => ({ ...prev, [key]: v }))
   const setMode = (key: string, m: Mode): void => setModes(prev => ({ ...prev, [key]: m }))
+
+  const runCustomAction = async (f: BulkField<T>): Promise<void> => {
+    if (!f.customAction || customActionStatus[f.key] === 'running') return
+    setCustomActionStatus(prev => ({ ...prev, [f.key]: 'running' }))
+    try {
+      await f.customAction.run(writable, values[f.key] ?? '')
+      // Left ticked (not unticked) so the "Done" state stays visible — the
+      // 'done' guard in activeFields above is what keeps Submit from also
+      // patching it per-item.
+      setCustomActionStatus(prev => ({ ...prev, [f.key]: 'done' }))
+    } catch (e) {
+      setCustomActionStatus(prev => ({ ...prev, [f.key]: 'error' }))
+      setCustomActionError(prev => ({ ...prev, [f.key]: e instanceof Error ? e.message : 'Failed' }))
+    }
+  }
 
   const pickImage = async (key: string): Promise<void> => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -719,6 +805,33 @@ function BulkEditor<T>({ spec, onClose }: { spec: BulkSpec<T>; onClose: () => vo
               <p className="flex items-start gap-1.5 text-[11px] text-amber-500">
                 <AlertCircle size={11} className="shrink-0 mt-0.5" /> {f.note}
               </p>
+            )}
+
+            {f.customAction && mode === 'set' && !needsInput && writable.length >= f.customAction.minItems && (
+              <div className="pt-1.5 border-t border-[var(--border)]/60">
+                <button
+                  onClick={() => runCustomAction(f)}
+                  disabled={customActionStatus[f.key] === 'running'}
+                  className={`w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
+                    customActionStatus[f.key] === 'done'
+                      ? 'bg-emerald-500/15 text-emerald-400'
+                      : 'bg-accent/10 text-accent hover:bg-accent/15'
+                  }`}
+                >
+                  {customActionStatus[f.key] === 'running' ? (
+                    <><Loader2 size={11} className="animate-spin" /> Working…</>
+                  ) : customActionStatus[f.key] === 'done' ? (
+                    <><Check size={11} /> Done</>
+                  ) : (
+                    f.customAction.label(writable.length)
+                  )}
+                </button>
+                {customActionStatus[f.key] === 'error' && (
+                  <p className="flex items-center gap-1.5 mt-1 text-[11px] text-red-400">
+                    <AlertCircle size={11} className="shrink-0" /> {customActionError[f.key]}
+                  </p>
+                )}
+              </div>
             )}
           </div>
         )}

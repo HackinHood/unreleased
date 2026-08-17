@@ -255,9 +255,9 @@ export default function ConvertFormatModal({ floating = false }: { floating?: bo
                 <p className="text-text-muted text-xs break-all">{fileName(done.outPath)}</p>
               )}
               <div className="flex gap-2 mt-1">
-                {done.outPath && el?.openPath && (
+                {done.outPath && el?.showItemInFolder && (
                   <button
-                    onClick={() => el.openPath(done.outPath.replace(/[/\\][^/\\]+$/, ''))}
+                    onClick={() => el.showItemInFolder(done.outPath)}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-text-secondary hover:text-text-primary bg-surface-overlay hover:bg-surface-raised transition-colors"
                   >
                     <Folder size={13} /> Show folder

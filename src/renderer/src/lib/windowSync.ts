@@ -29,6 +29,10 @@ const SYNC_KEYS = [
   // the main window's audio chain (only the main window owns audio elements).
   'eqEnabled', 'eqGains', 'eqPreset', 'eqBalance', 'eqMono', 'skipSilence',
   'reverbEnabled', 'reverbMix', 'reverbDecay', 'pitchShift', 'communityEdits',
+  // A-B loop points — set from either window, enforced only by the main
+  // window's audio (it owns the elements), same reasoning as the effects row
+  // above.
+  'abLoopStart', 'abLoopEnd',
   // `listeningPlays` is deliberately absent for the same reason libraryTracks
   // is: it's a few thousand rows that grow on every credited play, and only
   // the main window ever appends to it. Pop-outs read it back from shared

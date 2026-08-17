@@ -191,8 +191,8 @@ function DownloadRow({ item }: { item: DownloadItem }): JSX.Element {
               <X size={12} />
             </button>
           )}
-          {isDone && item.savePath && el?.openPath && (
-            <button onClick={() => el.openPath(item.savePath!)} title="Show in folder" className="p-1 rounded hover:bg-[var(--surface-raised)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+          {isDone && item.savePath && el?.showItemInFolder && (
+            <button onClick={() => el.showItemInFolder(item.savePath!)} title="Show in folder" className="p-1 rounded hover:bg-[var(--surface-raised)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
               <FolderOpen size={12} />
             </button>
           )}

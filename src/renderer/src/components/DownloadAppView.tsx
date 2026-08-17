@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   Download, Github, Monitor, Apple, Terminal, Smartphone, Share, Plus,
   HardDriveDownload, Library, Globe, Radio, FileAudio, RefreshCw, ArrowDown, Check,
-  Home,
+  Home, History,
 } from 'lucide-react'
 import logo from '../assets/logo.png'
 import { IS_ANDROID, IS_IOS, IS_MOBILE } from '../lib/platform'
@@ -26,6 +26,11 @@ import { hasPwaInstallPrompt, onPwaInstallPromptChange, showPwaInstallPrompt } f
 
 const REPO_URL = 'https://github.com/leanwrldd/unreleased'
 const LATEST_URL = `${REPO_URL}/releases/latest`
+
+// The original desktop app this project succeeded — unmaintained, but some
+// people still ask for it, so it gets a small, clearly-labeled spot here
+// rather than the main grid.
+const LEGACY_REPO_URL = 'https://github.com/HackinHood/juicewrldapi-desktop'
 
 interface ReleaseAsset {
   name: string
@@ -62,6 +67,30 @@ async function fetchReleases(): Promise<ReleaseInfo[]> {
       })),
     }))
   return cachedReleases
+}
+
+let cachedLegacyRelease: ReleaseInfo | null | undefined // undefined = not fetched yet
+
+async function fetchLegacyRelease(): Promise<ReleaseInfo | null> {
+  if (cachedLegacyRelease !== undefined) return cachedLegacyRelease
+  try {
+    const res = await fetch('https://api.github.com/repos/HackinHood/juicewrldapi-desktop/releases/latest', {
+      headers: { Accept: 'application/vnd.github+json' },
+    })
+    if (!res.ok) throw new Error(`GitHub API ${res.status}`)
+    const json = await res.json()
+    cachedLegacyRelease = {
+      version: String(json.tag_name ?? '').replace(/^v/, ''),
+      publishedAt: json.published_at ?? '',
+      htmlUrl: json.html_url ?? `${LEGACY_REPO_URL}/releases/latest`,
+      assets: (json.assets ?? []).map((a: any) => ({
+        name: a.name, size: a.size, browser_download_url: a.browser_download_url,
+      })),
+    }
+  } catch {
+    cachedLegacyRelease = null
+  }
+  return cachedLegacyRelease
 }
 
 type DetectedOS = 'windows' | 'mac' | 'linux' | 'ios' | 'android'
@@ -154,6 +183,7 @@ function PlatformCard({ icon, name, requirement, detected, children }: {
 export default function DownloadAppView(): JSX.Element {
   const [releases, setReleases] = useState<ReleaseInfo[] | null>(cachedReleases)
   const [failed, setFailed] = useState(false)
+  const [legacyRelease, setLegacyRelease] = useState<ReleaseInfo | null | undefined>(cachedLegacyRelease)
   const [canInstallPwa, setCanInstallPwa] = useState(hasPwaInstallPrompt())
 
   const os = useMemo(detectOS, [])
@@ -166,6 +196,13 @@ export default function DownloadAppView(): JSX.Element {
       .catch(() => { if (alive) setFailed(true) })
     return () => { alive = false }
   }, [releases])
+
+  useEffect(() => {
+    if (legacyRelease !== undefined) return
+    let alive = true
+    fetchLegacyRelease().then((r) => { if (alive) setLegacyRelease(r) })
+    return () => { alive = false }
+  }, [legacyRelease])
 
   useEffect(() => onPwaInstallPromptChange(() => setCanInstallPwa(hasPwaInstallPrompt())), [])
 
@@ -446,6 +483,44 @@ export default function DownloadAppView(): JSX.Element {
             />
           </div>
         </div>
+
+        {/* ── Legacy app ── */}
+        {legacyRelease && (
+          <div className="mt-10 rounded-2xl border border-dashed border-[var(--border)] bg-surface-overlay/20 p-5 md:p-6 flex flex-col md:flex-row md:items-center gap-4">
+            <div className="flex items-center gap-4 flex-1 min-w-0">
+              <div className="w-11 h-11 rounded-2xl bg-surface-raised text-text-muted flex items-center justify-center shrink-0">
+                <History size={20} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-text-primary text-sm font-semibold mb-0.5">Looking for the old app?</p>
+                <p className="text-text-secondary text-[13px] leading-relaxed">
+                  Before Unreleased there was the original{' '}
+                  <a href={LEGACY_REPO_URL} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">JuiceWRLD API Desktop</a>
+                  {' '}app. It&rsquo;s no longer maintained, but it&rsquo;s still here if you want it.
+                </p>
+              </div>
+            </div>
+            {(() => {
+              const legacyExe = legacyRelease.assets.find((a) => a.name.endsWith('.exe'))
+              return legacyExe ? (
+                <a
+                  href={legacyExe.browser_download_url}
+                  className="shrink-0 flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold border border-[var(--border)] text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors"
+                >
+                  <Download size={13} /> Windows · v{legacyRelease.version}
+                  <span className="text-text-muted">· {fmtMB(legacyExe.size)}</span>
+                </a>
+              ) : (
+                <a
+                  href={`${LEGACY_REPO_URL}/releases/latest`} target="_blank" rel="noopener noreferrer"
+                  className="shrink-0 flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold border border-[var(--border)] text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors"
+                >
+                  <Download size={13} /> Get from GitHub
+                </a>
+              )
+            })()}
+          </div>
+        )}
 
         {/* ── Footer ── */}
         <div className="mt-14 pt-6 border-t border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-3">
