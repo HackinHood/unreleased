@@ -1,11 +1,105 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import {
-  Loader2, CheckCircle, XCircle, RotateCcw, Download, Calendar, Hash, AlertCircle,
+  Loader2, CheckCircle, XCircle, RotateCcw, Download, Calendar, Hash, AlertCircle, ImageOff,
 } from 'lucide-react'
 import * as userApi from '../lib/userApi'
 import type { CompFileProposal, ProposalStatus } from '../lib/userApi'
 import { getToken } from '../lib/userApi'
 import { relativeTime, shortDate, StatusChip, Empty, QueueSearch, buildHaystack, matchesHaystack } from './adminShared'
+import { buildStreamUrl } from '../lib/juicewrldApi'
+import { getMediaType } from '../lib/fileTypes'
+import { formatBytes, formatDuration } from '../lib/format'
+
+/** Loads a comp-admin route's bytes into an object URL — the staging file
+ *  isn't public like a live comp/ path, so it needs the same authed fetch
+ *  downloadStaging already uses, just kept in memory instead of saved to
+ *  disk. Torn down (URL revoked) on unmount or when the source URL changes,
+ *  since a leaked object URL pins the blob in memory for the page's life. */
+function useAuthedBlobUrl(url: string | null): { src: string | null; loading: boolean; error: boolean; bytes: number | null } {
+  const [state, setState] = useState<{ src: string | null; loading: boolean; error: boolean; bytes: number | null }>(
+    { src: null, loading: !!url, error: false, bytes: null },
+  )
+  useEffect(() => {
+    if (!url) { setState({ src: null, loading: false, error: false, bytes: null }); return }
+    let cancelled = false
+    let objectUrl: string | null = null
+    setState({ src: null, loading: true, error: false, bytes: null })
+    const token = getToken()
+    fetch(url, { headers: token ? { Authorization: `Token ${token}` } : {} })
+      .then((r) => { if (!r.ok) throw new Error(); return r.blob() })
+      .then((blob) => {
+        if (cancelled) return
+        objectUrl = URL.createObjectURL(blob)
+        setState({ src: objectUrl, loading: false, error: false, bytes: blob.size })
+      })
+      .catch(() => { if (!cancelled) setState({ src: null, loading: false, error: true, bytes: null }) })
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [url])
+  return state
+}
+
+/** One preview slot — a live comp/ path (plain <img>/<audio> against the
+ *  public download URL, same as FilePickerModal's thumbnails) or an authed
+ *  blob (the staged file, not yet part of comp/). Anything that isn't audio
+ *  or an image (a tracklist .txt, a folder) renders nothing — the JSON
+ *  snapshot below already covers non-media proposals. */
+function MediaPreview({ label, name, src, loading, error, bytes }: {
+  label: string
+  name: string
+  src: string | null
+  loading?: boolean
+  error?: boolean
+  bytes?: number | null
+}): JSX.Element | null {
+  const mediaType = getMediaType(name)
+  const [meta, setMeta] = useState<string | null>(null)
+  const [broken, setBroken] = useState(false)
+  useEffect(() => { setMeta(null); setBroken(false) }, [src])
+
+  if (mediaType !== 'image' && mediaType !== 'audio') return null
+
+  const failed = error || broken || (!loading && !src)
+  const sizeLabel = bytes != null ? formatBytes(bytes) : null
+
+  return (
+    <div>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1.5">{label}</p>
+      {loading ? (
+        <div className="h-20 rounded-lg bg-surface-overlay flex items-center justify-center">
+          <Loader2 size={16} className="animate-spin text-text-muted" />
+        </div>
+      ) : failed ? (
+        <div className="h-20 rounded-lg bg-surface-overlay flex flex-col items-center justify-center gap-1 text-text-muted">
+          <ImageOff size={16} className="opacity-50" />
+          <span className="text-[10px]">Preview unavailable</span>
+        </div>
+      ) : mediaType === 'image' ? (
+        <img
+          src={src ?? undefined}
+          alt=""
+          onLoad={(e) => setMeta(`${e.currentTarget.naturalWidth}×${e.currentTarget.naturalHeight}`)}
+          onError={() => setBroken(true)}
+          className="max-h-56 max-w-full rounded-lg border border-[var(--border)] object-contain bg-surface-overlay"
+        />
+      ) : (
+        <audio
+          controls
+          src={src ?? undefined}
+          preload="metadata"
+          onLoadedMetadata={(e) => setMeta(formatDuration(e.currentTarget.duration))}
+          onError={() => setBroken(true)}
+          className="w-full h-9"
+        />
+      )}
+      {(meta || sizeLabel) && !failed && !loading && (
+        <p className="text-[10px] text-text-muted mt-1">{[meta, sizeLabel].filter(Boolean).join(' · ')}</p>
+      )}
+    </div>
+  )
+}
 
 export default function CompProposalsTab({ embedded = false, onChanged }: { embedded?: boolean; onChanged?: () => void }): JSX.Element {
   const [status, setStatus] = useState<ProposalStatus | ''>('pending')
@@ -120,6 +214,14 @@ export default function CompProposalsTab({ embedded = false, onChanged }: { embe
       .catch(() => {})
   }
 
+  // The proposed file only exists in staging while the proposal is pending
+  // (approval moves it into comp/, rejection discards it) — matches the same
+  // condition the existing "Staged file" download button already gates on.
+  const stagingUrl = selected && selected.staging_filename && selected.status === 'pending'
+    ? userApi.adminCompProposalStagingUrl(selected.id)
+    : null
+  const staged = useAuthedBlobUrl(stagingUrl)
+
   const p = selected
 
   return (
@@ -215,6 +317,25 @@ export default function CompProposalsTab({ embedded = false, onChanged }: { embe
               )}
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4 text-sm">
+              {/* "Current" is the file already in comp/ — meaningful context for
+                  a replace, move, or delete (what's about to change or vanish),
+                  and for a plain upload it's simply not there yet, so the public
+                  fetch 404s and the slot quietly shows "unavailable". */}
+              {p.change_type !== 'create_folder' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <MediaPreview label="Current file" name={p.file_path} src={buildStreamUrl(p.file_path)} />
+                  {p.staging_filename && (
+                    <MediaPreview
+                      label="Proposed file"
+                      name={p.staging_filename}
+                      src={staged.src}
+                      loading={p.status === 'pending' && staged.loading}
+                      error={p.status !== 'pending' || staged.error}
+                      bytes={staged.bytes}
+                    />
+                  )}
+                </div>
+              )}
               {p.contributor_notes && (
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1">Contributor notes</p>

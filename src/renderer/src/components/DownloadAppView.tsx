@@ -24,7 +24,7 @@ import { hasPwaInstallPrompt, onPwaInstallPromptChange, showPwaInstallPrompt } f
 // tags in the same releases list. Desktop and Android are picked out by
 // which asset extensions each release carries, not by tag string.
 
-const REPO_URL = 'https://github.com/leanwrldd/unreleased'
+const REPO_URL = 'https://github.com/Juice-WRLD-API/Unreleased'
 const LATEST_URL = `${REPO_URL}/releases/latest`
 
 // The original desktop app this project succeeded — unmaintained, but some
@@ -51,7 +51,7 @@ let cachedReleases: ReleaseInfo[] | null = null
 
 async function fetchReleases(): Promise<ReleaseInfo[]> {
   if (cachedReleases) return cachedReleases
-  const res = await fetch('https://api.github.com/repos/leanwrldd/unreleased/releases?per_page=20', {
+  const res = await fetch('https://api.github.com/repos/Juice-WRLD-API/Unreleased/releases?per_page=20', {
     headers: { Accept: 'application/vnd.github+json' },
   })
   if (!res.ok) throw new Error(`GitHub API ${res.status}`)

@@ -422,7 +422,7 @@ export default function AppMenu({ variant = 'bar', collapsed = false }: { varian
         { kind: 'item', label: updateLabel, trailing: updateTrailing, onClick: () => { void checkForUpdates() } },
         { kind: 'item', label: 'Reinstall latest release', onClick: run(() => el?.forceUpdate?.()) },
         { kind: 'sep' },
-        { kind: 'item', label: 'GitHub', onClick: run(() => openExternal('https://github.com/leanwrldd/unreleased')) },
+        { kind: 'item', label: 'GitHub', onClick: run(() => openExternal('https://github.com/Juice-WRLD-API/Unreleased')) },
         { kind: 'item', label: 'Discord', onClick: run(() => openExternal('https://discord.gg/jwa')) },
         { kind: 'item', label: 'Juice WRLD API', onClick: run(() => openExternal('https://juicewrldapi.com')) },
         { kind: 'sep' },

@@ -8,6 +8,7 @@ import * as userApi from '../lib/userApi'
 import { CONTRIBUTOR_ENABLED } from '../lib/userApi'
 import type { CompFileProposal, CompProposalChangeType, EditorApplication } from '../lib/userApi'
 import type { ViewType } from '../types'
+import { formatBytes } from '../lib/format'
 import CompProposalList, { CompFilterBar, filterCompProposals, type CompFilterTab } from './CompProposalList'
 import FilePickerModal from './FilePickerModal'
 import { queueCompUploads, cancelCompUpload, COMP_UPLOADS_CHANGED } from '../lib/compUploads'
@@ -19,12 +20,6 @@ type PickerTarget = 'file' | 'upload-folder' | 'dest-folder' | 'delete-files'
 
 const basename = (path: string): string => path.split('/').filter(Boolean).pop() ?? ''
 const parentOf = (path: string): string => path.split('/').filter(Boolean).slice(0, -1).join('/')
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
 const joinPath = (folder: string, name: string): string => (folder ? `${folder}/${name}` : name)
 
 type SubmitState = 'idle' | 'submitting' | 'submitted' | 'error'

@@ -2027,7 +2027,7 @@ export default function Settings({ floating = false }: { floating?: boolean }): 
                 </p>
                 <div className="flex flex-wrap gap-2 mb-4">
                   <a
-                    href="https://github.com/leanwrldd/unreleased"
+                    href="https://github.com/Juice-WRLD-API/Unreleased"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary transition-colors px-3 py-1.5 rounded-full bg-[var(--surface-overlay)] hover:bg-[var(--surface-raised)] border border-[var(--border)]"

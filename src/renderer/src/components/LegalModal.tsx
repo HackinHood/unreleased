@@ -153,7 +153,7 @@ function TermsContent(): JSX.Element {
       <P>
         Questions about these Terms, or copyright and takedown requests, can be raised on our{' '}
         <Ext href="https://discord.gg/jwa">Discord</Ext> or via the project&apos;s{' '}
-        <Ext href="https://github.com/leanwrldd/unreleased">GitHub</Ext>.
+        <Ext href="https://github.com/Juice-WRLD-API/Unreleased">GitHub</Ext>.
       </P>
     </div>
   )
@@ -267,7 +267,7 @@ function PrivacyContent(): JSX.Element {
       <P>
         For privacy questions or requests, reach us on{' '}
         <Ext href="https://discord.gg/jwa">Discord</Ext> or via{' '}
-        <Ext href="https://github.com/leanwrldd/unreleased">GitHub</Ext>.
+        <Ext href="https://github.com/Juice-WRLD-API/Unreleased">GitHub</Ext>.
       </P>
     </div>
   )
