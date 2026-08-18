@@ -70,12 +70,12 @@ export default function ContributorProfileView(): JSX.Element {
           <h1 className="text-base font-bold text-text-primary">{account.display_name || account.discord_username}</h1>
           <p className="text-xs text-text-muted">
             Contributor · {approvedCount} approved
-            {account.is_editor ? ' · also editor' : ''}
+            {account.is_editor ? ' · also editor' : account.is_manager ? ' · also manager' : ''}
           </p>
         </div>
-        {account.is_editor && (
+        {(account.is_editor || account.is_manager) && (
           <button onClick={() => go('editor-profile')} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-surface-raised text-text-secondary hover:text-text-primary transition-colors">
-            Editor profile
+            {account.is_editor ? 'Editor profile' : 'Manager profile'}
           </button>
         )}
         <button onClick={() => go('contributor')} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-accent text-white flex items-center gap-1.5">
