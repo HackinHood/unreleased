@@ -2,19 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Loader2, Check, AlertCircle, X, Pencil, ChevronDown, ChevronRight, Eraser, ArrowRight,
-  Image as ImageIcon, Upload,
 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { useShallow } from 'zustand/react/shallow'
 import { apiFetch, CATEGORY_LABELS } from '../lib/juicewrldApi'
 import type { JWApiSong, JWApiEra } from '../lib/juicewrldApi'
-import type { LibraryTrack } from '../types'
 import * as userApi from '../lib/userApi'
-import { broadcastLibraryTrackUpdate } from '../lib/windowSync'
 import { getVersionMetaForSongs, getOwnVersionMeta, setOwnVersionTitle, linkSongVersion, setGroupVersionTitle } from '../lib/versionsApi'
 import type { SongVersionMeta } from '../lib/versionsApi'
 import { invalidateCompactGroupsCache } from '../lib/compactGroups'
-import { cleanDate } from './EditorPage'
+import { cleanDate } from './EditorPage.desktop'
 
 // Bulk editor — one dialog, two sources:
 //
@@ -23,9 +20,8 @@ import { cleanDate } from './EditorPage'
 //     like EditorPage does for a single song; review, admin auto-approve and
 //     My Proposals all behave the same.
 //   • Local library files, from the Library's multi-select "Edit tags". These
-//     write ID3 frames straight to disk through the same writeTrackMetadata
-//     channel LocalEditorPage uses, then mirror the change into the in-memory
-//     library index (and any other open window).
+//     write ID3 frames straight to disk through the writeTrackMetadata
+//     channel, then mirror the change into the in-memory library index.
 //
 // Both share the whole interaction model — tick a field, pick how the value
 // combines with what's there, preview, submit — so the machinery below is
@@ -37,7 +33,7 @@ import { cleanDate } from './EditorPage'
 
 /* ── Field model ───────────────────────────────────────────────────────────── */
 
-type FieldKind = 'text' | 'textarea' | 'list' | 'select' | 'image'
+type FieldKind = 'text' | 'textarea' | 'list' | 'select'
 
 /** How a field's input is combined with each item's existing value. Which of
  *  these a field offers depends on its kind (see DEFAULT_MODES). */
@@ -120,7 +116,6 @@ const DEFAULT_MODES: Record<FieldKind, Mode[]> = {
   list:     ['set', 'add', 'remove', 'fill', 'clear'],
   textarea: ['set', 'append', 'fill', 'clear'],
   text:     ['set', 'fill', 'clear'],
-  image:    ['set'],
 }
 
 const MODE_LABELS: Record<Mode, string> = {
@@ -287,42 +282,12 @@ function apiFields(
   ]
 }
 
-/* ── Local files ───────────────────────────────────────────────────────────── */
-
-const LOCAL_GROUPS = ['Tags', 'Extra tags']
-
-// Fields the library index carries in memory, so a write can be mirrored back
-// into it without re-scanning the file.
-const LOCAL_INDEX_KEYS = new Set(['artist', 'album', 'albumArtist', 'composer', 'genre'])
-
-const LOCAL_FIELDS: BulkField<LibraryTrack>[] = [
-  { key: 'artist', label: 'Artist', kind: 'list', group: 'Tags', read: t => t.artist || '' },
-  { key: 'albumArtist', label: 'Album artist', kind: 'text', group: 'Tags', read: t => t.albumArtist || '' },
-  { key: 'album', label: 'Album', kind: 'text', group: 'Tags', read: t => t.album || '' },
-  { key: 'genre', label: 'Genre', kind: 'list', group: 'Tags', read: t => t.genre || '' },
-  { key: 'year', label: 'Year', kind: 'text', group: 'Tags', placeholder: '2019', mono: true, read: t => (t.year ? String(t.year) : '') },
-  { key: 'composer', label: 'Composer', kind: 'list', group: 'Tags', read: t => t.composer || '' },
-  { key: 'albumArt', label: 'Album art', kind: 'image', group: 'Tags', writeOnly: true, modes: ['set', 'clear'], read: () => '' },
-
-  // Frames the library index doesn't keep — writable, but not readable without
-  // re-parsing every file, which a bulk selection can't afford.
-  { key: 'comment', label: 'Comment', kind: 'textarea', group: 'Extra tags', writeOnly: true, read: () => '' },
-  { key: 'publisher', label: 'Publisher', kind: 'text', group: 'Extra tags', writeOnly: true, read: () => '' },
-  { key: 'copyright', label: 'Copyright', kind: 'text', group: 'Extra tags', writeOnly: true, read: () => '' },
-  { key: 'conductor', label: 'Conductor', kind: 'text', group: 'Extra tags', writeOnly: true, read: () => '' },
-  { key: 'grouping', label: 'Grouping', kind: 'text', group: 'Extra tags', writeOnly: true, read: () => '' },
-  { key: 'mood', label: 'Mood', kind: 'text', group: 'Extra tags', writeOnly: true, read: () => '' },
-  { key: 'bpm', label: 'BPM', kind: 'text', group: 'Extra tags', placeholder: '120', mono: true, writeOnly: true, read: () => '' },
-  { key: 'initialKey', label: 'Key', kind: 'text', group: 'Extra tags', placeholder: 'A Minor', writeOnly: true, read: () => '' },
-]
-
 /* ── Component ─────────────────────────────────────────────────────────────── */
 
 export default function BulkEditModal(): JSX.Element | null {
-  const { target, close, account, updateLibraryTrack } = useStore(
+  const { target, close, account } = useStore(
     useShallow(s => ({
       target: s.bulkEdit, close: s.closeBulkEditor, account: s.account,
-      updateLibraryTrack: s.updateLibraryTrack,
     }))
   )
 
@@ -407,58 +372,8 @@ export default function BulkEditModal(): JSX.Element | null {
     }
   }, [target, account, eras, versionMeta, fetchVersionMeta])
 
-  const localSpec = useMemo<BulkSpec<LibraryTrack> | null>(() => {
-    if (target?.kind !== 'local') return null
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const el = (window as any).electron
-    return {
-      items: target.tracks,
-      groups: LOCAL_GROUPS,
-      fields: LOCAL_FIELDS,
-      keyOf: t => t.id,
-      titleOf: t => t.title || t.filePath.split(/[/\\]/).pop() || t.id,
-      noun: ['file', 'files'],
-      subtitle: 'Writes ID3 tags straight to the files.',
-      unavailable: el?.writeTrackMetadata ? undefined : 'Tag writing is only available in the desktop app.',
-      // Tag writing is MP3-only in the main process (see write-track-metadata);
-      // leaving other formats out up front beats failing half way through.
-      skip: t => (t.ext === 'mp3' ? null : `${t.ext.toUpperCase()} tags can't be written`),
-      actionLabel: n => `Write tags to ${n} file${n === 1 ? '' : 's'}`,
-      doneLabel: n => `${n} file${n === 1 ? '' : 's'} updated`,
-      commit: async (track, patch) => {
-        const meta: Record<string, unknown> = {}
-        const updates: Record<string, unknown> = {}
-        for (const [key, value] of Object.entries(patch)) {
-          if (key === 'albumArt') {
-            // '' is Clear — the handler reads present-but-empty as "remove the
-            // cover", and libraryArt wants null (read, artless) not ''.
-            meta.albumArtBase64 = value
-            updates.albumArt = value || null
-            updates.hasAlbumArt = !!value
-            continue
-          }
-          if (key === 'year') {
-            const n = value ? Number.parseInt(value, 10) : null
-            meta.year = Number.isFinite(n) ? n : null
-            updates.year = meta.year
-            continue
-          }
-          meta[key] = value
-          if (LOCAL_INDEX_KEYS.has(key)) updates[key] = value
-        }
-        const res = await el.writeTrackMetadata(track.filePath, meta)
-        if (res?.error) throw new Error(res.error)
-        updateLibraryTrack(track.id, updates)
-        broadcastLibraryTrackUpdate(track.id, updates)
-      },
-    }
-  }, [target, updateLibraryTrack])
-
   if (!target) return null
-  // One editor instance per source, keyed so switching sources resets its
-  // form rather than carrying ticked fields across.
   if (apiSpec) return <BulkEditor key="api" spec={apiSpec} onClose={close} />
-  if (localSpec) return <BulkEditor key="local" spec={localSpec} onClose={close} />
   return null
 }
 
@@ -528,7 +443,6 @@ function BulkEditor<T>({ spec, onClose }: { spec: BulkSpec<T>; onClose: () => vo
   )
 
   const display = (f: BulkField<T>, value: string): string => {
-    if (f.kind === 'image') return value ? 'new cover' : '—'
     if (!value) return '—'
     if (f.options) return f.options.find(o => o.value === value)?.label ?? value
     return value
@@ -642,14 +556,6 @@ function BulkEditor<T>({ spec, onClose }: { spec: BulkSpec<T>; onClose: () => vo
     }
   }
 
-  const pickImage = async (key: string): Promise<void> => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const el = (window as any).electron
-    if (!el?.selectImageFile) return
-    const dataUrl = await el.selectImageFile()
-    if (dataUrl) setValue(key, dataUrl)
-  }
-
   const summaryFor = (f: BulkField<T>): string => {
     if (f.writeOnly) return 'not read from files'
     const common = commonValues[f.key]
@@ -729,20 +635,6 @@ function BulkEditor<T>({ spec, onClose }: { spec: BulkSpec<T>; onClose: () => vo
               <p className="flex items-center gap-1.5 text-[11px] text-red-400">
                 <Eraser size={11} className="shrink-0" /> {MODE_HINTS.clear}
               </p>
-            ) : f.kind === 'image' ? (
-              <div className="flex items-center gap-3">
-                <div className="w-14 h-14 rounded-lg overflow-hidden bg-surface-overlay border border-[var(--border)] flex items-center justify-center shrink-0">
-                  {value
-                    ? <img src={value} alt="" className="w-full h-full object-cover" />
-                    : <ImageIcon size={18} className="text-text-muted opacity-60" />}
-                </div>
-                <button
-                  onClick={() => pickImage(f.key)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-overlay border border-[var(--border)] text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
-                >
-                  <Upload size={12} /> {value ? 'Choose another…' : 'Choose image…'}
-                </button>
-              </div>
             ) : f.kind === 'select' && f.options ? (
               f.options.length <= 4 ? (
                 <div className="flex flex-wrap gap-1.5">
@@ -791,11 +683,9 @@ function BulkEditor<T>({ spec, onClose }: { spec: BulkSpec<T>; onClose: () => vo
 
             <p className={`text-[11px] ${needsInput ? 'text-amber-500' : reach === 0 ? 'text-text-muted opacity-60' : 'text-text-muted opacity-75'}`}>
               {needsInput
-                ? f.kind === 'image'
-                  ? 'Choose an image to embed in every selected file.'
-                  : availableModes.includes('clear')
-                    ? 'Enter a value — or switch to "Clear" to empty this field.'
-                    : 'Enter a value.'
+                ? availableModes.includes('clear')
+                  ? 'Enter a value — or switch to "Clear" to empty this field.'
+                  : 'Enter a value.'
                 : reach === 0
                   ? 'Nothing would change.'
                   : `${reach} of ${writable.length} would change.`}

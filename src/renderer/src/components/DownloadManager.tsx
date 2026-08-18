@@ -1,65 +1,12 @@
 import { useEffect, useRef } from 'react'
-import { Download, X, CheckCircle2, AlertCircle, Loader2, RefreshCw, FolderOpen, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react'
-import { useStore, useStorePick, DownloadItem } from '../store/useStore'
+import { Download, X, CheckCircle2, AlertCircle, Loader2, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react'
+import { useStorePick, DownloadItem } from '../store/useStore'
 import { formatBytes } from '../lib/format'
 import { cancelCompUpload } from '../lib/compUploads'
 
 export default function DownloadManager(): JSX.Element | null {
-  const { downloads, showDownloadManager, setShowDownloadManager, addDownload, updateDownload, clearCompletedDownloads, setUpdateStatus, wrldFullscreen } = useStorePick('downloads', 'showDownloadManager', 'setShowDownloadManager', 'addDownload', 'updateDownload', 'clearCompletedDownloads', 'setUpdateStatus', 'wrldFullscreen')
-  const el = (window as any).electron
+  const { downloads, showDownloadManager, setShowDownloadManager, clearCompletedDownloads, wrldFullscreen } = useStorePick('downloads', 'showDownloadManager', 'setShowDownloadManager', 'clearCompletedDownloads', 'wrldFullscreen')
   const panelRef = useRef<HTMLDivElement>(null)
-  // Per-download last-sample (bytes, timestamp) used to derive a live
-  // bytes/sec speed reading from the raw received-byte progress events.
-  const speedSamples = useRef<Record<string, { bytes: number; time: number }>>({})
-
-  useEffect(() => {
-    if (!el) return
-    const offStarted = el.onDownloadStarted((d: { filename: string; savePath: string; total: number }) => {
-      const id = `file-${d.filename}-${Date.now()}`
-      addDownload({ id, filename: d.filename, type: 'file', state: 'downloading', percent: 0, total: d.total, savePath: d.savePath })
-      speedSamples.current[id] = { bytes: 0, time: Date.now() }
-      setShowDownloadManager(true)
-    })
-    const offProgress = el.onDownloadProgress((d: { filename: string; received: number; total: number; percent: number }) => {
-      const { downloads: cur } = useStore.getState()
-      const match = [...cur].reverse().find((x) => x.filename === d.filename && x.state === 'downloading')
-      if (!match) return
-      const sample = speedSamples.current[match.id] ?? { bytes: 0, time: Date.now() }
-      const now = Date.now()
-      const dt = (now - sample.time) / 1000
-      let speedBps: number | undefined
-      if (dt >= 0.4) {
-        speedBps = Math.max(0, (d.received - sample.bytes) / dt)
-        speedSamples.current[match.id] = { bytes: d.received, time: now }
-      }
-      updateDownload(match.id, { percent: d.percent, received: d.received, total: d.total, bytesReceived: d.received, ...(speedBps !== undefined ? { speedBps } : {}) })
-    })
-    const offDone = el.onDownloadDone((d: { filename: string; state: string; savePath: string }) => {
-      const { downloads: cur } = useStore.getState()
-      const match = [...cur].reverse().find((x) => x.filename === d.filename && x.state === 'downloading')
-      if (match) {
-        updateDownload(match.id, { state: d.state === 'completed' ? 'done' : d.state === 'cancelled' ? 'cancelled' : 'error', percent: d.state === 'completed' ? 100 : match.percent, savePath: d.savePath, speedBps: undefined })
-        delete speedSamples.current[match.id]
-      }
-    })
-    const offUpdate = el.onUpdateStatus((d: { type: string; version?: string; percent?: number; message?: string }) => {
-      setUpdateStatus(d)
-      if (d.type === 'downloading') {
-        const { downloads: cur } = useStore.getState()
-        const existing = cur.find((x) => x.type === 'update')
-        if (existing) updateDownload(existing.id, { percent: d.percent ?? 0, state: 'downloading' })
-        else { addDownload({ id: 'update', filename: `Update${d.version ? ` v${d.version}` : ''}`, type: 'update', state: 'downloading', percent: d.percent ?? 0 }); setShowDownloadManager(true) }
-      } else if (d.type === 'downloaded') {
-        const existing = useStore.getState().downloads.find((x) => x.type === 'update')
-        if (existing) updateDownload(existing.id, { state: 'done', percent: 100, filename: `Update v${d.version ?? ''} ready` })
-      } else if (d.type === 'error') {
-        const existing = useStore.getState().downloads.find((x) => x.type === 'update' && x.state === 'downloading')
-        if (existing) updateDownload(existing.id, { state: 'error', error: d.message })
-      }
-    })
-    return () => { offStarted?.(); offProgress?.(); offDone?.(); offUpdate?.() }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   // Close panel on outside click
   useEffect(() => {
@@ -71,7 +18,6 @@ export default function DownloadManager(): JSX.Element | null {
     return () => document.removeEventListener('mousedown', handler)
   }, [showDownloadManager])
 
-  if (!el) return null
   // WRLD's immersive fullscreen hides the window-control buttons this
   // trigger is anchored next to (see App.tsx / WrldView.tsx) — with no
   // corner reference left, it just floats awkwardly, so hide it too.
@@ -141,20 +87,14 @@ export default function DownloadManager(): JSX.Element | null {
 }
 
 function DownloadRow({ item }: { item: DownloadItem }): JSX.Element {
-  const el = (window as any).electron
   const isDone = item.state === 'done'
   const isError = item.state === 'error' || item.state === 'cancelled'
   const isActive = item.state === 'downloading'
   const isUpload = item.type === 'upload'
 
-  const sizeLabel = item.type === 'playlist'
-    ? [
-        item.total ? `${item.received ?? 0} / ${item.total} tracks` : null,
-        item.bytesReceived ? formatBytes(item.bytesReceived) : null,
-      ].filter(Boolean).join(' · ') || null
-    : item.total && item.total > 0
-      ? `${formatBytes(item.received ?? 0)} / ${formatBytes(item.total)}`
-      : item.received ? formatBytes(item.received) : null
+  const sizeLabel = item.total && item.total > 0
+    ? `${formatBytes(item.received ?? 0)} / ${formatBytes(item.total)}`
+    : item.received ? formatBytes(item.received) : null
 
   const speedLabel = isActive && item.speedBps ? `${formatBytes(item.speedBps)}/s` : null
 
@@ -164,7 +104,6 @@ function DownloadRow({ item }: { item: DownloadItem }): JSX.Element {
         <div className="mt-0.5 shrink-0">
           {isDone ? <CheckCircle2 size={13} className="text-emerald-400" />
             : isError ? <AlertCircle size={13} className="text-red-400" />
-            : item.type === 'update' ? <RefreshCw size={13} className="text-[var(--accent)] animate-spin" />
             : isUpload ? <ArrowUpFromLine size={13} className="text-[var(--accent)] animate-pulse" />
             : <Loader2 size={13} className="text-[var(--accent)] animate-spin" />}
         </div>
@@ -175,7 +114,6 @@ function DownloadRow({ item }: { item: DownloadItem }): JSX.Element {
               {sizeLabel}{sizeLabel && speedLabel ? ' · ' : ''}{speedLabel}
             </p>
           )}
-          {isDone && item.savePath && <p className="text-[var(--text-muted)] text-[10px] mt-0.5 truncate" title={item.savePath}>{item.savePath.split(/[/\\]/).pop()}</p>}
           {isError && item.error && <p className="text-red-400 text-[10px] mt-0.5 truncate">{item.error}</p>}
           {isActive && (
             <div className="mt-1.5 h-1 bg-[var(--surface-overlay)] rounded-full overflow-hidden">
@@ -189,11 +127,6 @@ function DownloadRow({ item }: { item: DownloadItem }): JSX.Element {
             <button onClick={() => cancelCompUpload(item.id)} title="Cancel upload"
               className="p-1 rounded hover:bg-[var(--surface-raised)] text-[var(--text-muted)] hover:text-red-400 transition-colors">
               <X size={12} />
-            </button>
-          )}
-          {isDone && item.savePath && el?.showItemInFolder && (
-            <button onClick={() => el.showItemInFolder(item.savePath!)} title="Show in folder" className="p-1 rounded hover:bg-[var(--surface-raised)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
-              <FolderOpen size={12} />
             </button>
           )}
         </div>

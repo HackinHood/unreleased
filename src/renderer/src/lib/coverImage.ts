@@ -1,14 +1,8 @@
-// Copying and saving cover art.
-//
-// Every cover the app displays is readable from the renderer: the API sends
-// Access-Control-Allow-Origin (same as it does for audio — see the CORS notes
-// in audioEffects.ts) and the desktop build's local-media scheme is registered
-// with supportFetchAPI/corsEnabled, so a plain fetch() gets the bytes for API
-// covers, local-file covers, and data:/blob: covers alike.
-//
-// From there the two platforms diverge. On desktop the bytes go to the main
-// process, which owns the real clipboard and the native save dialog; on the web
-// build they go to the async Clipboard API and an <a download> blob link.
+// Copying and saving cover art. Every cover the app displays is readable from
+// the renderer: the API sends Access-Control-Allow-Origin (same as it does
+// for audio — see the CORS notes in audioEffects.ts), so a plain fetch() gets
+// the bytes for API covers and data:/blob: covers alike. Copy goes through
+// the async Clipboard API; save through an <a download> blob link.
 
 const MIME_EXT: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -19,12 +13,6 @@ const MIME_EXT: Record<string, string> = {
   'image/bmp': 'bmp',
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function desktop(): any {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (window as any).electron
-}
-
 async function fetchImageBlob(url: string): Promise<Blob> {
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Image request failed (${res.status})`)
@@ -33,20 +21,10 @@ async function fetchImageBlob(url: string): Promise<Blob> {
   return blob
 }
 
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(reader.error ?? new Error('Could not read image'))
-    reader.readAsDataURL(blob)
-  })
-}
-
-// Both clipboards only take PNG reliably — Chromium's async Clipboard API
-// rejects anything else outright, and Electron's nativeImage decodes just
-// PNG/JPEG — while covers arrive as JPEG or WebP. Re-encode through a canvas.
-// (Saving keeps the original bytes instead, so a saved file isn't bloated by a
-// pointless JPEG→PNG round trip.)
+// Chromium's async Clipboard API only takes PNG reliably — it rejects
+// anything else outright — while covers arrive as JPEG or WebP. Re-encode
+// through a canvas. (Saving keeps the original bytes instead, so a saved
+// file isn't bloated by a pointless JPEG→PNG round trip.)
 async function toPngBlob(blob: Blob): Promise<Blob> {
   if (blob.type === 'image/png') return blob
   const bitmap = await createImageBitmap(blob)
@@ -75,26 +53,13 @@ export function coverFileName(title: string, mime: string): string {
 /** Puts the cover on the clipboard as an image, pasteable into other apps. */
 export async function copyCoverImage(url: string): Promise<void> {
   const png = await toPngBlob(await fetchImageBlob(url))
-  const el = desktop()
-  if (el?.copyImageToClipboard) {
-    const res = await el.copyImageToClipboard(await blobToDataUrl(png))
-    if (res?.error) throw new Error(res.error)
-    return
-  }
   await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])
 }
 
-/** Writes the cover to disk — a native Save-as dialog on desktop, a browser
- *  download on the web. Resolves 'canceled' if the user dismissed the dialog. */
+/** Writes the cover to disk as a browser download. */
 export async function saveCoverImage(url: string, title: string): Promise<'saved' | 'canceled'> {
   const blob = await fetchImageBlob(url)
   const name = coverFileName(title, blob.type)
-  const el = desktop()
-  if (el?.saveImageFile) {
-    const res = await el.saveImageFile({ defaultName: name, dataUrl: await blobToDataUrl(blob) })
-    if (res?.error) throw new Error(res.error)
-    return res?.canceled ? 'canceled' : 'saved'
-  }
   // The cover's own URL is cross-origin, where `download` is ignored and the
   // browser navigates to the image instead — so hand the anchor a same-origin
   // blob: URL, which does honour the attribute (and the filename).

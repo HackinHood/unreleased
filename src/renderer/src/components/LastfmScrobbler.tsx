@@ -30,9 +30,9 @@ interface Candidate {
   listened: number
 }
 
-// Headless — mounted once in the main window (App), next to DiscordRpcSync.
-// Watches playback (both regular tracks and the live radio) and turns
-// qualifying listens into queued scrobbles; lib/lastfm owns the network side.
+// Headless — mounted once in App. Watches playback (both regular tracks and
+// the live radio) and turns qualifying listens into queued scrobbles;
+// lib/lastfm owns the network side.
 export default function LastfmScrobbler(): JSX.Element | null {
   const {
     currentTrack, isPlaying,

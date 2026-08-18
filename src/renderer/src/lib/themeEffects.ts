@@ -153,8 +153,7 @@ async function extractSongPalette(
 let songAccentActive = false
 
 // Applies the active skin's CSS variables and the accent-color variables to
-// <html>. Shared by App and the pop-out window shell (FloatApp) so a floating
-// window restyles itself exactly like the main one.
+// <html>.
 export function useThemeEffects(): void {
   const { theme, customSkins, accentColor, appTextScale, appFont, lyricsFont, gradientsEnabled, surfaceGradientsEnabled } = useStorePick(
     'theme', 'customSkins', 'accentColor', 'appTextScale', 'appFont', 'lyricsFont', 'gradientsEnabled', 'surfaceGradientsEnabled',

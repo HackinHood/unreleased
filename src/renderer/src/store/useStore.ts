@@ -1,6 +1,6 @@
 ﻿import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
-import { ViewType, Track, FullTrack, LibraryTrack, LocalPlaylist, FollowedPlaylist, OfflineTrackMeta, OfflinePlaylistEntry, ConvertTarget } from '../types'
+import { ViewType, Track, FullTrack, LibraryTrack, LocalPlaylist, GuestPlaylist, FollowedPlaylist } from '../types'
 import { APP_VERSION } from '../lib/appVersion'
 import { ls } from '../lib/persist'
 import * as userApi from '../lib/userApi'
@@ -38,42 +38,25 @@ import { DEFAULT_NAV_ORDER, DEFAULT_NAV_VISIBILITY, DEFAULT_NAV_CONTROL_ORDER, D
 import { getLastfmSession } from '../lib/lastfm'
 import { runWhenIdle } from '../lib/platform'
 
-// Key used to track songs downloaded individually (song context menu →
-// "Download offline"), rather than through a synced playlist. It's just
-// another entry in `offlinePlaylists`/main's `lib.playlists`, so a song
-// downloaded this way survives the same-name pruning that offline-set-playlist
-// runs after every real playlist sync — without this, an individually-
-// downloaded track would look "unreferenced" the next time any playlist
-// resyncs and get deleted out from under the user.
-const INDIVIDUAL_DOWNLOADS_KEY = 'individual-downloads'
-
-// True when this renderer is a pop-out window (FloatApp, ?float=<view>).
-// Pop-outs share localStorage with the main window, so only the main window
-// may flush the report outbox — the live endpoints have no idempotency key,
-// so two windows flushing the same queue would double-send every report.
-export const IS_FLOAT_WINDOW = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('float')
-
 // Lightweight localStorage persistence helper — see lib/persist.ts (it lives
 // there so queueSlice can share it without importing this module back).
 
-// ─── Download item (in-session, Electron only) ────────────────────────────────
+// ─── Download item (in-session) ────────────────────────────────
 
 export interface DownloadItem {
   id: string
   filename: string
-  // 'upload' is the one that goes the other way — a comp file proposal's body
-  // on its way to the API (see lib/compUploads).
-  type: 'file' | 'zip' | 'update' | 'playlist' | 'upload'
+  // Comp file proposal uploads (see lib/compUploads) — the only kind of
+  // transfer left in the Downloads panel.
+  type: 'upload'
   state: 'downloading' | 'done' | 'error' | 'cancelled'
   percent: number
   received?: number
   total?: number
-  savePath?: string
   error?: string
-  // Byte-level size/throughput info, shown alongside the track-count or
-  // percent progress above — `bytesReceived` is cumulative bytes actually
-  // written to disk so far (across every file, for multi-file downloads),
-  // `speedBps` is a live bytes/sec sample (undefined between samples/when idle).
+  // Byte-level size/throughput info, shown alongside the percent progress
+  // above — `bytesReceived` is cumulative bytes sent so far, `speedBps` is a
+  // live bytes/sec sample (undefined between samples/when idle).
   bytesReceived?: number
   speedBps?: number
 }
@@ -82,32 +65,10 @@ export interface DownloadItem {
 // horizontal bar above/below the content. Mobile always uses the bottom tab bar.
 export type SidebarPosition = 'left' | 'right' | 'top' | 'bottom'
 
-// Where the File/Edit/View… app-menu button lives (desktop only): the floating
-// title-strip pill, tucked inside the side menu, or off entirely.
-export type AppMenuPosition = 'title-bar' | 'sidebar' | 'hidden'
-
 // The Settings dialog's tabs — the union Settings.tsx keys its content off, and
 // the target for a deep-link open (see settingsTab). Keep in sync with the
 // `tab` state there.
 export type SettingsTab = 'appearance' | 'playback' | 'shortcuts' | 'app' | 'developer' | 'feedback' | 'about'
-
-// The detached ("pop-out") BrowserWindows the desktop build can open instead of
-// rendering a view inline (see FloatApp). Each can be turned off individually:
-// for settings/songInfo/editor that falls back to the in-app overlay, and for
-// miniPlayer (which has no in-app equivalent) it hides the pop-out entry point.
-export type PopoutWindowKind = 'settings' | 'songInfo' | 'editor' | 'localEditor' | 'miniPlayer' | 'convert' | 'equalizer' | 'profile'
-// `equalizer` defaults OFF — unlike the others (which start life as pop-outs
-// and fall back to inline when disabled), the equalizer's normal home is the
-// in-app popover; turning it on makes the panel open as its own window.
-const POPOUT_WINDOW_DEFAULTS: Record<PopoutWindowKind, boolean> = {
-  settings: true, songInfo: true, editor: true, localEditor: true, miniPlayer: true, convert: true, equalizer: false,
-  // Review work (proposals, comp files, reports) is the one place people keep
-  // a page open *while* using the rest of the app — checking a song against
-  // the proposal editing it, playing what they're about to approve. Its own
-  // window is the point, so this starts on; the toggle in Settings → Windows
-  // sends it back to the in-app tab.
-  profile: true,
-}
 
 // ─── Non-queue state ──────────────────────────────────────────────────────────
 
@@ -168,10 +129,6 @@ interface AppState {
   // tab's button and the 'equalizer' hotkey can open it from anywhere — the
   // always-mounted Player owns the actual portal.
   showEqPanel: boolean
-  // Pop-out views currently open (from main's 'float-windows' broadcast).
-  // Per-window state, deliberately NOT synced: it's pushed to every window
-  // already, and mirroring it would fight that.
-  openFloatViews: string[]
   // Song whose info modal is shown by the main window's global host (App's
   // <GlobalSongInfoHost>). Only used to "attach" a floating song-info window
   // back into the main window — the per-view list modals keep their own local
@@ -183,6 +140,11 @@ interface AppState {
   // is active — lets App.tsx hide the frameless-window title bar controls,
   // which would otherwise float over the immersive view.
   wrldFullscreen: boolean
+  // Lets a view's sub-state paint a hero image full-bleed behind the app bar
+  // and up under the status bar, instead of sitting on the shell's flat
+  // reserved inset strip. The view that raises it MUST clear it on the way
+  // out, or the shell stays bled after navigating elsewhere.
+  heroBleedTop: boolean
   radioFmActive: boolean
   radioFmIsLive: boolean | null  // null = unknown (not yet checked)
   radioFmNowPlaying: import('../lib/radioLive').RadioTrack | null
@@ -197,10 +159,9 @@ interface AppState {
   theme: SkinId
   // User-created skins (built in the in-app editor or imported). Local-first
   // and persisted; mirrored into lib/skins' module cache on every write so
-  // getSkin() resolves them everywhere. Synced across windows (windowSync).
+  // getSkin() resolves them everywhere.
   customSkins: Skin[]
   sidebarPosition: SidebarPosition
-  appMenuPosition: AppMenuPosition
   // User-defined order of the primary side-menu nav items, by view id. Only
   // ever a permutation of the known ids — orderedNavItems() sanitizes it on
   // read, so a stale/partial saved order can't drop or duplicate a tab.
@@ -284,10 +245,6 @@ interface AppState {
   // disconnecting the account.
   lastfmUser: string | null
   lastfmEnabled: boolean
-  // Per-kind toggles for the detached pop-out windows (desktop only). Disabling
-  // one keeps the feature working — it just renders inline in the main window
-  // instead (or, for the mini player, hides the pop-out button).
-  popoutWindows: Record<PopoutWindowKind, boolean>
 
   // Keyboard shortcuts. `hotkeyBindings` holds only user *overrides* of the
   // defaults in lib/hotkeys.ts (actionId → combo; an explicit '' means the
@@ -327,14 +284,6 @@ interface AppState {
   // `reportModal` is the open report dialog's target (null = closed).
   pendingReports: PendingReport[]
   reportModal: ReportTarget | null
-
-  // `convertModal` is the local track whose "Convert format" dialog is open
-  // (null = closed). See components/ConvertFormatModal.
-  convertModal: ConvertTarget | null
-
-  // Whether the "Import from URL" dialog is open. See
-  // components/UrlImportModal.
-  urlImportModal: boolean
 
   // Playlist folders — a local-first grouping over both synced and local
   // playlists (keyed by "api:<id>"/"local:<id>"). Persisted to localStorage and
@@ -385,17 +334,12 @@ interface AppState {
   // Editor
   pendingEditorSongId: number | null
   pendingEditProposal: { id: number; songId: number | null; proposedData: Record<string, unknown>; editorNotes: string } | null
-  // Local-file metadata editor — the track being edited on the 'local-editor' view
-  pendingLocalEditTrack: LibraryTrack | null
-  // What the bulk editor dialog has open (null = closed) — either a Tracker
-  // multi-selection of API songs (submits edit proposals) or a Library
-  // multi-selection of local files (writes ID3 tags). Holds the full objects
-  // the caller already had rather than ids, so the dialog can show "same
-  // across all"/"mixed" per field without re-fetching. See BulkEditModal.
-  bulkEdit:
-    | { kind: 'api'; songs: JWApiSong[] }
-    | { kind: 'local'; tracks: LibraryTrack[] }
-    | null
+  // What the bulk editor dialog has open (null = closed) — a Tracker
+  // multi-selection of API songs, which submits one edit proposal per song.
+  // Holds the full objects the caller already had rather than ids, so the
+  // dialog can show "same across all"/"mixed" per field without re-fetching.
+  // See BulkEditModal.
+  bulkEdit: { kind: 'api'; songs: JWApiSong[] } | null
 
 
   // Library (Electron only)
@@ -424,20 +368,18 @@ interface AppState {
   localPlaylists: LocalPlaylist[]
   activeLocalPlaylistId: string | null
 
+  // Playlists for signed-out users — see GuestPlaylist. Persisted to
+  // localStorage, so unlike localPlaylists these aren't tied to scanned
+  // library tracks and work identically on every platform.
+  guestPlaylists: GuestPlaylist[]
+
   // Other people's playlists followed from a share link — see FollowedPlaylist.
   // Local-only (localStorage), so this list is per-device.
   followedPlaylists: FollowedPlaylist[]
 
-  // Offline playlist sync (Electron only) — API-backed playlists downloaded
-  // for offline playback, kept in sync with the API's song metadata.
-  offlineTracks: Record<string, OfflineTrackMeta>
-  offlinePlaylists: Record<string, OfflinePlaylistEntry>
-  offlineSync: Record<string, { state: 'syncing' | 'done' | 'error'; current: number; total: number }>
-
-  // Downloads (Electron only)
+  // Downloads (comp upload progress — see lib/compUploads)
   downloads: DownloadItem[]
   showDownloadManager: boolean
-  updateStatus: { type: string; version?: string; percent?: number; bytesPerSecond?: number; message?: string } | null
 }
 
 interface AppActions {
@@ -478,26 +420,21 @@ interface AppActions {
   setSettingsTab: (tab: SettingsTab | null) => void
   // Open Settings, optionally jumping straight to a tab (e.g. 'shortcuts').
   openSettings: (tab?: SettingsTab) => void
-  // For the settings launcher icon: closes it if already open (in either
-  // form) instead of just focusing the pop-out again. setShowSettings(true)
-  // stays "always open/focus" for callers that never want to close it
-  // (the open-settings hotkey, the library empty-state CTA).
+  // For the settings launcher icon: closes it if already open instead of
+  // just re-opening. setShowSettings(true) stays "always open" for callers
+  // that never want to close it (the open-settings hotkey, empty-state CTAs).
   toggleSettings: () => void
   /** Single entry point for every "go to my profile" control (sidebar row,
-   *  bottom nav tab, the player's profile hotkey). Opens the pop-out window
-   *  when that's enabled, otherwise navigates in-app. */
+   *  bottom nav tab, the player's profile hotkey). */
   openProfile: () => void
   setShowDiagnostics: (show: boolean) => void
   setShowQueue: (show: boolean) => void
   setShowEqPanel: (show: boolean) => void
-  setOpenFloatViews: (views: string[]) => void
-  /** Single entry point for every equalizer opener (player bar, WRLD tab,
-   *  hotkey): focuses the pop-out when one is open instead of showing a
-   *  second copy of the same panel in-app. */
   toggleEqPanel: () => void
   setInfoSongId: (id: number | null) => void
   setPlayerCollapsed: (collapsed: boolean) => void
   setWrldFullscreen: (fullscreen: boolean) => void
+  setHeroBleedTop: (heroBleedTop: boolean) => void
   setTheme: (theme: SkinId) => void
   /** Creates or updates a custom skin (upsert by id). Since editing the active
    *  skin's palette re-runs the theme effect, the editor uses this for live
@@ -506,7 +443,6 @@ interface AppActions {
   /** Removes a custom skin; if it was the active theme, falls back to dark. */
   deleteCustomSkin: (id: string) => void
   setSidebarPosition: (position: SidebarPosition) => void
-  setAppMenuPosition: (position: AppMenuPosition) => void
   setNavOrder: (order: ViewType[]) => void
   setNavItemVisible: (view: ViewType, visible: boolean) => void
   setNavControlOrder: (order: string[]) => void
@@ -537,7 +473,6 @@ interface AppActions {
   setMediaOverlayEnabled: (enabled: boolean) => void
   setLastfmUser: (name: string | null) => void
   setLastfmEnabled: (enabled: boolean) => void
-  setPopoutWindow: (kind: PopoutWindowKind, enabled: boolean) => void
   // Bind (or, with combo === '', clear) a shortcut. Passing a combo already in
   // use elsewhere transfers it — the previous owner is cleared — so bindings
   // stay unique. Resets restore every action to its default.
@@ -589,12 +524,6 @@ interface AppActions {
   /** Opens the report dialog for general feedback or a specific song. */
   openReport: (target: ReportTarget) => void
   closeReport: () => void
-  /** Opens / closes the "Convert format" dialog for a local track. */
-  openConvert: (target: ConvertTarget) => void
-  closeConvert: () => void
-  /** Opens / closes the "Import from URL" dialog. */
-  openUrlImport: () => void
-  closeUrlImport: () => void
   /** Queues a general feedback report and tries to deliver it. `contact` is
    *  the optional reach-me field the endpoint accepts. Resolves once that
    *  delivery attempt settles: `true` if it actually reached the server this
@@ -654,20 +583,11 @@ interface AppActions {
 
   setPendingCompProposal: (v: { paths: string[]; changeType: 'delete' | 'replace' } | null) => void
   setPendingEditorSongId: (id: number | null) => void
-  // "Edit this song" from anywhere — desktop opens the pop-out editor
-  // window, web navigates to the in-app editor view.
   openSongEditor: (songId: number) => void
   setPendingEditProposal: (p: { id: number; songId: number | null; proposedData: Record<string, unknown>; editorNotes: string } | null) => void
-  setPendingLocalEditTrack: (track: LibraryTrack | null) => void
-  // "Edit metadata" on a local track from anywhere — desktop opens the
-  // pop-out local editor window, web navigates to the in-app view.
-  openLocalEditor: (track: LibraryTrack) => void
   // "Edit" on a multi-song selection — opens the bulk editor dialog, which
   // submits one update proposal per song.
   openBulkEditor: (songs: JWApiSong[]) => void
-  // "Edit tags" on a multi-file selection in the Library — same dialog, but
-  // writing ID3 tags to each file instead.
-  openBulkTrackEditor: (tracks: LibraryTrack[]) => void
   closeBulkEditor: () => void
 
 
@@ -697,6 +617,15 @@ interface AppActions {
   addToLocalPlaylist: (playlistId: string, trackId: string) => void
   removeFromLocalPlaylist: (playlistId: string, trackId: string) => void
   reorderLocalPlaylist: (playlistId: string, trackIds: string[]) => void
+
+  // Guest playlists (see GuestPlaylist) — createGuestPlaylist returns the new
+  // playlist's id so the caller can navigate straight to it.
+  createGuestPlaylist: (name: string) => string
+  deleteGuestPlaylist: (id: string) => void
+  renameGuestPlaylist: (id: string, name: string) => void
+  addToGuestPlaylist: (playlistId: string, track: Track) => void
+  removeFromGuestPlaylist: (playlistId: string, trackId: string) => void
+  reorderGuestPlaylist: (playlistId: string, tracks: Track[]) => void
   // Import an .m3u/.m3u8 into a new local playlist, matching its file paths to
   // scanned library tracks. Resolves a summary (matched/total + names of the
   // paths that weren't in the library) so the UI can report skips.
@@ -716,20 +645,11 @@ interface AppActions {
   unfollowPlaylist: (id: number) => void
   updateFollowedPlaylistMeta: (id: number, meta: { name: string; trackCount: number; coverUrl: string | null }) => void
 
-  loadOfflineLibrary: () => Promise<void>
-  downloadPlaylistOffline: (key: string, name: string, songIds: number[], opts?: { silent?: boolean }) => Promise<void>
-  removePlaylistOffline: (key: string) => Promise<void>
-  downloadTrackOffline: (songId: number) => Promise<void>
-  removeOfflineTrack: (trackId: string) => Promise<void>
-  syncOfflinePlaylists: () => Promise<void>
-  autoDownloadIfOffline: (playlistId: number, addedSongIds: number[]) => Promise<void>
-
   addDownload: (item: DownloadItem) => void
   updateDownload: (id: string, updates: Partial<DownloadItem>) => void
   removeDownload: (id: string) => void
   clearCompletedDownloads: () => void
   setShowDownloadManager: (show: boolean) => void
-  setUpdateStatus: (status: { type: string; version?: string; percent?: number; bytesPerSecond?: number; message?: string } | null) => void
 }
 
 export type AppStore = QueueSlice & AppState & AppActions
@@ -743,26 +663,6 @@ let _playlistsInFlight = false
 let _detailsPrefetchInFlight = false
 // Dedup flag: same idea for the Tracker/Files offline-cache warm-up
 let _apiPrefetchInFlight = false
-
-// ── Offline-sync concurrency guards ──────────────────────────────────────────
-// syncOfflinePlaylists fires from three places (startup, every window focus,
-// a 15-min interval) with nothing stopping them from overlapping. Overlapping
-// runs each snapshot `offlineTracks` at their start, so both would download
-// the same missing songs — two streams writing the same file — and re-announce
-// downloads the user already saw ("my playlists redownload on their own").
-let _offlineSyncInFlight = false
-// Serializes offline writers per playlist key. Without this, a manual download,
-// a background resync, and autoDownloadIfOffline can interleave for the same
-// playlist; whichever finishes last saves its (possibly stale) song list, and
-// offline-set-playlist's prune then deletes freshly-downloaded files that the
-// stale list doesn't mention — which the next resync dutifully re-downloads.
-const _offlineKeyQueues = new Map<string, Promise<void>>()
-// Bumped by removePlaylistOffline. A download that started before the bump
-// aborts instead of running offlineSetPlaylist at its end — otherwise removing
-// a playlist while a sync was in flight re-registered ("resurrected") it, and
-// since removal had already pruned its files, the next background sync
-// re-downloaded the entire playlist unprompted.
-const _offlineKeyEpochs = new Map<string, number>()
 
 // Pending cover-art results awaiting a batched flush (see applyLibraryArt).
 // Covers arrive in bursts — one per visible row — and applying each through
@@ -839,27 +739,6 @@ function hydrateCustomSkins(): Skin[] {
 // be POSTed twice before the first response removed it.
 let _reportsFlushing = false
 
-// A pop-out's own _flushReports call is always a no-op (see IS_FLOAT_WINDOW
-// above) — delivery actually happens in the main window after `pendingReports`
-// syncs over (see windowSync.ts), and the outcome syncs back the same way. So
-// instead of claiming "queued" the instant a pop-out enqueues (true then, but
-// misleading seconds later once it's actually gone through), wait briefly for
-// that round trip to land before answering. Falls back to "still queued" if
-// nothing comes back in time (main window closed, sync hiccup, etc.).
-function waitForReportSettled(id: string, timeoutMs = 8000): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (!useStore.getState().pendingReports.some((r) => r.id === id)) { resolve(true); return }
-    const unsub = useStore.subscribe((state) => {
-      if (!state.pendingReports.some((r) => r.id === id)) {
-        clearTimeout(timer)
-        unsub()
-        resolve(true)
-      }
-    })
-    const timer = setTimeout(() => { unsub(); resolve(false) }, timeoutMs)
-  })
-}
-
 // ─── Profile-blob push debounce ───────────────────────────────────────────────
 
 // Preferences and folders each live as one JSON field on /account/me/, PATCHed
@@ -871,16 +750,6 @@ const PROFILE_PUSH_DEBOUNCE_MS = 1500
 let _prefsPushTimer: ReturnType<typeof setTimeout> | null = null
 let _listeningPlaysPushTimer: ReturnType<typeof setTimeout> | null = null
 let _foldersPushTimer: ReturnType<typeof setTimeout> | null = null
-
-// Chains `fn` behind any in-flight offline work for `key` so writers for the
-// same playlist never interleave.
-function enqueueOfflineWork(key: string, fn: () => Promise<void>): Promise<void> {
-  const prev = _offlineKeyQueues.get(key) ?? Promise.resolve()
-  const run = prev.catch(() => {}).then(fn)
-  _offlineKeyQueues.set(key, run)
-  run.finally(() => { if (_offlineKeyQueues.get(key) === run) _offlineKeyQueues.delete(key) }).catch(() => {})
-  return run
-}
 
 // ── M3U import helpers (shared by the file-picker and drag-drop paths) ──────
 // Match parsed .m3u entries against scanned library tracks by file path.
@@ -1049,10 +918,10 @@ export const useStore = create<AppStore>((set, get, store) => ({
   showDiagnostics: false,
   showQueue: false,
   showEqPanel: false,
-  openFloatViews: [],
   infoSongId: null,
   playerCollapsed: ls.get<boolean>('playerCollapsed') ?? false,
   wrldFullscreen: false,
+  heroBleedTop: false,
   radioFmActive: false,
   radioFmIsLive: null,
   radioFmNowPlaying: null,
@@ -1067,7 +936,6 @@ export const useStore = create<AppStore>((set, get, store) => ({
   // getSkin() maps unknown persisted ids (renamed/removed skins) back to dark.
   theme: getSkin(ls.get<string>('theme') ?? 'dark').id,
   sidebarPosition: ls.get<SidebarPosition>('sidebarPosition') ?? 'left',
-  appMenuPosition: ls.get<AppMenuPosition>('appMenuPosition') ?? 'sidebar',
   navOrder: ls.get<ViewType[]>('navOrder') ?? DEFAULT_NAV_ORDER,
   navVisibility: { ...DEFAULT_NAV_VISIBILITY, ...(ls.get<Record<string, boolean>>('navVisibility') ?? {}) },
   navControlOrder: (() => {
@@ -1113,91 +981,28 @@ export const useStore = create<AppStore>((set, get, store) => ({
   setRadioFmUpNext: (radioFmUpNext) => set({ radioFmUpNext }),
   setRadioFmQueuePreview: (radioFmQueuePreview) => set({ radioFmQueuePreview }),
   setRadioFmMatchedSong: (radioFmMatchedSong) => set({ radioFmMatchedSong }),
-  setShowSettings: (showSettings) => {
-    // Desktop: Settings lives in its own pop-out window (see FloatApp) — every
-    // "open settings" path routes there, unless the user turned that pop-out
-    // off. The in-app overlay is the fallback (and the only path on the web
-    // build, where there are no extra OS windows).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const el = (window as any).electron
-    if (showSettings && el?.openFloatWindow && get().popoutWindows.settings) {
-      el.openFloatWindow('settings')
-      return
-    }
-    set({ showSettings })
-  },
+  setShowSettings: (showSettings) => set({ showSettings }),
   setSettingsTab: (settingsTab) => set({ settingsTab }),
-  // Set the target tab BEFORE opening so a freshly-spawned pop-out Settings
-  // window picks it up in its boot snapshot; if one's already open, the change
-  // reaches it over windowSync and Settings switches tabs in response.
   openSettings: (tab) => {
     if (tab) set({ settingsTab: tab })
     get().setShowSettings(true)
   },
-  toggleSettings: () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const el = (window as any).electron
-    if (el?.toggleFloatWindow && get().popoutWindows.settings) {
-      // The pop-out's open/closed state lives in the main process (it's a
-      // separate window), not in this renderer's `showSettings` — which
-      // never flips true in pop-out mode — so main decides open vs. close.
-      el.toggleFloatWindow('settings')
-      return
-    }
-    set((s) => ({ showSettings: !s.showSettings }))
-  },
+  toggleSettings: () => set((s) => ({ showSettings: !s.showSettings })),
   openProfile: () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const el = (window as any).electron
-    if (el?.openFloatWindow && get().popoutWindows.profile) {
-      el.openFloatWindow('profile')
-      return
-    }
     // Which profile view depends on the account's roles, not on the caller —
     // staffProfileView is the same helper the sidebar/bottom-nav tabs label
     // themselves from, so the two can't drift apart.
     const view = userApi.staffProfileView(get().account)
-    if (IS_FLOAT_WINDOW) {
-      // A pop-out asking for the profile with the pop-out disabled: it has no
-      // router of its own, so the main window takes the navigation.
-      el?.windowSyncSend?.({ type: 'navigate', view })
-      el?.focusMainWindow?.()
-      return
-    }
     get().setActiveView(view)
   },
   setShowDiagnostics: (showDiagnostics) => set({ showDiagnostics }),
   setShowQueue: (showQueue) => set({ showQueue }),
   setShowEqPanel: (showEqPanel) => set({ showEqPanel }),
-  setOpenFloatViews: (openFloatViews) => {
-    // The equalizer just popped out — retire the in-app copy so the two can
-    // never be on screen at once (they drive the same synced state).
-    const dismissInApp = openFloatViews.includes('equalizer') && get().showEqPanel
-    set(dismissInApp ? { openFloatViews, showEqPanel: false } : { openFloatViews })
-  },
-  toggleEqPanel: () => {
-    const { openFloatViews, showEqPanel, popoutWindows } = get()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const el = (window as any).electron
-    // "Open equalizer as a pop-out by default" is on — the button opens/closes
-    // its own window instead of the in-app popover.
-    if (popoutWindows.equalizer && el?.toggleFloatWindow) {
-      el.toggleFloatWindow('equalizer')
-      if (showEqPanel) set({ showEqPanel: false })
-      return
-    }
-    // Popover mode, but a pop-out window is already open (opened manually via
-    // the panel's detach button) — focus it rather than duplicating the panel.
-    if (openFloatViews.includes('equalizer')) {
-      el?.openFloatWindow?.('equalizer')
-      if (showEqPanel) set({ showEqPanel: false })
-      return
-    }
-    set({ showEqPanel: !showEqPanel })
-  },
+  toggleEqPanel: () => set((s) => ({ showEqPanel: !s.showEqPanel })),
   setInfoSongId: (infoSongId) => set({ infoSongId }),
   setPlayerCollapsed: (playerCollapsed) => { set({ playerCollapsed }); ls.set('playerCollapsed', playerCollapsed) },
   setWrldFullscreen: (wrldFullscreen) => set({ wrldFullscreen }),
+  setHeroBleedTop: (heroBleedTop) => set({ heroBleedTop }),
   setTheme: (theme) => { set({ theme }); ls.set('theme', theme) },
   saveCustomSkin: (skin) => {
     const list = get().customSkins
@@ -1218,7 +1023,6 @@ export const useStore = create<AppStore>((set, get, store) => ({
     if (get().theme === id) get().setTheme('dark')
   },
   setSidebarPosition: (sidebarPosition) => { set({ sidebarPosition }); ls.set('sidebarPosition', sidebarPosition) },
-  setAppMenuPosition: (appMenuPosition) => { set({ appMenuPosition }); ls.set('appMenuPosition', appMenuPosition) },
   setNavOrder: (navOrder) => { set({ navOrder }); ls.set('navOrder', navOrder) },
   setNavItemVisible: (view, visible) => {
     const navVisibility = { ...get().navVisibility, [view]: visible }
@@ -1257,9 +1061,6 @@ export const useStore = create<AppStore>((set, get, store) => ({
   mediaOverlayEnabled: ls.get<boolean>('mediaOverlayEnabled') ?? true,
   lastfmUser: getLastfmSession()?.name ?? null,
   lastfmEnabled: ls.get<boolean>('lastfmEnabled') ?? true,
-  // Merge stored overrides onto the defaults so a kind added in a later version
-  // is enabled by default even for installs whose saved object predates it.
-  popoutWindows: { ...POPOUT_WINDOW_DEFAULTS, ...(ls.get<Partial<Record<PopoutWindowKind, boolean>>>('popoutWindows') ?? {}) },
   hotkeyBindings: ls.get<Record<string, string>>('hotkeyBindings') ?? {},
   hotkeySeekSeconds: ls.get<number>('hotkeySeekSeconds') ?? 10,
   globalHotkeysEnabled: ls.get<boolean>('globalHotkeysEnabled') ?? false,
@@ -1319,11 +1120,6 @@ export const useStore = create<AppStore>((set, get, store) => ({
   setMediaOverlayEnabled: (enabled) => { set({ mediaOverlayEnabled: enabled }); ls.set('mediaOverlayEnabled', enabled) },
   setLastfmUser: (lastfmUser) => set({ lastfmUser }),
   setLastfmEnabled: (enabled) => { set({ lastfmEnabled: enabled }); ls.set('lastfmEnabled', enabled) },
-  setPopoutWindow: (kind, enabled) => {
-    const popoutWindows = { ...get().popoutWindows, [kind]: enabled }
-    set({ popoutWindows })
-    ls.set('popoutWindows', popoutWindows)
-  },
   setAccentColor: (color) => { set({ accentColor: color }); ls.set('accentColor', color) },
   setAppTextScale: (appTextScale) => { set({ appTextScale }); ls.set('appTextScale', appTextScale) },
   setAppFont: (appFont) => { set({ appFont }); ls.set('appFont', appFont) },
@@ -1536,37 +1332,14 @@ export const useStore = create<AppStore>((set, get, store) => ({
   // ── Reports (feedback + song issue reports) ────────────────────────────────
   pendingReports: ls.get<PendingReport[]>('pendingReports') ?? [],
   reportModal: null,
-  convertModal: null,
-  urlImportModal: false,
 
   openReport: (target) => set({ reportModal: target }),
   closeReport: () => set({ reportModal: null }),
-  openConvert: (target) => {
-    // Same pop-out-or-dock branch the editors use: with the "Convert format"
-    // pop-out enabled, this opens its own window instead of an in-app dialog.
-    // Only the three plain fields ride the URL params (see ConvertTarget).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const el = (window as any).electron
-    if (el?.openFloatWindow && get().popoutWindows.convert) {
-      el.openFloatWindow('convert', { trackId: target.id, filePath: target.path, title: target.title })
-      return
-    }
-    set({ convertModal: { id: target.id, path: target.path, title: target.title } })
-  },
-  closeConvert: () => set({ convertModal: null }),
-  openUrlImport: () => set({ urlImportModal: true }),
-  closeUrlImport: () => set({ urlImportModal: false }),
 
   _enqueueReport: async (report: PendingReport) => {
     const next = [...get().pendingReports, report]
     set({ pendingReports: next })
     ls.set('pendingReports', next)
-    // This window's own flush is a no-op in a pop-out (only the main window
-    // sends) — the enqueue above syncs to it over windowSync, which flushes on
-    // receipt and syncs the outcome back. Wait for that instead of the local
-    // (always-empty) flush, so the pop-out doesn't report "queued" instantly
-    // even for one about to be delivered a moment later.
-    if (IS_FLOAT_WINDOW) return waitForReportSettled(report.id)
     // Wait for this round of delivery so the caller can tell the user whether
     // it actually reached the server or is just sitting in the outbox.
     await get()._flushReports()
@@ -1605,9 +1378,6 @@ export const useStore = create<AppStore>((set, get, store) => ({
   _flushReports: async () => {
     if (_reportsFlushing) return
     if (!reportsApi.reportsApiEnabled) return
-    // Pop-outs share this outbox through localStorage; without an idempotency
-    // key on the live endpoints, only the main window may deliver it.
-    if (IS_FLOAT_WINDOW) return
     const queue = get().pendingReports.filter(isDeliverable)
     if (queue.length === 0) return
     _reportsFlushing = true
@@ -1831,17 +1601,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
     // also reject a mismatched one before ever calling exchange. sessionStorage
     // (not the in-memory store) survives the full-page redirect the web flow does.
     try { window.sessionStorage.setItem('discord_oauth_state', state) } catch {}
-    const el = (window as any).electron
-    if (el?.openDiscordLogin) {
-      // Electron: open a popup BrowserWindow — intercepts the OAuth callback
-      const result = await el.openDiscordLogin(authorize_url) as { code: string; state: string } | null
-      if (result?.code && result?.state) {
-        await get().completeDiscordLogin(result.code, result.state)
-      }
-    } else {
-      // Web: standard redirect
-      window.location.href = authorize_url
-    }
+    window.location.href = authorize_url
   },
 
   completeDiscordLogin: async (code, state) => {
@@ -1954,53 +1714,16 @@ export const useStore = create<AppStore>((set, get, store) => ({
   pendingCompProposal: null,
   pendingEditorSongId: null,
   pendingEditProposal: null,
-  pendingLocalEditTrack: null,
   bulkEdit: null,
   openBulkEditor: (songs) => set({ bulkEdit: songs.length ? { kind: 'api', songs } : null }),
-  openBulkTrackEditor: (tracks) => set({ bulkEdit: tracks.length ? { kind: 'local', tracks } : null }),
   closeBulkEditor: () => set({ bulkEdit: null }),
   setPendingCompProposal: (pendingCompProposal) => set({ pendingCompProposal }),
   setPendingEditorSongId: (pendingEditorSongId) => set({ pendingEditorSongId }),
   openSongEditor: (songId) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const el = (window as any).electron
-    if (el?.openFloatWindow && get().popoutWindows.editor) {
-      el.openFloatWindow('editor', { songId })
-      return
-    }
-    // Pop-outs render whichever view their URL names — they have no in-app
-    // router, so setting activeView here would silently do nothing (this is
-    // how "Edit" in a pop-out song-info window used to be a dead button).
-    // Hand it to the main window instead, same as the attach button does.
-    if (IS_FLOAT_WINDOW) {
-      el?.windowSyncSend?.({ type: 'attach', target: { view: 'editor', songId } })
-      el?.focusMainWindow?.()
-      return
-    }
     set({ pendingEditorSongId: songId })
     get().setActiveView('editor')
   },
   setPendingEditProposal: (pendingEditProposal) => set({ pendingEditProposal }),
-  setPendingLocalEditTrack: (pendingLocalEditTrack) => set({ pendingLocalEditTrack }),
-  openLocalEditor: (track) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const el = (window as any).electron
-    if (el?.openFloatWindow && get().popoutWindows.localEditor) {
-      el.openFloatWindow('local-editor', { trackId: track.id })
-      return
-    }
-    // Same dead-button problem as openSongEditor above — a pop-out can't
-    // navigate itself, so the main window opens the editor instead. It looks
-    // the track up by id from its own library rather than taking this object.
-    if (IS_FLOAT_WINDOW) {
-      el?.windowSyncSend?.({ type: 'attach', target: { view: 'local-editor', trackId: track.id } })
-      el?.focusMainWindow?.()
-      return
-    }
-    set({ pendingLocalEditTrack: track })
-    get().setActiveView('local-editor')
-  },
-
 
   // ── Library ───────────────────────────────────────────────────────────────
   libraryTracks: [],
@@ -2015,12 +1738,8 @@ export const useStore = create<AppStore>((set, get, store) => ({
   developerMode: ls.get<boolean>('developerMode') ?? false,
   localPlaylists: [],
   activeLocalPlaylistId: null,
+  guestPlaylists: ls.get<GuestPlaylist[]>('guestPlaylists') ?? [],
   followedPlaylists: ls.get<FollowedPlaylist[]>('followedPlaylists') ?? [],
-
-  // ── Offline playlist sync ────────────────────────────────────────────────
-  offlineTracks: {},
-  offlinePlaylists: {},
-  offlineSync: {},
 
   setLibraryTracks: (libraryTracks) => set({ libraryTracks }),
   // Insert a single scanned track (e.g. a freshly converted file), replacing any
@@ -2285,6 +2004,41 @@ export const useStore = create<AppStore>((set, get, store) => ({
     set({ localPlaylists: next })
     el?.saveLocalPlaylists(next)
   },
+  createGuestPlaylist: (name) => {
+    const id = `gp-${Date.now()}`
+    const playlist: GuestPlaylist = { id, name, tracks: [], createdAt: Date.now() }
+    const next = [...get().guestPlaylists, playlist]
+    set({ guestPlaylists: next })
+    ls.set('guestPlaylists', next)
+    return id
+  },
+  deleteGuestPlaylist: (id) => {
+    const next = get().guestPlaylists.filter((p) => p.id !== id)
+    set({ guestPlaylists: next })
+    ls.set('guestPlaylists', next)
+  },
+  renameGuestPlaylist: (id, name) => {
+    const next = get().guestPlaylists.map((p) => p.id === id ? { ...p, name } : p)
+    set({ guestPlaylists: next })
+    ls.set('guestPlaylists', next)
+  },
+  addToGuestPlaylist: (playlistId, track) => {
+    const next = get().guestPlaylists.map((p) =>
+      p.id === playlistId ? { ...p, tracks: [...p.tracks, track] } : p)
+    set({ guestPlaylists: next })
+    ls.set('guestPlaylists', next)
+  },
+  removeFromGuestPlaylist: (playlistId, trackId) => {
+    const next = get().guestPlaylists.map((p) =>
+      p.id === playlistId ? { ...p, tracks: p.tracks.filter((t) => t.id !== trackId) } : p)
+    set({ guestPlaylists: next })
+    ls.set('guestPlaylists', next)
+  },
+  reorderGuestPlaylist: (playlistId, tracks) => {
+    const next = get().guestPlaylists.map((p) => p.id === playlistId ? { ...p, tracks } : p)
+    set({ guestPlaylists: next })
+    ls.set('guestPlaylists', next)
+  },
   importM3uEntriesLocal: (name, entries) => commitM3uImport(get, set, { name, entries }),
   exportLocalPlaylistM3u: async (id) => {
     const el = (window as any).electron
@@ -2342,301 +2096,9 @@ export const useStore = create<AppStore>((set, get, store) => ({
     ls.set('followedPlaylists', next)
   },
 
-  // ── Offline playlist sync ────────────────────────────────────────────────
-  loadOfflineLibrary: async () => {
-    const el = (window as any).electron
-    if (!el) return
-    try {
-      const lib = await el.offlineGetLibrary()
-      set({ offlineTracks: lib.tracks || {}, offlinePlaylists: lib.playlists || {} })
-    } catch (e) { console.error('loadOfflineLibrary error:', e) }
-  },
-
-  downloadPlaylistOffline: async (key, name, songIds, opts) => {
-    const el = (window as any).electron
-    if (!el) return
-    await enqueueOfflineWork(key, async () => {
-      const silent = !!opts?.silent
-      // Background resync queued behind other work for a playlist that was
-      // removed while it waited — nothing to sync anymore.
-      if (silent && !get().offlinePlaylists[key]) return
-      // Removal mid-download bumps the epoch; checked between tracks and before
-      // the final offlineSetPlaylist so an aborted run can't re-register the
-      // playlist it raced with.
-      const epoch = _offlineKeyEpochs.get(key) ?? 0
-      const cancelled = (): boolean => (_offlineKeyEpochs.get(key) ?? 0) !== epoch
-      const downloadId = `playlist-${key}`
-      // Songs already saved locally only need a quiet metadata refresh, not a
-      // real download — so the visible progress total is the count of songs
-      // actually missing, not the whole playlist. Otherwise re-downloading a
-      // playlist that's mostly already offline showed "Downloading 1/40, 2/40…"
-      // and looked like the whole thing was being fetched again.
-      const offlineTracksNow = get().offlineTracks
-      const missingCount = songIds.filter((id) => !offlineTracksNow[`jw-${id}`]).length
-      const total = missingCount
-      // Background resyncs (startup/focus/15-min interval — see syncOfflinePlaylists)
-      // re-run this for every already-synced playlist just to pick up metadata
-      // changes; nearly everything is a fast no-op `skipped` hit. Surfacing that
-      // as "syncing" — in the Download Manager, or in the playlist/context-menu's
-      // "Downloading… x/y" label (both read `offlineSync`) — made it look like
-      // the same playlist was re-downloading every time the app loaded or
-      // regained focus. Only flip on the visible "syncing" state when something
-      // is actually fetched (tracked below) or when the caller isn't silent and
-      // there's actually something missing to fetch.
-      let announced = false
-      const announce = (): void => {
-        if (announced) return
-        announced = true
-        set((s) => ({ offlineSync: { ...s.offlineSync, [key]: { state: 'syncing', current: 0, total } } }))
-        if (get().downloads.some((d) => d.id === downloadId)) {
-          get().updateDownload(downloadId, { filename: name, state: 'downloading', percent: 0, received: 0, total, error: undefined })
-        } else {
-          get().addDownload({ id: downloadId, filename: name, type: 'playlist', state: 'downloading', percent: 0, received: 0, total })
-        }
-        // Only pop the Download Manager open for downloads the user just asked
-        // for. Background catch-ups (new song added on the site, a previously
-        // failed track retrying) still track progress in the downloads list and
-        // `offlineSync`, but the panel appearing out of nowhere on focus read
-        // as "the app is redownloading my playlists on its own".
-        if (!silent) get().setShowDownloadManager(true)
-      }
-      if (!silent && total > 0) announce()
-
-      // Byte-level size/speed tracking across the whole playlist — cumulativeBytes
-      // is bytes already settled (finished or skipped tracks); the per-track
-      // listener below adds the in-flight file's partial bytes on top so the
-      // Download Manager can show a live running total + throughput, even
-      // though we never know the playlist's full size up front.
-      let cumulativeBytes = 0
-      let lastSampleTime = Date.now()
-      let lastSampleBytes = 0
-
-      const trackIds: string[] = []
-      let hadError = false
-      let doneCount = 0
-      for (let i = 0; i < songIds.length; i++) {
-        if (cancelled()) break
-        const songId = songIds[i]
-        const id = `jw-${songId}`
-        trackIds.push(id)
-        // Already downloaded — skip the network round-trip entirely instead of
-        // still fetching /songs/{id}/ + hitting the IPC layer just to no-op.
-        // Looping through every already-cached song's metadata refresh made
-        // downloading a mostly-synced playlist with a few new songs feel like
-        // the whole thing was being fetched again.
-        if (offlineTracksNow[id]) continue
-        const offProgress = el.onOfflineDownloadProgress?.((d: { id: string; percent: number; received?: number; total?: number }) => {
-          if (d.id !== id || !announced) return
-          const totalBytes = cumulativeBytes + (d.received || 0)
-          const now = Date.now()
-          const dt = (now - lastSampleTime) / 1000
-          const updates: { bytesReceived: number; speedBps?: number } = { bytesReceived: totalBytes }
-          if (dt >= 0.4) {
-            updates.speedBps = Math.max(0, (totalBytes - lastSampleBytes) / dt)
-            lastSampleTime = now
-            lastSampleBytes = totalBytes
-          }
-          get().updateDownload(downloadId, updates)
-        })
-        try {
-          const song = await apiFetch<JWApiSong>(`/songs/${songId}/`)
-          const ext = (song.path.split('.').pop() || 'mp3').toLowerCase()
-          const meta = {
-            title: song.name,
-            artist: song.credited_artists || 'Juice WRLD',
-            album: song.album || song.era?.name || '',
-            imageUrl: buildImageUrl(song.image_url) ?? null,
-            lyrics: song.lyrics || null,
-            syncedLyrics: song.synced_lyrics || null,
-            duration: parseDuration(song.length),
-          }
-          const result = await el.offlineDownloadTrack({ id, url: buildStreamUrl(song.path), ext, path: song.path, meta })
-          if (result?.error) throw new Error(result.error)
-          if (!result?.skipped) {
-            announce()
-            doneCount++
-          }
-          cumulativeBytes += result?.size || 0
-          set((s) => ({
-            offlineTracks: {
-              ...s.offlineTracks,
-              [id]: { ...meta, path: song.path, localPath: result.localPath, ext, downloadedAt: Date.now() },
-            },
-          }))
-        } catch (e) {
-          hadError = true
-          console.error('offline download failed for song', songId, e)
-        } finally {
-          offProgress?.()
-        }
-        if (announced) {
-          set((s) => ({ offlineSync: { ...s.offlineSync, [key]: { state: 'syncing', current: doneCount, total } } }))
-          get().updateDownload(downloadId, { received: doneCount, percent: total ? Math.round((doneCount / total) * 100) : 100, bytesReceived: cumulativeBytes })
-        }
-      }
-      if (announced) get().updateDownload(downloadId, { speedBps: undefined })
-
-      // The playlist was removed while this run was downloading — registering
-      // it now would resurrect it and queue every pruned file for re-download
-      // on the next background sync. Drop the run's UI traces and stop.
-      if (cancelled()) {
-        if (announced) get().removeDownload(downloadId)
-        set((s) => {
-          const nextSync = { ...s.offlineSync }
-          delete nextSync[key]
-          return { offlineSync: nextSync }
-        })
-        get().loadOfflineLibrary()
-        return
-      }
-
-      try {
-        await el.offlineSetPlaylist(key, trackIds, name)
-        set((s) => ({ offlinePlaylists: { ...s.offlinePlaylists, [key]: { songIds: trackIds, name, updatedAt: Date.now() } } }))
-      } catch (e) { console.error('offlineSetPlaylist error:', e) }
-
-      if (announced) set((s) => ({ offlineSync: { ...s.offlineSync, [key]: { state: hadError ? 'error' : 'done', current: total, total } } }))
-      if (announced) get().updateDownload(downloadId, { state: hadError ? 'error' : 'done', percent: 100, error: hadError ? 'Some tracks failed to download' : undefined })
-      // Refresh from disk truth — pruning may have dropped tracks shared with
-      // another playlist that's no longer synced.
-      get().loadOfflineLibrary()
-    })
-  },
-
-  removePlaylistOffline: async (key) => {
-    const el = (window as any).electron
-    if (!el) return
-    // Cancel any in-flight download for this key (epoch bump) and wait for it
-    // to notice — it checks between tracks, so this waits at most one file —
-    // before pruning. Otherwise the in-flight run would re-register the
-    // playlist after removal and the next sync would re-download all of it.
-    _offlineKeyEpochs.set(key, (_offlineKeyEpochs.get(key) ?? 0) + 1)
-    await (_offlineKeyQueues.get(key) ?? Promise.resolve()).catch(() => {})
-    try { await el.offlineRemovePlaylist(key) } catch (e) { console.error('offlineRemovePlaylist error:', e) }
-    set((s) => {
-      const next = { ...s.offlinePlaylists }
-      delete next[key]
-      const nextSync = { ...s.offlineSync }
-      delete nextSync[key]
-      return { offlinePlaylists: next, offlineSync: nextSync }
-    })
-    get().loadOfflineLibrary()
-  },
-
-  // Serialized on the individual-downloads key: two quick downloads used to
-  // both read the membership list before either wrote it, so the second
-  // offlineSetPlaylist omitted the first song — and the prune deleted its
-  // freshly-downloaded file.
-  downloadTrackOffline: async (songId) => {
-    const el = (window as any).electron
-    if (!el) return
-    const key = INDIVIDUAL_DOWNLOADS_KEY
-    const id = `jw-${songId}`
-    await enqueueOfflineWork(key, async () => {
-      try {
-        const song = await apiFetch<JWApiSong>(`/songs/${songId}/`)
-        const ext = (song.path.split('.').pop() || 'mp3').toLowerCase()
-        const meta = {
-          title: song.name,
-          artist: song.credited_artists || 'Juice WRLD',
-          album: song.album || song.era?.name || '',
-          imageUrl: buildImageUrl(song.image_url) ?? null,
-          lyrics: song.lyrics || null,
-          syncedLyrics: song.synced_lyrics || null,
-          duration: parseDuration(song.length),
-        }
-        const result = await el.offlineDownloadTrack({ id, url: buildStreamUrl(song.path), ext, path: song.path, meta })
-        if (result?.error) throw new Error(result.error)
-        set((s) => ({
-          offlineTracks: {
-            ...s.offlineTracks,
-            [id]: { ...meta, path: song.path, localPath: result.localPath, ext, downloadedAt: Date.now() },
-          },
-        }))
-        const existingIds = get().offlinePlaylists[key]?.songIds ?? []
-        const nextIds = existingIds.includes(id) ? existingIds : [...existingIds, id]
-        await el.offlineSetPlaylist(key, nextIds, 'Downloaded songs')
-        set((s) => ({ offlinePlaylists: { ...s.offlinePlaylists, [key]: { songIds: nextIds, name: 'Downloaded songs', updatedAt: Date.now() } } }))
-      } catch (e) {
-        console.error('downloadTrackOffline error:', e)
-      }
-    })
-  },
-
-  // Deletes a single track's downloaded audio (e.g. from a song's context
-  // menu), independent of any playlist it belongs to. If the song is still
-  // part of a synced offline playlist, the next background resync will just
-  // re-download it — this only clears the local copy, not playlist membership.
-  removeOfflineTrack: async (trackId) => {
-    const el = (window as any).electron
-    if (!el) return
-    try { await el.offlineRemoveTrack(trackId) } catch (e) { console.error('offlineRemoveTrack error:', e) }
-    set((s) => {
-      const next = { ...s.offlineTracks }
-      delete next[trackId]
-      return { offlineTracks: next }
-    })
-    // If it was only tracked via the individual-downloads bucket (not a real
-    // synced playlist), drop it from there too so it doesn't linger forever.
-    const key = INDIVIDUAL_DOWNLOADS_KEY
-    const entry = get().offlinePlaylists[key]
-    if (entry?.songIds.includes(trackId)) {
-      const nextIds = entry.songIds.filter((t) => t !== trackId)
-      try { await el.offlineSetPlaylist(key, nextIds, entry.name) } catch (e) { console.error('offlineSetPlaylist error:', e) }
-      set((s) => ({ offlinePlaylists: { ...s.offlinePlaylists, [key]: { ...entry, songIds: nextIds, updatedAt: Date.now() } } }))
-    }
-  },
-
-  syncOfflinePlaylists: async () => {
-    // Startup, every window focus, and the 15-min interval all call this;
-    // without the guard they overlap, and each run re-downloads the songs the
-    // other is mid-flight on (two writers to the same file, plus a second
-    // round of "downloading" announcements for work already underway).
-    if (_offlineSyncInFlight) return
-    _offlineSyncInFlight = true
-    try {
-      const keys = Object.keys(get().offlinePlaylists)
-      for (const key of keys) {
-        const match = key.match(/^api-(\d+)$/)
-        if (!match) continue
-        // Removed from offline while this sync was walking earlier keys —
-        // syncing it anyway would re-download and re-register it.
-        if (!get().offlinePlaylists[key]) continue
-        try {
-          const detail = await userApi.getPlaylist(Number(match[1]))
-          if (!get().offlinePlaylists[key]) continue
-          await get().downloadPlaylistOffline(key, detail.name, detail.items.map((i) => i.song.id), { silent: true })
-        } catch {
-          // Offline, deleted, or no longer accessible — keep the existing cache as-is.
-        }
-      }
-    } finally {
-      _offlineSyncInFlight = false
-    }
-  },
-
-  // Called after songs are added to an API playlist — if that playlist is
-  // synced offline, immediately downloads the newly-added songs instead of
-  // waiting for the next background resync (startup/focus/15-min interval).
-  autoDownloadIfOffline: async (playlistId, addedSongIds) => {
-    if (!addedSongIds.length) return
-    const key = `api-${playlistId}`
-    if (!get().offlinePlaylists[key]) return
-    // Wait out any in-flight download for this key before building the merged
-    // list — merging from a snapshot taken mid-sync saved a stale membership
-    // list, and the prune then deleted files for songs the sync had just added.
-    await (_offlineKeyQueues.get(key) ?? Promise.resolve()).catch(() => {})
-    const entry = get().offlinePlaylists[key]
-    if (!entry) return
-    const existingIds = new Set(entry.songIds.map((id) => Number(id.replace('jw-', ''))))
-    const nextSongIds = [...existingIds, ...addedSongIds.filter((id) => !existingIds.has(id))]
-    await get().downloadPlaylistOffline(key, entry.name, nextSongIds)
-  },
-
   // ── Downloads ─────────────────────────────────────────────────────────────
   downloads: [],
   showDownloadManager: false,
-  updateStatus: null,
 
   addDownload: (item) => set((s) => ({ downloads: [item, ...s.downloads] })),
   updateDownload: (id, updates) => set((s) => ({
@@ -2647,7 +2109,6 @@ export const useStore = create<AppStore>((set, get, store) => ({
     downloads: s.downloads.filter((d) => d.state === 'downloading'),
   })),
   setShowDownloadManager: (show) => set({ showDownloadManager: show }),
-  setUpdateStatus: (updateStatus) => set({ updateStatus }),
 }))
 
 // Dev-only console handle for driving store state while debugging (e.g.

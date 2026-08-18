@@ -68,21 +68,23 @@ export interface LibraryTrack {
   albumArt?: string | null    // base64 data URL
 }
 
-// The local file a "Convert format" dialog is working on. Deliberately just the
-// three fields the dialog needs (rather than a whole Track/LibraryTrack) so it
-// round-trips through pop-out window URL params as plain strings.
-export interface ConvertTarget {
-  id: string        // LibraryTrack id ('local-' + filePath)
-  path: string      // absolute filesystem path of the source file
-  title: string
-}
-
 export interface LocalPlaylist {
   id: string
   name: string
   trackIds: string[]          // LibraryTrack ids
   createdAt: number
   coverImage?: string | null  // base64 data URL or null
+}
+
+// A playlist for signed-out users — stored in localStorage, not tied to an
+// account or to local-file scanning (unlike LocalPlaylist). Tracks are
+// embedded directly rather than referenced by id, since a guest playlist can
+// hold synced-catalog tracks a LibraryTrack lookup couldn't resolve.
+export interface GuestPlaylist {
+  id: string
+  name: string
+  tracks: Track[]
+  createdAt: number
 }
 
 // A live pointer to someone else's synced playlist, saved from a share link
@@ -129,4 +131,4 @@ export interface SyncedLyricLine {
   text: string
 }
 
-export type ViewType = 'api-tracker' | 'api-files' | 'editor' | 'local-editor' | 'admin' | 'contributor' | 'contributor-profile' | 'liked' | 'playlists' | 'shared-playlist' | 'editor-profile' | 'docs' | 'wrld' | 'albums-admin' | 'news' | 'heardle' | 'wordle' | 'tierlist' | 'stats' | 'download' | 'not-found'
+export type ViewType = 'api-tracker' | 'api-files' | 'editor' | 'admin' | 'contributor' | 'contributor-profile' | 'liked' | 'playlists' | 'shared-playlist' | 'editor-profile' | 'docs' | 'wrld' | 'albums-admin' | 'news' | 'heardle' | 'wordle' | 'tierlist' | 'stats' | 'download' | 'not-found'

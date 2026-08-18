@@ -17,7 +17,7 @@
  * active keyboard layout) while punctuation maps to its US-key symbol.
  */
 
-export type HotkeyCategory = 'Playback' | 'Volume' | 'Navigation' | 'App'
+export type HotkeyCategory = 'Playback' | 'Volume' | 'Navigation'
 
 export interface HotkeyAction {
   id: string
@@ -25,8 +25,6 @@ export interface HotkeyAction {
   category: HotkeyCategory
   /** Canonical combo, or '' for "no default binding". */
   defaultBinding: string
-  /** Only meaningful in the desktop (Electron) build — hidden on web. */
-  electronOnly?: boolean
   /** Still active with its default binding for everyone, but only listed (and
    *  therefore rebindable) in Settings when Developer mode is on — keeps the
    *  shortcut list from bloating with power-user-only entries. */
@@ -82,17 +80,9 @@ export const HOTKEY_ACTIONS: readonly HotkeyAction[] = [
   { id: 'open-diagnostics', label: 'Open diagnostics',          category: 'Navigation', defaultBinding: '' },
   { id: 'toggle-queue',     label: 'Toggle queue panel',        category: 'Navigation', defaultBinding: 'Q' },
   { id: 'focus-search',     label: 'Focus search box',          category: 'Navigation', defaultBinding: 'Ctrl+F' },
-
-  // ── App / windows ─────────────────────────────────────────────────────────
-  { id: 'mini-player',          label: 'Open mini player',            category: 'App', defaultBinding: 'Ctrl+M', electronOnly: true },
-  { id: 'close-float-windows',  label: 'Close all pop-out windows',   category: 'App', defaultBinding: 'Ctrl+Shift+W', electronOnly: true },
-  { id: 'restart-app',          label: 'Restart app',                 category: 'App', defaultBinding: '', electronOnly: true },
-  { id: 'rescan-library',       label: 'Rescan library',              category: 'App', defaultBinding: '', electronOnly: true },
-  { id: 'discord-status',       label: 'Toggle Discord status',       category: 'App', defaultBinding: '', electronOnly: true },
-  { id: 'toggle-devtools',      label: 'Toggle DevTools',              category: 'App', defaultBinding: 'F12', electronOnly: true, devModeOnly: true },
 ] as const
 
-export const HOTKEY_CATEGORIES: readonly HotkeyCategory[] = ['Playback', 'Volume', 'Navigation', 'App']
+export const HOTKEY_CATEGORIES: readonly HotkeyCategory[] = ['Playback', 'Volume', 'Navigation']
 
 // actionId → action, for O(1) lookups from both the dispatcher and the UI.
 const ACTIONS_BY_ID = new Map(HOTKEY_ACTIONS.map((a) => [a.id, a]))

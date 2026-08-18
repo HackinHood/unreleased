@@ -12,27 +12,15 @@ interface WrldVersion { name: string; year: number; cover_url: string; songs: Wr
 interface WrldAlbum   { id: number; name: string; versions: WrldVersion[] }
 interface WrldData    { albums: WrldAlbum[] }
 
-// ── IPC helpers ───────────────────────────────────────────────────────────────
-
-const el = (window as any).electron
-const isElectron = !!el
+// ── Load / save ───────────────────────────────────────────────────────────────
 
 async function loadData(): Promise<WrldData> {
-  if (isElectron) {
-    // In Electron, always use IPC — fetch() won't work over file:// protocol
-    const d = el?.loadWrldData ? await el.loadWrldData() : null
-    return d ?? { albums: [] }
-  }
   const r = await fetch('/wrlddata.json')
   if (!r.ok) throw new Error(`HTTP ${r.status}`)
   return r.json()
 }
 
 async function saveData(data: WrldData): Promise<void> {
-  if (el?.saveWrldData) {
-    await el.saveWrldData(data)
-    return
-  }
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
   const url  = URL.createObjectURL(blob)
   const a    = document.createElement('a')

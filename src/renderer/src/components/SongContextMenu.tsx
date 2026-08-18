@@ -1,8 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
-  Info, ListPlus, ListEnd, Plus, Folder, Pencil, Download, HardDrive, PackageOpen,
-  ChevronDown, ChevronRight, Check, Loader2, CheckSquare2, Heart, Trash2, ListMusic, CircleArrowDown, Flag, FileAudio2,
-  Clipboard, ClipboardCopy, Copy, FolderInput, FileCog,
+  Info, ListPlus, ListEnd, Plus, Folder, Pencil, Download, PackageOpen,
+  ChevronDown, ChevronRight, Check, Loader2, CheckSquare2, Heart, Trash2, ListMusic, Flag,
 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { useShallow } from 'zustand/react/shallow'
@@ -44,8 +43,6 @@ interface Props {
   onShowInFiles?: () => void
   /** Tracker / Library — enters multi-select mode with this song selected. */
   onSelect?: () => void
-  /** Player only — metadata edit for a local (non-API) file. */
-  onEditLocalMetadata?: () => void
 
   /** WRLD's simple like toggle. */
   liked?: boolean
@@ -115,16 +112,14 @@ function downloadZipEntry(entry: JWApiFileEntry): void {
 
 export default function SongContextMenu({
   state, onClose, canEdit, onInfo,
-  onPlay, onPlayNext, onAddToQueue, onShowInFiles, onSelect, onEditLocalMetadata,
+  onPlay, onPlayNext, onAddToQueue, onShowInFiles, onSelect,
   liked, onToggleLike, removeAction, song, disableChangeVersion,
 }: Props): JSX.Element {
-  const { playlists, account, refreshPlaylists, setShowUserAuth, playTrack, localPlaylists, addToLocalPlaylist, createLocalPlaylist, offlineTracks, removeOfflineTrack, downloadTrackOffline, autoDownloadIfOffline, addLibraryTrack } = useStore(
+  const { playlists, account, refreshPlaylists, setShowUserAuth, playTrack, localPlaylists, addToLocalPlaylist, createLocalPlaylist } = useStore(
     useShallow(s => ({
       playlists: s.playlists, account: s.account, refreshPlaylists: s.refreshPlaylists,
       setShowUserAuth: s.setShowUserAuth, playTrack: s.playTrack,
       localPlaylists: s.localPlaylists, addToLocalPlaylist: s.addToLocalPlaylist, createLocalPlaylist: s.createLocalPlaylist,
-      offlineTracks: s.offlineTracks, removeOfflineTrack: s.removeOfflineTrack, downloadTrackOffline: s.downloadTrackOffline,
-      autoDownloadIfOffline: s.autoDownloadIfOffline, addLibraryTrack: s.addLibraryTrack,
     }))
   )
   const { track, songId } = state
@@ -135,11 +130,6 @@ export default function SongContextMenu({
   const addItemRef = useRef<HTMLButtonElement>(null)
   const submenuRef = useRef<HTMLDivElement>(null)
   const [subPos, setSubPos] = useState({ top: 0, left: 0 })
-  // "File actions" works the same way — its own flyout beside the menu.
-  const [fileOpen, setFileOpen] = useState(false)
-  const fileItemRef = useRef<HTMLButtonElement>(null)
-  const fileSubmenuRef = useRef<HTMLDivElement>(null)
-  const [fileSubPos, setFileSubPos] = useState({ top: 0, left: 0 })
   // "Change version" is a flyout too, but ChangeVersionMenuItem owns its own
   // placement (it has to re-place itself when its list finishes loading) — the
   // open state stays here so all three submenus remain mutually exclusive.
@@ -150,13 +140,9 @@ export default function SongContextMenu({
   const [localDoneId, setLocalDoneId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
-  const [addingToLib, setAddingToLib] = useState(false)
-  const [addedToLib, setAddedToLib] = useState(false)
   const [contained, setContained] = useState<Set<number>>(new Set())
   const [zipLoading, setZipLoading] = useState(false)
   const [zipCandidates, setZipCandidates] = useState<JWApiFileEntry[] | null>(null)
-  const [downloadingOffline, setDownloadingOffline] = useState(false)
-  const el = (window as any).electron
 
   useEffect(() => {
     const handle = (e: MouseEvent): void => {
@@ -190,7 +176,6 @@ export default function SongContextMenu({
       setDoneId(id)
       setContained(prev => new Set([...prev, id]))
       await refreshPlaylists()
-      autoDownloadIfOffline(id, [songId])
     } catch {} finally { setBusyId(null) }
   }
 
@@ -283,14 +268,6 @@ export default function SongContextMenu({
     const { top, left } = placeFlyout(item, menu, sub)
     setSubPos(prev => (prev.top === top && prev.left === left ? prev : { top, left }))
   }, [playlistsOpen, creating, pos, playlists.length, localPlaylists.length, contained])
-
-  useLayoutEffect(() => {
-    if (!fileOpen) return
-    const item = fileItemRef.current, menu = menuRef.current, sub = fileSubmenuRef.current
-    if (!item || !menu || !sub) return
-    const { top, left } = placeFlyout(item, menu, sub)
-    setFileSubPos(prev => (prev.top === top && prev.left === left ? prev : { top, left }))
-  }, [fileOpen, pos])
 
   return (
     <div
@@ -401,33 +378,6 @@ export default function SongContextMenu({
         </div>
       )}
 
-      {fileOpen && panel === 'main' && (
-        // Same flyout treatment as the playlists submenu above: inside the menu
-        // element so the outside-click handler still counts it as "inside".
-        <div
-          ref={fileSubmenuRef}
-          onClick={(e) => e.stopPropagation()}
-          style={{ position: 'fixed', zIndex: 10000, top: fileSubPos.top, left: fileSubPos.left }}
-          className="w-52 bg-surface border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden py-1"
-        >
-          {/* Actions on the local file itself. Copy/move prompt for a
-              destination in the main process; delete goes to the OS trash. */}
-          <MenuItem icon={<FileAudio2 size={14} />} label="Convert format" onClick={() => { useStore.getState().openConvert(track); onClose() }} />
-          <MenuItem icon={<ClipboardCopy size={14} />} label="Copy file" onClick={() => { el.copyFileToClipboard(track.path); onClose() }} />
-          <MenuItem icon={<Clipboard size={14} />} label="Copy path" onClick={() => { el.copyTextToClipboard(track.path); onClose() }} />
-          <MenuItem icon={<Copy size={14} />} label="Copy to folder…" onClick={() => { el.copyLibraryFile(track.path); onClose() }} />
-          <MenuItem icon={<FolderInput size={14} />} label="Move to folder…" onClick={() => { useStore.getState().moveLibraryTrack(track.id); onClose() }} />
-          <Divider />
-          {/* Deletes the user's actual file (to the OS trash) rather than just
-              un-listing it — confirmed in main before anything moves. */}
-          <MenuItem
-            icon={<Trash2 size={14} />}
-            label="Delete from disk"
-            destructive
-            onClick={() => { useStore.getState().deleteLibraryTrack(track.id); onClose() }}
-          />
-        </div>
-      )}
 
       {panel === 'zip' ? (
         <>
@@ -463,7 +413,6 @@ export default function SongContextMenu({
           onMouseOver={(e) => {
             const t = e.target as Node
             setPlaylistsOpen(addItemRef.current?.contains(t) ?? false)
-            setFileOpen(fileItemRef.current?.contains(t) ?? false)
             setVersionsOpen(versionItemRef.current?.contains(t) ?? false)
           }}
         >
@@ -498,20 +447,6 @@ export default function SongContextMenu({
           {canEdit && songId != null && songId > 0 && (
             <MenuItem icon={<Pencil size={14} />} label="Edit" onClick={() => { useStore.getState().openSongEditor(songId); onClose() }} />
           )}
-          {onEditLocalMetadata && (
-            <MenuItem icon={<Pencil size={14} />} label="Edit metadata" onClick={() => { onEditLocalMetadata(); onClose() }} />
-          )}
-          {/* Everything that touches the user's actual file lives in its own
-              flyout, so the destructive entries aren't one stray click away. */}
-          {isLocalOnly && !!track.path && el && (
-            <MenuItem
-              innerRef={fileItemRef}
-              icon={<FileCog size={14} />}
-              label="File actions"
-              trailing={<ChevronRight size={13} className="text-text-muted" />}
-              onClick={() => setFileOpen(o => !o)}
-            />
-          )}
           {onToggleLike && (
             <MenuItem
               icon={<Heart size={14} fill={liked ? 'currentColor' : 'none'} className={liked ? 'text-accent' : ''} />}
@@ -544,45 +479,6 @@ export default function SongContextMenu({
             <>
               <Divider />
               <MenuItem icon={<Download size={14} />} label="Download" onClick={() => { downloadTrack(track); onClose() }} />
-              {el && hasValidSong && (
-                <MenuItem
-                  icon={addingToLib ? <Loader2 size={14} className="animate-spin" /> : addedToLib ? <Check size={14} className="text-accent" /> : <HardDrive size={14} />}
-                  label={addedToLib ? 'Added to library' : addingToLib ? 'Adding...' : 'Add to library'}
-                  onClick={async () => {
-                    if (addingToLib || addedToLib) return
-                    setAddingToLib(true)
-                    try {
-                      const url = 'https://juicewrldapi.com/juicewrld/files/download/?path=' + encodeURIComponent(track.path)
-                      const result = await el.downloadToLibrary({
-                        url, songName: track.title, artist: track.artist, songPath: track.path,
-                      })
-                      if (!result.error) {
-                        if (result.track) addLibraryTrack(result.track)
-                        setAddedToLib(true)
-                      }
-                    } finally { setAddingToLib(false) }
-                  }}
-                />
-              )}
-              {el && hasValidSong && !offlineTracks[track.id] && (
-                <MenuItem
-                  icon={downloadingOffline ? <Loader2 size={14} className="animate-spin" /> : <CircleArrowDown size={14} />}
-                  label={downloadingOffline ? 'Downloading…' : 'Download offline'}
-                  onClick={async () => {
-                    if (downloadingOffline || songId == null) return
-                    setDownloadingOffline(true)
-                    try { await downloadTrackOffline(songId) } finally { setDownloadingOffline(false) }
-                  }}
-                />
-              )}
-              {!!offlineTracks[track.id] && (
-                <MenuItem
-                  icon={<CircleArrowDown size={14} fill="currentColor" />}
-                  label="Remove download"
-                  destructive
-                  onClick={() => { removeOfflineTrack(track.id); onClose() }}
-                />
-              )}
             </>
           )}
           {removeAction && (

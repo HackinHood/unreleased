@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { RefreshCw, ChevronLeft, Plus, FolderOpen } from 'lucide-react'
 import { useStorePick } from '../store/useStore'
-import { navigateFromWindow } from '../lib/windowSync'
 import * as userApi from '../lib/userApi'
 import type { CompFileProposal } from '../lib/userApi'
 import { CONTRIBUTOR_ENABLED } from '../lib/userApi'
@@ -12,10 +11,8 @@ import CompProposalList, { CompFilterBar, filterCompProposals, type CompFilterTa
 // page's "Comp files" tab, reachable from the editor profile.
 
 export default function ContributorProfileView(): JSX.Element {
-  const { account } = useStorePick('account')
-  // Also renders as its own window (FloatApp's `profile` view), where
-  // setActiveView goes nowhere — see navigateFromWindow.
-  const go = navigateFromWindow
+  const { account, setActiveView } = useStorePick('account', 'setActiveView')
+  const go = setActiveView
   const [proposals, setProposals] = useState<CompFileProposal[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<CompFilterTab>('all')

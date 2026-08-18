@@ -3,9 +3,9 @@ import {
   Folder, Music2, ChevronRight, ArrowLeft, Home, Play, Loader2,
   FolderOpen, HardDrive, LayoutList, LayoutGrid, ImageIcon, Video,
   Download, ArrowUpDown, ArrowUp, ArrowDown, Link, Check, Info, ListPlus, Heart,
-  X, Pencil, PackageOpen, CheckSquare2, Square, MonitorSmartphone, Globe, Search,
+  X, Pencil, PackageOpen, CheckSquare2, Square, Globe, Search,
   Filter, MoreHorizontal, Clipboard, Plus, ListMusic, Replace, Trash2,
-  FolderPlus, FilePlus, ExternalLink, FileText, RefreshCw,
+  FileText,
 } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import * as userApi from '../lib/userApi'
@@ -38,13 +38,6 @@ type SortBy = 'name' | 'type' | 'size'
 type SortDir = 'asc' | 'desc'
 type ZipStatus = 'idle' | 'starting' | 'zipping' | 'done' | 'error'
 type MediaFilter = 'all' | 'audio' | 'image' | 'video' | 'text'
-
-interface LocalEntry { name: string; path: string; type: 'file' | 'directory'; size: number | null }
-
-/** Inline name prompt — renaming an existing entry, or naming a new one. */
-type NameEditor =
-  | { mode: 'rename'; entry: LocalEntry }
-  | { mode: 'create'; kind: 'file' | 'directory' }
 
 // Mirrors the main process's read-text-file cap, so an API file and a local
 // file of the same size behave the same in the viewer.
@@ -256,183 +249,6 @@ export default function ApiFilesView(): JSX.Element {
   const [zipStatus, setZipStatus] = useState<ZipStatus>('idle')
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Local files mode (Electron only)
-  const isElectron = navigator.userAgent.includes('Electron')
-  const [localMode, setLocalMode] = useState(false)
-  const [localPath, setLocalPath] = useState('')
-  const [localEntries, setLocalEntries] = useState<LocalEntry[]>([])
-  const [localLoading, setLocalLoading] = useState(false)
-  const [localError, setLocalError] = useState<string | null>(null)
-  // Local file management: right-click menu, plus the inline name editor that
-  // doubles as "rename this entry" and "create a new file/folder here".
-  const [localCtxMenu, setLocalCtxMenu] = useState<{ entry: LocalEntry; x: number; y: number } | null>(null)
-  const localCtxMenuRef = useRef<HTMLDivElement>(null)
-  const [localCtxMenuPos, setLocalCtxMenuPos] = useState({ left: 0, top: 0 })
-  // Right-clicking the empty space around the entries — the folder's own menu
-  // (new / view / sort / refresh), the way Explorer and Finder behave.
-  const [bgCtxMenu, setBgCtxMenu] = useState<{ x: number; y: number } | null>(null)
-  const [bgSubmenu, setBgSubmenu] = useState<'view' | 'sort' | null>(null)
-  const bgCtxMenuRef = useRef<HTMLDivElement>(null)
-  const [bgCtxMenuPos, setBgCtxMenuPos] = useState({ left: 0, top: 0 })
-  const bgViewItemRef = useRef<HTMLButtonElement>(null)
-  const bgSortItemRef = useRef<HTMLButtonElement>(null)
-  const bgSubmenuRef = useRef<HTMLDivElement>(null)
-  const [bgSubmenuPos, setBgSubmenuPos] = useState({ top: 0, left: 0 })
-  const [nameEditor, setNameEditor] = useState<NameEditor | null>(null)
-  const [nameDraft, setNameDraft] = useState('')
-  const [nameError, setNameError] = useState<string | null>(null)
-  const [nameBusy, setNameBusy] = useState(false)
-
-  useLayoutEffect(() => {
-    const el = localCtxMenuRef.current
-    if (!el || !localCtxMenu) return
-    const rect = el.getBoundingClientRect()
-    setLocalCtxMenuPos({
-      top: Math.max(8, Math.min(localCtxMenu.y, window.innerHeight - rect.height - 8)),
-      left: Math.max(8, Math.min(localCtxMenu.x, window.innerWidth - rect.width - 8)),
-    })
-  }, [localCtxMenu])
-
-  useLayoutEffect(() => {
-    const el = bgCtxMenuRef.current
-    if (!el || !bgCtxMenu) return
-    const rect = el.getBoundingClientRect()
-    setBgCtxMenuPos({
-      top: Math.max(8, Math.min(bgCtxMenu.y, window.innerHeight - rect.height - 8)),
-      left: Math.max(8, Math.min(bgCtxMenu.x, window.innerWidth - rect.width - 8)),
-    })
-  }, [bgCtxMenu])
-
-  // Reopening the menu elsewhere must not carry a stale submenu with it.
-  useEffect(() => { setBgSubmenu(null) }, [bgCtxMenu])
-
-  useLayoutEffect(() => {
-    if (!bgSubmenu) return
-    const item = bgSubmenu === 'view' ? bgViewItemRef.current : bgSortItemRef.current
-    const menu = bgCtxMenuRef.current, sub = bgSubmenuRef.current
-    if (!item || !menu || !sub) return
-    const { top, left } = placeFlyout(item, menu, sub)
-    setBgSubmenuPos(prev => (prev.top === top && prev.left === left ? prev : { top, left }))
-  }, [bgSubmenu, bgCtxMenuPos])
-
-  const browseLocal = async (dirPath: string): Promise<void> => {
-    const el = (window as any).electron
-    if (!el) return
-    setLocalLoading(true)
-    setLocalError(null)
-    try {
-      const result = await el.browseLocal(dirPath)
-      if (result.error) { setLocalError(result.error); return }
-      setLocalPath(result.path)
-      setLocalEntries(result.entries)
-    } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'Failed to browse')
-    } finally {
-      setLocalLoading(false)
-    }
-  }
-
-  const openLocalFile = async (filePath: string): Promise<void> => {
-    const el = (window as any).electron
-    if (!el) return
-    await el.openPath(filePath)
-  }
-
-  // ── Local file management ──────────────────────────────────────────────────
-  // Main owns validation, collision handling and the delete confirm; the
-  // renderer just collects the name and re-reads the folder afterwards.
-
-  const startRename = (entry: LocalEntry): void => {
-    setNameEditor({ mode: 'rename', entry })
-    setNameDraft(entry.name)
-    setNameError(null)
-    setLocalCtxMenu(null)
-  }
-
-  const startCreate = (kind: 'file' | 'directory'): void => {
-    setNameEditor({ mode: 'create', kind })
-    setNameDraft('')
-    setNameError(null)
-    // Reachable from the entry menu, the background menu and the nav bar —
-    // close both menus regardless of which one opened it.
-    setLocalCtxMenu(null)
-    setBgCtxMenu(null)
-  }
-
-  const cancelNameEditor = (): void => {
-    setNameEditor(null)
-    setNameDraft('')
-    setNameError(null)
-  }
-
-  const submitNameEditor = async (): Promise<void> => {
-    const el = (window as any).electron
-    if (!el || !nameEditor || nameBusy) return
-    const name = nameDraft.trim()
-    if (!name) { setNameError('Name can\'t be empty'); return }
-    setNameBusy(true)
-    setNameError(null)
-    try {
-      const result = nameEditor.mode === 'rename'
-        ? await el.localRename(nameEditor.entry.path, name)
-        : await el.localCreate(localPath, name, nameEditor.kind)
-      if (result?.error) { setNameError(result.error); return }
-      cancelNameEditor()
-      await browseLocal(localPath)
-    } catch (err) {
-      setNameError(err instanceof Error ? err.message : 'Failed')
-    } finally {
-      setNameBusy(false)
-    }
-  }
-
-  const deleteLocalEntry = async (entry: LocalEntry): Promise<void> => {
-    const el = (window as any).electron
-    if (!el) return
-    setLocalCtxMenu(null)
-    // Main shows the confirm and moves the item to the OS trash; a cancel
-    // comes back as { canceled } and must leave the listing untouched.
-    const result = await el.localDelete(entry.path)
-    if (result?.ok) await browseLocal(localPath)
-  }
-
-  const handleLocalPlay = (entry: { name: string; path: string; type: string; size: number | null }): void => {
-    const track = localFileToTrack(entry)
-    const queue = localEntries
-      .filter(e => e.type === 'file' && getMediaType(e.name) === 'audio')
-      .map(localFileToTrack)
-    playTrack(track, queue.length > 0 ? queue : [track])
-  }
-
-  const openLocalLightbox = (entry: { name: string; path: string; type: string; size: number | null }): void => {
-    const mediaEntries = localEntries.filter(e => {
-      const mt = getMediaType(e.name)
-      return e.type === 'file' && (mt === 'image' || mt === 'video')
-    })
-    const items: LightboxItem[] = mediaEntries.map(e => ({
-      url: toFileUrl(e.path),
-      type: getMediaType(e.name) as 'image' | 'video',
-      name: e.name,
-    }))
-    const idx = mediaEntries.findIndex(e => e.path === entry.path)
-    setLightboxItems(items)
-    setLightboxIndex(idx >= 0 ? idx : 0)
-  }
-
-  const pickLocalFolder = async (): Promise<void> => {
-    const el = (window as any).electron
-    if (!el) return
-    const picked = await el.pickFolder()
-    if (picked) browseLocal(picked)
-  }
-
-  // Init local browse when switching to local mode
-  useEffect(() => {
-    if (localMode && localEntries.length === 0) {
-      browseLocal('')
-    }
-  }, [localMode]) // eslint-disable-line react-hooks/exhaustive-deps
-
   // Persisted view settings
   const [viewMode, setViewModeState] = useState<ViewMode>(
     () => (localStorage.getItem(LS_VIEW_MODE) as ViewMode) || 'list'
@@ -555,16 +371,14 @@ export default function ApiFilesView(): JSX.Element {
   // ESC closes an open context menu, like a native one. Registered separately
   // from the select-mode handler so it works whether or not that's active.
   useEffect(() => {
-    if (!bgCtxMenu && !localCtxMenu && !ctxMenu) return
+    if (!ctxMenu) return
     const handleKeyDown = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return
-      setBgCtxMenu(null)
-      setLocalCtxMenu(null)
       setCtxMenu(null)
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [bgCtxMenu, localCtxMenu, ctxMenu])
+  }, [ctxMenu])
 
   const goBack = (): void => {
     if (history.length > 0) {
@@ -702,19 +516,6 @@ export default function ApiFilesView(): JSX.Element {
     })
   }
 
-  const openLocalText = (entry: LocalEntry): void => {
-    setTextFile({
-      name: entry.name,
-      load: async () => {
-        const el = (window as any).electron
-        if (!el) throw new Error('Unavailable')
-        const res = await el.readTextFile(entry.path)
-        if (res?.error) throw new Error(res.error)
-        return { text: res.text, truncated: res.truncated }
-      },
-    })
-  }
-
   // ── Selection helpers ──────────────────────────────────────────────────────
 
   const enterSelectMode = (entry: JWApiFileEntry): void => {
@@ -807,13 +608,6 @@ export default function ApiFilesView(): JSX.Element {
     [sortedEntries, typeFilter]
   )
 
-  const filteredLocalEntries = useMemo(
-    () => typeFilter === 'all'
-      ? localEntries
-      : localEntries.filter((e) => e.type === 'directory' || getMediaType(e.name) === typeFilter),
-    [localEntries, typeFilter]
-  )
-
   const crumbs = breadcrumbs(currentPath)
 
   const SortIcon = ({ by }: { by: SortBy }): JSX.Element => {
@@ -825,7 +619,7 @@ export default function ApiFilesView(): JSX.Element {
     <>
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {/* Header */}
-        <div className={`px-5 pb-3 shrink-0 ${isElectron ? 'pt-9' : 'pt-5'}`}>
+        <div className="px-5 pb-3 shrink-0 pt-5">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <HardDrive size={18} className="text-text-muted" />
@@ -874,28 +668,13 @@ export default function ApiFilesView(): JSX.Element {
                   title="Grid view"
                 ><LayoutGrid size={15} /></button>
               </div>
-              {/* API / Local toggle (Electron only) */}
-              {isElectron && (
-                <div className="flex items-center bg-surface-overlay rounded-lg p-1 gap-1">
-                  <button
-                    onClick={() => setLocalMode(false)}
-                    className={`flex items-center gap-1.5 px-2.5 py-2 rounded-md text-xs font-medium transition-colors ${!localMode ? 'bg-surface-raised text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}
-                    title="Browse API files"
-                  ><Globe size={12} /> API</button>
-                  <button
-                    onClick={() => setLocalMode(true)}
-                    className={`flex items-center gap-1.5 px-2.5 py-2 rounded-md text-xs font-medium transition-colors ${localMode ? 'bg-surface-raised text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}
-                    title="Browse local files"
-                  ><MonitorSmartphone size={12} /> Local</button>
-                </div>
-              )}
             </div>
           </div>
 
-          {/* Search — API mode. Recursive across the whole file tree (same
-              /files/browse/ `search` param the session-ZIP lookup uses),
-              not scoped to the current folder. */}
-          {!localMode && (
+          {/* Search — recursive across the whole file tree (same /files/browse/
+              `search` param the session-ZIP lookup uses), not scoped to the
+              current folder. */}
+          {(
             <div className="relative mb-2">
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
               <input
@@ -917,8 +696,8 @@ export default function ApiFilesView(): JSX.Element {
             </div>
           )}
 
-          {/* Nav bar — API mode */}
-          {!localMode && (
+          {/* Nav bar */}
+          {(
             isSearching ? (
               <div className="flex items-center gap-1.5 text-xs text-text-muted">
                 {searchLoading
@@ -959,227 +738,8 @@ export default function ApiFilesView(): JSX.Element {
           )}
         </div>
 
-        {/* Local files browser */}
-        {localMode && (
-          <div
-            className="flex-1 overflow-y-auto px-5 pb-4"
-            // Entry rows stop propagation and open their own menu, so anything
-            // reaching here is genuinely the background. Needs a folder open —
-            // "New file" has nowhere to go otherwise.
-            onContextMenu={(e) => {
-              if (!localPath) return
-              e.preventDefault()
-              setBgCtxMenu({ x: e.clientX, y: e.clientY })
-            }}
-          >
-            {/* Local nav bar */}
-            <div className="flex items-center gap-1.5 mb-3">
-              <button
-                onClick={pickLocalFolder}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-overlay hover:bg-surface-raised border border-[var(--border)] text-text-secondary text-xs font-medium transition-colors"
-              ><FolderOpen size={13} /> Change folder</button>
-              {localPath && (
-                <>
-                  <button
-                    onClick={() => startCreate('directory')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-overlay hover:bg-surface-raised border border-[var(--border)] text-text-secondary text-xs font-medium transition-colors"
-                  ><FolderPlus size={13} /> New folder</button>
-                  <button
-                    onClick={() => startCreate('file')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-overlay hover:bg-surface-raised border border-[var(--border)] text-text-secondary text-xs font-medium transition-colors"
-                  ><FilePlus size={13} /> New file</button>
-                  <span className="text-text-muted text-xs truncate flex-1 min-w-0" title={localPath}>{localPath}</span>
-                </>
-              )}
-            </div>
-
-            {/* Inline name prompt — used for both "new file/folder" and
-                rename, so there's one place that validates and reports. */}
-            {nameEditor && (
-              <div className="mb-3 flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-text-muted shrink-0">
-                    {nameEditor.mode === 'rename'
-                      ? 'Rename to'
-                      : nameEditor.kind === 'directory' ? 'New folder' : 'New file'}
-                  </span>
-                  <input
-                    autoFocus
-                    value={nameDraft}
-                    onChange={(e) => { setNameDraft(e.target.value); setNameError(null) }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') submitNameEditor()
-                      else if (e.key === 'Escape') cancelNameEditor()
-                    }}
-                    placeholder="Name"
-                    className="flex-1 min-w-0 bg-surface-overlay border border-[var(--border)] rounded-lg px-2.5 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent/40"
-                  />
-                  <button
-                    onClick={submitNameEditor}
-                    disabled={nameBusy || !nameDraft.trim()}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white rounded-lg text-xs font-medium disabled:opacity-50 transition-opacity hover:opacity-90"
-                  >
-                    {nameBusy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                    {nameEditor.mode === 'rename' ? 'Rename' : 'Create'}
-                  </button>
-                  <button
-                    onClick={cancelNameEditor}
-                    className="p-1.5 rounded-lg hover:bg-surface-overlay transition-colors"
-                    title="Cancel"
-                  ><X size={15} className="text-text-muted" /></button>
-                </div>
-                {nameError && <p className="text-xs text-red-400 pl-1">{nameError}</p>}
-              </div>
-            )}
-            {localLoading ? (
-              <div className="flex items-center justify-center h-40 gap-2 text-text-muted">
-                <Loader2 size={18} className="animate-spin" /><span className="text-sm">Loading…</span>
-              </div>
-            ) : localError ? (
-              <div className="flex flex-col items-center justify-center h-40 gap-2">
-                <p className="text-text-muted text-sm">{localError}</p>
-                <button onClick={() => browseLocal(localPath)} className="text-accent text-sm underline">Retry</button>
-              </div>
-            ) : localEntries.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-40 gap-2">
-                <MonitorSmartphone size={32} className="text-text-muted opacity-30" />
-                <p className="text-text-muted text-sm">No files found</p>
-                <button onClick={pickLocalFolder} className="text-accent text-sm underline">Pick a folder</button>
-              </div>
-            ) : filteredLocalEntries.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-40 gap-2">
-                <Filter size={32} className="text-text-muted opacity-30" />
-                <p className="text-text-muted text-sm">No {typeFilter} files here</p>
-              </div>
-            ) : viewMode === 'list' ? (
-              <div className="space-y-0.5">
-                {localPath && (
-                  <button
-                    onClick={() => {
-                      const parent = localPath.replace(/[/\\][^/\\]+$/, '')
-                      if (parent && parent !== localPath) browseLocal(parent)
-                    }}
-                    className="flex items-center gap-3 w-full px-3 py-2 rounded-lg hover:bg-surface-overlay transition-colors text-left"
-                  >
-                    <div className="w-9 h-9 flex items-center justify-center shrink-0"><FolderOpen size={18} className="text-text-muted" /></div>
-                    <span className="text-text-muted text-sm">..</span>
-                  </button>
-                )}
-                {filteredLocalEntries.map((entry) => {
-                  const isDir = entry.type === 'directory'
-                  const mt = isDir ? 'folder' : getMediaType(entry.name)
-                  const ext = getFileExt(entry.name).slice(1).toUpperCase()
-                  return (
-                    <div
-                      key={entry.path}
-                      className="group flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-surface-overlay transition-colors cursor-default"
-                      onClick={() => {
-                        if (isDir) browseLocal(entry.path)
-                        else if (mt === 'audio') handleLocalPlay(entry)
-                        else if (mt === 'image' || mt === 'video') openLocalLightbox(entry)
-                        else if (mt === 'text') openLocalText(entry)
-                      }}
-                      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setLocalCtxMenu({ entry, x: e.clientX, y: e.clientY }) }}
-                    >
-                      <div className="w-9 h-9 flex items-center justify-center shrink-0">
-                        {isDir
-                          ? <FolderOpen size={18} className="text-text-muted" />
-                          : mt === 'audio' ? <Music2 size={18} className="text-text-muted opacity-40" /> : mt === 'video' ? <Video size={18} className="text-text-muted" /> : mt === 'image' ? <ImageIcon size={18} className="text-text-muted" /> : mt === 'text' ? <FileText size={18} className="text-text-muted" /> : <Music2 size={18} className="text-text-muted opacity-20" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-text-primary text-sm truncate">{entry.name}</p>
-                        {entry.size != null && !isDir && (
-                          <p className="text-text-muted text-xs">{(entry.size / 1_048_576).toFixed(1)} MB</p>
-                        )}
-                      </div>
-                      {mt === 'audio' && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleLocalPlay(entry) }}
-                          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full hover:bg-accent/15 text-accent transition-all"
-                          title="Play"
-                        ><Play size={14} /></button>
-                      )}
-                      {/* Same rationale as the API rows: right-click isn't
-                          reachable on touch, so the menu needs a real button. */}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setLocalCtxMenu({ entry, x: e.clientX, y: e.clientY }) }}
-                        className="shrink-0 p-2 -my-1.5 text-text-muted md:opacity-0 md:group-hover:opacity-100 hover:text-text-primary active:text-accent transition-all"
-                        title="More options"
-                      ><MoreHorizontal size={16} /></button>
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <div className="grid gap-3 pt-1" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
-                {localPath && (
-                  <button
-                    onClick={() => {
-                      const parent = localPath.replace(/[/\\][^/\\]+$/, '')
-                      if (parent && parent !== localPath) browseLocal(parent)
-                    }}
-                    className="flex flex-col items-center gap-2 p-3 rounded-xl bg-surface-overlay hover:bg-surface-raised transition-colors"
-                  >
-                    <div className="w-full aspect-square flex items-center justify-center"><FolderOpen size={40} className="text-text-muted" /></div>
-                    <span className="text-text-muted text-xs">..</span>
-                  </button>
-                )}
-                {filteredLocalEntries.map((entry) => {
-                  const isDir = entry.type === 'directory'
-                  const mt = isDir ? 'folder' : getMediaType(entry.name)
-                  const ext = getFileExt(entry.name).slice(1).toUpperCase()
-                  return (
-                    <div
-                      key={entry.path}
-                      className="group flex flex-col rounded-xl overflow-hidden transition-colors cursor-default bg-surface-overlay hover:bg-surface-raised"
-                      onClick={() => {
-                        if (isDir) browseLocal(entry.path)
-                        else if (mt === 'audio') handleLocalPlay(entry)
-                        else if (mt === 'image' || mt === 'video') openLocalLightbox(entry)
-                        else if (mt === 'text') openLocalText(entry)
-                      }}
-                      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setLocalCtxMenu({ entry, x: e.clientX, y: e.clientY }) }}
-                    >
-                      <div className="relative w-full aspect-square bg-surface-raised flex items-center justify-center overflow-hidden">
-                        {isDir
-                          ? <Folder size={40} className="text-text-secondary group-hover:text-accent transition-colors" />
-                          : mt === 'audio' ? (
-                            <>
-                              <Music2 size={36} className="text-text-muted opacity-30" />
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Play size={24} fill="white" className="text-white ml-0.5" />
-                              </div>
-                            </>
-                          ) : mt === 'image' ? (
-                            <ImageIcon size={36} className="text-text-muted" />
-                          ) : mt === 'video' ? (
-                            <Video size={36} className="text-text-muted" />
-                          ) : mt === 'text' ? (
-                            <FileText size={36} className="text-text-muted" />
-                          ) : (
-                            <span className="text-xs uppercase text-text-muted">{ext}</span>
-                          )}
-                      </div>
-                      <div className="px-2 py-2 flex items-center gap-1">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-text-primary text-xs font-medium truncate">{entry.name}</p>
-                          {!isDir && <p className="text-text-muted text-[10px] uppercase tracking-wide mt-0.5">{ext}</p>}
-                        </div>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setLocalCtxMenu({ entry, x: e.clientX, y: e.clientY }) }}
-                          className="shrink-0 p-1.5 -m-1 text-text-muted md:opacity-0 md:group-hover:opacity-100 hover:text-text-primary active:text-accent transition-all"
-                          title="More options"
-                        ><MoreHorizontal size={15} /></button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
         {/* Content */}
-        {!localMode && <div className="flex-1 overflow-y-auto px-5 pb-4">
+        <div className="flex-1 overflow-y-auto px-5 pb-4">
           {(isSearching ? searchLoading : loading) ? (
             <div className="flex items-center justify-center h-40 gap-2 text-text-muted">
               <Loader2 size={18} className="animate-spin" /><span className="text-sm">{isSearching ? 'Searching…' : 'Loading…'}</span>
@@ -1441,7 +1001,7 @@ export default function ApiFilesView(): JSX.Element {
               })}
             </div>
           )}
-        </div>}
+        </div>
 
         {/* Selection action bar */}
         {selectMode && (
@@ -1539,7 +1099,7 @@ export default function ApiFilesView(): JSX.Element {
         />
       )}
 
-      {!localMode && ctxMenu && (
+      {ctxMenu && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setCtxMenu(null)} />
           <div
@@ -1691,181 +1251,6 @@ export default function ApiFilesView(): JSX.Element {
                 <Download size={14} className="text-text-muted" /> Download
               </button>
             )}
-          </div>
-        </>
-      )}
-
-      {/* Local-mode context menu — open / play, rename, delete. Deletion and
-          renaming are handled in the main process (confirm + OS trash there),
-          so nothing here touches the filesystem directly. */}
-      {localMode && localCtxMenu && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setLocalCtxMenu(null)} />
-          <div
-            ref={localCtxMenuRef}
-            className="fixed z-50 bg-surface border border-[var(--border)] rounded-xl shadow-2xl py-1 min-w-[190px]"
-            style={{ left: localCtxMenuPos.left, top: localCtxMenuPos.top }}
-            onClick={e => e.stopPropagation()}
-          >
-            {localCtxMenu.entry.type === 'directory' ? (
-              <button onClick={() => { browseLocal(localCtxMenu.entry.path); setLocalCtxMenu(null) }}
-                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors">
-                <FolderOpen size={14} className="text-text-muted" /> Open
-              </button>
-            ) : getMediaType(localCtxMenu.entry.name) === 'audio' ? (
-              <button onClick={() => { handleLocalPlay(localCtxMenu.entry); setLocalCtxMenu(null) }}
-                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors">
-                <Play size={14} className="text-text-muted" /> Play
-              </button>
-            ) : getMediaType(localCtxMenu.entry.name) === 'text' ? (
-              <button onClick={() => { openLocalText(localCtxMenu.entry); setLocalCtxMenu(null) }}
-                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors">
-                <FileText size={14} className="text-text-muted" /> View
-              </button>
-            ) : null}
-            <button onClick={() => { openLocalFile(localCtxMenu.entry.path); setLocalCtxMenu(null) }}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors">
-              <ExternalLink size={14} className="text-text-muted" /> Open with system app
-            </button>
-            <button onClick={() => startRename(localCtxMenu.entry)}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors">
-              <Pencil size={14} className="text-text-muted" /> Rename
-            </button>
-            <div className="border-t border-[var(--border)] my-1" />
-            <button onClick={() => startCreate('directory')}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors">
-              <FolderPlus size={14} className="text-text-muted" /> New folder
-            </button>
-            <button onClick={() => startCreate('file')}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors">
-              <FilePlus size={14} className="text-text-muted" /> New file
-            </button>
-            <div className="border-t border-[var(--border)] my-1" />
-            <button onClick={() => deleteLocalEntry(localCtxMenu.entry)}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-red-400 hover:bg-surface-overlay transition-colors">
-              <Trash2 size={14} /> Delete
-            </button>
-          </div>
-        </>
-      )}
-
-      {/* Background (empty-space) menu for the local folder — the Explorer /
-          Finder equivalent: View, Sort by, Refresh, New, Open in file manager. */}
-      {localMode && bgCtxMenu && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setBgCtxMenu(null)} onContextMenu={(e) => { e.preventDefault(); setBgCtxMenu(null) }} />
-          <div
-            ref={bgCtxMenuRef}
-            className="fixed z-50 bg-surface border border-[var(--border)] rounded-xl shadow-2xl py-1 min-w-[190px]"
-            style={{ left: bgCtxMenuPos.left, top: bgCtxMenuPos.top }}
-            onClick={e => e.stopPropagation()}
-            // Hovering a submenu row opens it, hovering anything else closes
-            // it — the way a native submenu behaves.
-            onMouseOver={(e) => {
-              const t = e.target as Node
-              if (bgViewItemRef.current?.contains(t)) setBgSubmenu('view')
-              else if (bgSortItemRef.current?.contains(t)) setBgSubmenu('sort')
-              else setBgSubmenu(null)
-            }}
-          >
-            {/* Submenu flyout — a child of the menu so the click-away overlay
-                still counts clicks inside it as "inside". */}
-            {bgSubmenu && (
-              <div
-                ref={bgSubmenuRef}
-                onClick={e => e.stopPropagation()}
-                style={{ position: 'fixed', zIndex: 60, top: bgSubmenuPos.top, left: bgSubmenuPos.left }}
-                className="w-44 bg-surface border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden py-1"
-              >
-                {bgSubmenu === 'view' ? (
-                  ([['list', 'List', LayoutList], ['grid', 'Grid', LayoutGrid]] as const).map(([key, label, Icon]) => (
-                    <button
-                      key={key}
-                      onClick={() => { setViewMode(key); setBgCtxMenu(null) }}
-                      className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors"
-                    >
-                      <Icon size={14} className="text-text-muted" />
-                      <span className="flex-1 text-left">{label}</span>
-                      {viewMode === key && <Check size={13} className="text-accent" />}
-                    </button>
-                  ))
-                ) : (
-                  <>
-                    {(['name', 'type', 'size'] as SortBy[]).map((by) => (
-                      <button
-                        key={by}
-                        onClick={() => { toggleSort(by); setBgCtxMenu(null) }}
-                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors capitalize"
-                      >
-                        <span className="flex-1 text-left">{by}</span>
-                        {sortBy === by && (sortDir === 'asc'
-                          ? <ArrowUp size={13} className="text-accent" />
-                          : <ArrowDown size={13} className="text-accent" />)}
-                      </button>
-                    ))}
-                    <div className="border-t border-[var(--border)] my-1" />
-                    <button
-                      onClick={() => { setSortDir(sortDir === 'asc' ? 'desc' : 'asc'); setBgCtxMenu(null) }}
-                      className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors"
-                    >
-                      <ArrowUpDown size={14} className="text-text-muted" />
-                      {sortDir === 'asc' ? 'Descending' : 'Ascending'}
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-
-            <button
-              ref={bgViewItemRef}
-              onClick={() => setBgSubmenu(s => (s === 'view' ? null : 'view'))}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors"
-            >
-              {viewMode === 'grid' ? <LayoutGrid size={14} className="text-text-muted" /> : <LayoutList size={14} className="text-text-muted" />}
-              <span className="flex-1 text-left">View</span>
-              <ChevronRight size={13} className="text-text-muted" />
-            </button>
-            <button
-              ref={bgSortItemRef}
-              onClick={() => setBgSubmenu(s => (s === 'sort' ? null : 'sort'))}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors"
-            >
-              <ArrowUpDown size={14} className="text-text-muted" />
-              <span className="flex-1 text-left">Sort by</span>
-              <ChevronRight size={13} className="text-text-muted" />
-            </button>
-            <button
-              onClick={() => { browseLocal(localPath); setBgCtxMenu(null) }}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors"
-            >
-              <RefreshCw size={14} className="text-text-muted" /> Refresh
-            </button>
-            <div className="border-t border-[var(--border)] my-1" />
-            <button
-              onClick={() => startCreate('directory')}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors"
-            >
-              <FolderPlus size={14} className="text-text-muted" /> New folder
-            </button>
-            <button
-              onClick={() => startCreate('file')}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors"
-            >
-              <FilePlus size={14} className="text-text-muted" /> New file
-            </button>
-            <div className="border-t border-[var(--border)] my-1" />
-            <button
-              onClick={() => { copyTextToClipboard(localPath, 'path'); setBgCtxMenu(null) }}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors"
-            >
-              <Clipboard size={14} className="text-text-muted" /> Copy folder path
-            </button>
-            <button
-              onClick={() => { openLocalFile(localPath); setBgCtxMenu(null) }}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-text-primary hover:bg-surface-overlay transition-colors"
-            >
-              <ExternalLink size={14} className="text-text-muted" /> Open in file manager
-            </button>
           </div>
         </>
       )}

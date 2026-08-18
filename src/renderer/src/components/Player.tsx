@@ -17,15 +17,13 @@ import {
   ChevronDown,
   Check,
   MoreHorizontal,
-  PictureInPicture2,
   Radio,
   Info,
   Loader2,
   SlidersHorizontal,
 } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
-import { registerPlayerCommandHandler } from '../lib/windowSync'
-import { eventToCombo, resolveAction, getAction, effectiveGlobalBinding, comboToAccelerator, registerHotkeyDispatch, HOTKEY_ACTIONS } from '../lib/hotkeys'
+import { eventToCombo, resolveAction, registerHotkeyDispatch } from '../lib/hotkeys'
 import { formatDuration } from '../lib/format'
 import { apiFetch, smallCoverUrl, JWApiSong } from '../lib/juicewrldApi'
 import { trackIdToSongId, showStaffProfile, staffProfileView } from '../lib/userApi'
@@ -34,17 +32,15 @@ import { FullTrack } from '../types'
 import SongInfoModal from './SongInfoModal'
 import SongContextMenu from './SongContextMenu'
 import EqualizerPanel from './EqualizerPanel'
+import { Sheet } from './mobile/Sheet'
+import { useIsMobile } from '../hooks/useIsMobile'
 import {
   attachAudioElement, applyAudioEffects, resumeEffectsContext,
   setEffectsOutputDevice, getCurrentPeak, setEffectsChainWanted,
 } from '../lib/audioEffects'
 import { LibraryTrack } from '../types'
 
-// Downloaded-for-offline audio always wins over streaming — same track id,
-// just playing from local disk instead of the API.
 function resolvePlaybackUrl(track: { id: string; streamUrl?: string; path: string }): string {
-  const offline = useStore.getState().offlineTracks[track.id]
-  if (offline) return toFileUrl(offline.localPath)
   return track.streamUrl ?? toFileUrl(track.path)
 }
 
@@ -130,7 +126,7 @@ export default function Player(): JSX.Element {
     toggleLike,
     setActiveView,
     activeView,
-    playNext, account, updateLibraryTrack, setPendingEditorSongId, popoutWindows } = useStorePick('currentTrack', 'currentTrackFull', 'isPlaying', 'volume', 'progress', 'currentTime', 'shuffle', 'repeat', 'setIsPlaying', 'setVolume', 'setProgress', 'setCurrentTime', 'setCurrentTrackFull', 'toggleShuffle', 'toggleRepeat', 'nextTrack', 'prevTrack', 'setShowNowPlaying', 'showNowPlaying', 'showQueue', 'setShowQueue', 'playerCollapsed', 'setPlayerCollapsed', 'queue', 'queueIndex', 'crossfadeEnabled', 'crossfadeDuration', 'sleepTimerEnd', 'setSleepTimer', 'audioOutput', 'setAudioOutput', 'playbackSpeed', 'setPlaybackSpeed', 'likedTrackIds', 'toggleLike', 'setActiveView', 'activeView', 'playNext', 'account', 'updateLibraryTrack', 'setPendingEditorSongId', 'popoutWindows')
+    playNext, account, setPendingEditorSongId } = useStorePick('currentTrack', 'currentTrackFull', 'isPlaying', 'volume', 'progress', 'currentTime', 'shuffle', 'repeat', 'setIsPlaying', 'setVolume', 'setProgress', 'setCurrentTime', 'setCurrentTrackFull', 'toggleShuffle', 'toggleRepeat', 'nextTrack', 'prevTrack', 'setShowNowPlaying', 'showNowPlaying', 'showQueue', 'setShowQueue', 'playerCollapsed', 'setPlayerCollapsed', 'queue', 'queueIndex', 'crossfadeEnabled', 'crossfadeDuration', 'sleepTimerEnd', 'setSleepTimer', 'audioOutput', 'setAudioOutput', 'playbackSpeed', 'setPlaybackSpeed', 'likedTrackIds', 'toggleLike', 'setActiveView', 'activeView', 'playNext', 'account', 'setPendingEditorSongId')
   const canEditSong = !!(account?.is_editor || account?.is_administrator)
 
   const [showContextMenu, setShowContextMenu] = useState(false)
@@ -143,9 +139,6 @@ export default function Player(): JSX.Element {
   const currentSongId = currentTrack ? trackIdToSongId(currentTrack.id) : null
   const { radioMode, radioNext } = useStorePick('radioMode', 'radioNext')
   const { radioFmActive, radioFmNowPlaying, radioFmMatchedSong } = useStorePick('radioFmActive', 'radioFmNowPlaying', 'radioFmMatchedSong')
-  const { libraryTracks } = useStorePick('libraryTracks')
-  const { globalHotkeysEnabled, globalHotkeyBindings } = useStorePick('globalHotkeysEnabled', 'globalHotkeyBindings')
-  const { mediaOverlayEnabled } = useStorePick('mediaOverlayEnabled')
   const { eqEnabled, eqGains, eqBalance, eqMono, skipSilence } = useStorePick('eqEnabled', 'eqGains', 'eqBalance', 'eqMono', 'skipSilence')
   const { reverbEnabled, reverbMix, reverbDecay, pitchShift } = useStorePick('reverbEnabled', 'reverbMix', 'reverbDecay', 'pitchShift')
   const { abLoopStart, abLoopEnd, setAbLoopPoint, clearAbLoop } = useStorePick('abLoopStart', 'abLoopEnd', 'setAbLoopPoint', 'clearAbLoop')
@@ -393,13 +386,6 @@ export default function Player(): JSX.Element {
       if (cached && Date.now() - cached.ts < LYRICS_CACHE_TTL_MS) {
         setCurrentTrackFull({ ...synthetic, lyrics: cached.lyrics, syncedLyrics: cached.syncedLyrics })
       } else {
-        // Show the offline-downloaded snapshot immediately (if any) so a
-        // synced/downloaded song doesn't sit blank waiting on the network —
-        // the live fetch below overwrites it with fresh data when it succeeds.
-        const offlineMeta = useStore.getState().offlineTracks[currentTrack.id]
-        if (offlineMeta) {
-          setCurrentTrackFull({ ...synthetic, albumArt: offlineMeta.imageUrl ?? synthetic.albumArt, lyrics: offlineMeta.lyrics, syncedLyrics: offlineMeta.syncedLyrics })
-        }
         apiFetch<JWApiSong>(`/songs/${songId}/`)
           .then((song) => {
             const syncedLyrics = song.synced_lyrics || null
@@ -408,37 +394,7 @@ export default function Player(): JSX.Element {
             if (isStale()) return
             setCurrentTrackFull({ ...synthetic, lyrics, syncedLyrics })
           })
-          .catch(() => {/* no network — offline snapshot (if any) already applied above */})
-      }
-    } else {
-      // Local track — load lyrics + cover art from IPC
-      const el = (window as any).electron
-      if (el && currentTrack.path) {
-        el.readTrackMetadata(currentTrack.path).then((meta: Record<string, any> | null) => {
-          if (isStale()) return
-          if (meta && !meta.error) {
-            setCurrentTrackFull(prev => prev ? {
-              ...prev,
-              lyrics: meta.lyrics || null,
-              syncedLyrics: meta.syncedLyrics || null,
-              ext: currentTrack.path.split('.').pop() || prev.ext,
-              bitrate: meta.bitrate ?? prev.bitrate,
-              sampleRate: meta.sampleRate ?? prev.sampleRate,
-              bitsPerSample: meta.bitsPerSample ?? prev.bitsPerSample,
-              channels: meta.channels ?? prev.channels,
-              fileSize: meta.fileSize ?? prev.fileSize,
-            } : prev)
-          }
-        }).catch(() => {})
-        if (!currentTrack.imageUrl) {
-          el.readAlbumArt(currentTrack.path, 512).then((a: string | null) => {
-            if (isStale()) return
-            if (a) {
-              updateLibraryTrack(currentTrack.id, { albumArt: a })
-              setCurrentTrackFull(prev => prev ? { ...prev, albumArt: a } : prev)
-            }
-          }).catch(() => {})
-        }
+          .catch(() => {/* no network — leave synthetic lyrics as-is */})
       }
     }
   }, [currentTrack?.id, currentTrackFull])
@@ -878,12 +834,12 @@ export default function Player(): JSX.Element {
     return () => { clearInterval(id); reset() }
   }, [skipSilence])
 
-  // Disabling this only makes sense on desktop (Electron) — it exists to stop
-  // Windows from popping up its System Media Transport Controls overlay on
-  // media-key presses. Mobile relies on Media Session staying alive to keep
-  // the background/lock-screen session from being torn down, so the toggle
-  // is a no-op there (and hidden in Settings).
-  const mediaSessionActive = mediaOverlayEnabled || !(window as any).electron
+  // mediaOverlayEnabled only makes sense on desktop (Electron) — it exists to
+  // stop Windows from popping up its System Media Transport Controls overlay
+  // on media-key presses. The web build relies on Media Session staying alive
+  // to keep the background/lock-screen session from being torn down, so it
+  // always stays active here (the toggle is a no-op and hidden in Settings).
+  const mediaSessionActive = true
 
   // Media Session API — lock screen / notification metadata
   useEffect(() => {
@@ -1257,67 +1213,11 @@ export default function Player(): JSX.Element {
     nextTrack()
   }
 
-  // Tray — mirror playback state so the tray menu shows now-playing info and
-  // the right Play/Pause + Like labels. `hasTrack` gates the tray controls,
-  // matching the disabled state of the on-screen buttons during FM radio.
-  useEffect(() => {
-    const el = (window as any).electron
-    if (!el?.setTrayPlayback) return
-    const title  = radioFmActive ? (radioFmNowPlaying?.title  ?? '') : (currentTrack?.title  ?? '')
-    const artist = radioFmActive ? (radioFmNowPlaying?.artist ?? '') : (currentTrack?.artist ?? '')
-    el.setTrayPlayback({
-      hasTrack: !!currentTrack && !radioFmActive,
-      isPlaying,
-      title,
-      artist,
-      liked: !!currentTrack && likedTrackIds.includes(currentTrack.id),
-    })
-  }, [
-    isPlaying,
-    currentTrack?.id,
-    currentTrack?.title,
-    currentTrack?.artist,
-    radioFmActive,
-    radioFmNowPlaying?.title,
-    radioFmNowPlaying?.artist,
-    likedTrackIds,
-  ])
-
-  // Remote media commands — the tray menu and the mini-player pop-out both
-  // route through the same handlers as the on-screen controls (handleNext/
-  // handlePrev carry the repeat-one and radio-mode special cases). Handlers
-  // are recreated every render, so a ref keeps the subscriptions themselves
-  // stable while always dispatching to fresh closures.
-  const remoteCommandsRef = useRef<Record<string, (arg?: unknown) => void>>({})
-  remoteCommandsRef.current = {
-    'play-pause':  () => { if (currentTrack && !radioFmActive) setIsPlaying(!isPlaying) },
-    'next':        () => { if (currentTrack && !radioFmActive) handleNext() },
-    'previous':    () => { if (currentTrack && !radioFmActive) handlePrev() },
-    'toggle-like': () => { if (currentTrack && !radioFmActive) toggleLike(currentTrack.id) },
-    'toggle-shuffle': () => { if (!radioFmActive) toggleShuffle() },
-    'toggle-repeat':  () => { if (!radioFmActive) toggleRepeat() },
-    'seek': (arg) => { if (typeof arg === 'number' && currentTrack && !radioFmActive) seekAudio(arg) },
-    'jump': (arg) => {
-      if (typeof arg !== 'number' || radioFmActive) return
-      const { queue: q } = useStore.getState()
-      if (q[arg]) useStore.getState().jumpToTrack(q[arg], arg)
-    },
-    'remove-queue': (arg) => { if (typeof arg === 'number') useStore.getState().removeFromQueue(arg) },
-    'clear-queue': () => useStore.getState().clearQueue(),
-  }
-  useEffect(() => {
-    const el = (window as any).electron
-    if (!el?.onTrayCommand) return
-    return el.onTrayCommand((cmd: string) => remoteCommandsRef.current[cmd]?.())
-  }, [])
-  // Same dispatch table, fed by pop-out windows over the window-sync channel.
-  useEffect(() => registerPlayerCommandHandler((cmd, arg) => remoteCommandsRef.current[cmd]?.(arg)), [])
-
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   // What each hotkey action *does*. Keyed by the ids in lib/hotkeys.ts (which
   // owns the id → key-combo mapping). Recreated every render so the closures
-  // see fresh state, like remoteCommandsRef above; a stable listener reads the
-  // ref. Store reads/writes go through getState() so they never need the pick.
+  // see fresh state; a stable listener reads the ref. Store reads/writes go
+  // through getState() so they never need the pick.
   const clampSpeed = (v: number): number => Math.min(2, Math.max(0.5, Math.round(v * 100) / 100))
   const seekToPercent = (pct: number): void => {
     if (!currentTrack || radioFmActive) return
@@ -1325,10 +1225,6 @@ export default function Player(): JSX.Element {
     if (dur > 0) seekAudio(dur * pct)
   }
   const hotkeyActionsRef = useRef<Record<string, () => void>>({})
-  // Last action the in-app keydown listener ran, so the OS-global listener can
-  // tell "the user pressed a combo bound in both columns while focused" (skip,
-  // already handled) from "a global-only binding fired" (run it).
-  const lastInAppFire = useRef<{ id: string; at: number } | null>(null)
   hotkeyActionsRef.current = {
     'play-pause': () => { if (currentTrack && !radioFmActive) setIsPlaying(!isPlaying) },
     'play':       () => { if (currentTrack && !radioFmActive) setIsPlaying(true) },
@@ -1357,12 +1253,7 @@ export default function Player(): JSX.Element {
     'song-info':   () => { if (currentTrack || radioFmActive) openSongInfo() },
     'edit-song': () => {
       if (radioFmActive) return
-      if (currentSongId != null) { useStore.getState().openSongEditor(currentSongId); return }
-      // Local file — open the local-metadata editor instead of the API editor.
-      if (currentTrack?.id.startsWith('local-')) {
-        const lt = libraryTracks.find((t) => t.id === currentTrack.id)
-        if (lt) useStore.getState().openLocalEditor(lt)
-      }
+      if (currentSongId != null) useStore.getState().openSongEditor(currentSongId)
     },
     'speed-up':    () => setPlaybackSpeed(clampSpeed(playbackSpeed + 0.25)),
     'speed-down':  () => setPlaybackSpeed(clampSpeed(playbackSpeed - 0.25)),
@@ -1397,19 +1288,6 @@ export default function Player(): JSX.Element {
       input?.focus()
       input?.select()
     },
-    'mini-player':         () => { if (useStore.getState().popoutWindows.miniPlayer) (window as any).electron?.openFloatWindow?.('mini-player') },
-    'close-float-windows': () => (window as any).electron?.closeFloatWindows?.(),
-    'restart-app':         () => (window as any).electron?.relaunchApp?.(),
-    'rescan-library':      () => useStore.getState().scanLibrary(),
-    'discord-status': async () => {
-      const el = (window as any).electron
-      if (!el?.getAppSettings) return
-      try {
-        const s = await el.getAppSettings()
-        await el.setAppSetting('discordRpcEnabled', !s.discordRpcEnabled)
-      } catch { /* ignore */ }
-    },
-    'toggle-devtools': () => (window as any).electron?.toggleDevTools?.(),
   }
   // Same table, exposed to UI that triggers actions by id (the app menu) — a
   // stable subscription dispatching into the ref's fresh closures.
@@ -1433,68 +1311,14 @@ export default function Player(): JSX.Element {
       if (clickable && (combo === 'Space' || combo === 'Enter')) return
       const id = resolveAction(combo, useStore.getState().hotkeyBindings)
       if (!id) return
-      // Desktop-only actions are unbindable-in-practice on web — ignore them so
-      // e.g. Alt+3 doesn't half-switch to a Library view web builds don't have.
-      if (getAction(id)?.electronOnly && !(window as any).electron) return
       const fn = hotkeyActionsRef.current[id]
       if (!fn) return
       e.preventDefault()
-      lastInAppFire.current = { id, at: Date.now() }
       fn()
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
   }, [])
-
-  // Global (OS-wide) shortcuts — a fired accelerator arrives here as an action
-  // id and runs through the same dispatch table as the in-app keys. Electron
-  // delivers these regardless of focus, so while our window IS focused a combo
-  // bound in both columns would otherwise run twice (once via the keydown
-  // listener above, once here). Guard on "did the in-app listener just run
-  // this same action" rather than on focus alone — gating on focus would break
-  // an action bound ONLY in the Global column, since the keydown listener
-  // resolves against the in-app map and would never fire it.
-  useEffect(() => {
-    const el = (window as any).electron
-    if (!el?.onGlobalShortcut) return
-    return el.onGlobalShortcut((id: string) => {
-      const last = lastInAppFire.current
-      if (last && last.id === id && Date.now() - last.at < 300) return
-      hotkeyActionsRef.current[id]?.()
-    })
-  }, [])
-
-  // (Re)register the OS-global set whenever it's toggled or a binding changes.
-  // Only the main window runs this (Player is main-only); pop-outs just flip the
-  // synced `globalHotkeysEnabled` and let this window own the registration.
-  //
-  // Deliberately NO cleanup that clears the set. Each register call is
-  // authoritative (main unregisterAll's first, then registers what it's given),
-  // so re-running this effect already replaces the previous set. A cleanup that
-  // sent [] would tear every shortcut down on any Player remount — and under
-  // <React.StrictMode> (see main.tsx) effects run mount→cleanup→mount, so a
-  // late-arriving clear could land after the re-register and leave nothing
-  // registered while still reporting success. Quitting unregisters everything
-  // anyway (main.js 'before-quit'), so there's nothing to leak.
-  useEffect(() => {
-    const el = (window as any).electron
-    if (!el?.registerGlobalShortcuts) return
-    const entries: { accelerator: string; id: string }[] = []
-    if (globalHotkeysEnabled) {
-      for (const action of HOTKEY_ACTIONS) {
-        const accelerator = comboToAccelerator(effectiveGlobalBinding(action.id, globalHotkeyBindings))
-        if (accelerator) entries.push({ accelerator, id: action.id })
-      }
-    }
-    // Surfaced so a registration failure (Electron's globalShortcut.register
-    // returns false when the OS or another app already owns that accelerator)
-    // is visible in DevTools instead of silently doing nothing.
-    Promise.resolve(el.registerGlobalShortcuts(entries))
-      .then((result: { failed?: string[] } | undefined) => {
-        if (result?.failed?.length) console.warn('[global-shortcuts] OS refused to register:', result.failed)
-      })
-      .catch((err: unknown) => console.error('[global-shortcuts] registerGlobalShortcuts threw:', err))
-  }, [globalHotkeysEnabled, globalHotkeyBindings])
 
   // Seek: buffer visually while dragging, only commit on mouse release
   const handleSeekMouseDown = (): void => {
@@ -1551,16 +1375,8 @@ export default function Player(): JSX.Element {
   // Equalizer popover (also hosts balance/mono/skip-silence + playback speed).
   // Visibility lives in the store so the 'equalizer' hotkey and the WRLD tab's
   // button can open it too — this always-mounted component owns the portal.
-  const { showEqPanel, setShowEqPanel, toggleEqPanel, openFloatViews } = useStorePick('showEqPanel', 'setShowEqPanel', 'toggleEqPanel', 'openFloatViews')
-  // Track which pop-outs are open so the EQ button can route to an existing
-  // equalizer window instead of opening a duplicate panel in-app.
-  useEffect(() => {
-    const el = (window as any).electron
-    if (!el?.onFloatWindows) return
-    el.getFloatWindows?.().then((views: string[]) => useStore.getState().setOpenFloatViews(views)).catch(() => {})
-    return el.onFloatWindows((views: string[]) => useStore.getState().setOpenFloatViews(views))
-  }, [])
-  const eqPoppedOut = openFloatViews.includes('equalizer')
+  const { showEqPanel, setShowEqPanel, toggleEqPanel } = useStorePick('showEqPanel', 'setShowEqPanel', 'toggleEqPanel')
+  const isMobile = useIsMobile()
   const eqBtnRef = useRef<HTMLButtonElement>(null)
   const [eqPos, setEqPos] = useState({ bottom: 0, right: 0 })
   // Anchor above the bar button when it's on screen; openers without an
@@ -1639,9 +1455,16 @@ export default function Player(): JSX.Element {
         onError={(e) => handleAudioError(e.currentTarget, 'slotB')}
       />
 
-      {/* Equalizer popover — outside the WRLD-page conditional below so the
-          hotkey and the WRLD tab's own button can open it on any view. */}
-      {showEqPanel && !eqPoppedOut && createPortal(
+      {/* Equalizer — outside the WRLD-page conditional below so the hotkey and
+          the WRLD tab's own button can open it on any view. Mobile has no
+          anchor button to position a popover against (the bar this ref lives
+          on is desktop-only, `hidden md:flex`), so it opens as a full bottom
+          sheet there instead of the desktop anchored popover. */}
+      {showEqPanel && (isMobile ? (
+        <Sheet onClose={() => setShowEqPanel(false)} title="Equalizer">
+          <EqualizerPanel />
+        </Sheet>
+      ) : createPortal(
         <>
           <div className="fixed inset-0 z-40" onClick={() => setShowEqPanel(false)} />
           <div
@@ -1655,7 +1478,7 @@ export default function Player(): JSX.Element {
           </div>
         </>,
         document.body
-      )}
+      ))}
 
       {/* Song info — mounted outside the bottom-bar block below, which is
           unmounted on the WRLD page. It's what redirects to the song-info
@@ -1946,10 +1769,6 @@ export default function Player(): JSX.Element {
                       onPlayNext={() => playNext(currentTrack)}
                       liked={likedTrackIds.includes(currentTrack.id)}
                       onToggleLike={() => toggleLike(currentTrack.id)}
-                      onEditLocalMetadata={currentSongId == null && currentTrack.id.startsWith('local-') ? () => {
-                        const lt = libraryTracks.find(t => t.id === currentTrack.id)
-                        if (lt) useStore.getState().openLocalEditor(lt)
-                      } : undefined}
                     />
                   )}
                 </div>
@@ -2035,7 +1854,7 @@ export default function Player(): JSX.Element {
           <button
             ref={eqBtnRef}
             onClick={toggleEqPanel}
-            title={eqPoppedOut ? 'Equalizer (open in its own window)' : 'Equalizer'}
+            title="Equalizer"
             className={`transition-colors ${eqActive ? 'text-accent' : 'text-text-secondary hover:text-text-primary'}`}
           >
             <SlidersHorizontal size={16} />
@@ -2057,19 +1876,6 @@ export default function Player(): JSX.Element {
             title="Now Playing">
             <Maximize2 size={16} />
           </button>}
-
-          {/* Desktop only: pop the compact always-on-top mini player window.
-              Hidden when the user turned this pop-out off (it has no in-app
-              equivalent, so there's nothing to fall back to). */}
-          {(window as any).electron?.openFloatWindow && popoutWindows.miniPlayer && (
-            <button
-              onClick={() => (window as any).electron.openFloatWindow('mini-player')}
-              className="text-text-secondary hover:text-text-primary transition-colors"
-              title="Pop out mini player"
-            >
-              <PictureInPicture2 size={16} />
-            </button>
-          )}
 
           {/* Volume: mute + slider + output picker */}
           <div className="flex items-center gap-1.5">

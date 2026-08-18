@@ -1,5 +1,5 @@
 ﻿import { useRef, useState } from 'react'
-import { X, Info, FolderOpen, Terminal } from 'lucide-react'
+import { X, Info } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import { cacheStats } from '../lib/apiCache'
 import type { Track } from '../types'
@@ -95,16 +95,11 @@ export default function DiagnosticsModal(): JSX.Element {
     setShowDiagnostics, activeView, queue, queueIndex, currentTrack, currentTrackFull,
     isPlaying, progress, currentTime, shuffle, repeat, volume, playbackSpeed,
     crossfadeEnabled, crossfadeDuration, preferOgVersion, lyricsOffset,
-    libraryTracks, libraryFolders, offlineTracks, offlinePlaylists,
     theme, accentColor, audioOutput, radioFmActive,
-    account, playlists, likedTrackIds, downloads, updateStatus,
-  } = useStorePick('setShowDiagnostics', 'activeView', 'queue', 'queueIndex', 'currentTrack', 'currentTrackFull', 'isPlaying', 'progress', 'currentTime', 'shuffle', 'repeat', 'volume', 'playbackSpeed', 'crossfadeEnabled', 'crossfadeDuration', 'preferOgVersion', 'lyricsOffset', 'libraryTracks', 'libraryFolders', 'offlineTracks', 'offlinePlaylists', 'theme', 'accentColor', 'audioOutput', 'radioFmActive', 'account', 'playlists', 'likedTrackIds', 'downloads', 'updateStatus')
-  const isElectron = navigator.userAgent.includes('Electron')
-  const el = (window as any).electron
+    account, playlists, likedTrackIds,
+  } = useStorePick('setShowDiagnostics', 'activeView', 'queue', 'queueIndex', 'currentTrack', 'currentTrackFull', 'isPlaying', 'progress', 'currentTime', 'shuffle', 'repeat', 'volume', 'playbackSpeed', 'crossfadeEnabled', 'crossfadeDuration', 'preferOgVersion', 'lyricsOffset', 'theme', 'accentColor', 'audioOutput', 'radioFmActive', 'account', 'playlists', 'likedTrackIds')
 
   const cache = cacheStats()
-  const offlineCount = Object.keys(offlineTracks).length
-  const offlinePlaylistCount = Object.keys(offlinePlaylists).length
   const lsBytes = localStorageBytes()
   const mem = (performance as any).memory as { usedJSHeapSize: number; totalJSHeapSize: number } | undefined
 
@@ -128,8 +123,7 @@ export default function DiagnosticsModal(): JSX.Element {
         <div className="flex-1 overflow-y-auto px-6 py-4">
           <Section title="App">
             <R label="Version" value={`v${APP_VERSION}`} />
-            <R label="Runtime" value={isElectron ? 'Electron' : 'Web'} />
-            <R label="Platform" value={el?.platform || navigator.platform || 'unknown'} />
+            <R label="Platform" value={navigator.platform || 'unknown'} />
             <R label="Theme" value={`${theme} · ${accentColor}`} />
             <R label="Active view" value={activeView} />
             <R label="Online" value={navigator.onLine ? 'yes' : 'no'} />
@@ -182,21 +176,8 @@ export default function DiagnosticsModal(): JSX.Element {
           <Section title="Storage">
             <R label="API cache" value={`${cache.count} entries · ${formatBytes(cache.bytes)}`} />
             <R label="localStorage" value={formatBytes(lsBytes)} />
-            {isElectron && <R label="Library folders" value={String(libraryFolders.length)} />}
-            {isElectron && <R label="Library tracks" value={String(libraryTracks.length)} />}
-            {isElectron && <R label="Offline tracks" value={String(offlineCount)} />}
-            {isElectron && <R label="Offline playlists" value={String(offlinePlaylistCount)} />}
             {mem && <R label="JS heap" value={`${formatBytes(mem.usedJSHeapSize)} / ${formatBytes(mem.totalJSHeapSize)}`} />}
           </Section>
-
-          {isElectron && (
-            <Section title="Updates">
-              <R label="Status" value={updateStatus?.type || 'idle'} />
-              {updateStatus?.version && <R label="Version" value={updateStatus.version} />}
-              <R label="Active downloads" value={String(downloads.filter(d => d.state === 'downloading').length)} />
-              <R label="Downloads (session)" value={String(downloads.length)} />
-            </Section>
-          )}
 
           <Section title="Environment">
             <R label="Screen" value={`${window.screen.width}×${window.screen.height}`} />
@@ -206,26 +187,6 @@ export default function DiagnosticsModal(): JSX.Element {
             <R label="User agent" value={navigator.userAgent} />
           </Section>
         </div>
-
-        {isElectron && (
-          <div className="px-6 py-3 border-t border-[var(--border)] shrink-0 flex items-center gap-2">
-            <button
-              onClick={() => el?.openLogsFolder?.()}
-              className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors px-3 py-1.5 rounded-lg bg-[var(--surface-overlay)] hover:bg-[var(--surface-raised)] border border-[var(--border)]"
-            >
-              <FolderOpen size={13} />
-              Open logs
-            </button>
-            <button
-              onClick={() => el?.toggleDevTools?.()}
-              title="Opens the Network/Console tab — useful for checking whether a request actually reached the server"
-              className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors px-3 py-1.5 rounded-lg bg-[var(--surface-overlay)] hover:bg-[var(--surface-raised)] border border-[var(--border)]"
-            >
-              <Terminal size={13} />
-              Open DevTools
-            </button>
-          </div>
-        )}
       </div>
 
       {expanded && (

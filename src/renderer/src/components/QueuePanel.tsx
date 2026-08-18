@@ -17,7 +17,6 @@ export default function QueuePanel(): JSX.Element {
   } = useStorePick('queue', 'queueIndex', 'currentTrack', 'isPlaying', 'shuffle', 'queueFilter', 'queueLoadingMore', 'radioMode', 'radioNext', 'setShowQueue', 'removeFromQueue', 'clearQueue', 'reorderQueue', 'jumpToTrack', '_loadMore')
 
   const [panelWidth, dragHandle] = useResizablePanel(300, 240, 480)
-  const isElectron = navigator.userAgent.includes('Electron')
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
   const [historyOpen, setHistoryOpen] = useState(false)
   // How many upcoming rows to render — grows when the user clicks "+N more".
@@ -81,10 +80,7 @@ export default function QueuePanel(): JSX.Element {
       {/* Content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Header */}
-        <div
-          className="flex items-center justify-between px-5 pb-3 shrink-0 border-b border-[var(--border)]"
-          style={{ paddingTop: isElectron && !isMobile ? 36 : 20, paddingRight: isElectron && !isMobile ? 148 : undefined }}
-        >
+        <div className="flex items-center justify-between px-5 pb-3 pt-5 shrink-0 border-b border-[var(--border)]">
           <div className="flex items-center gap-2">
             <ListMusic size={15} className="text-text-muted" />
             <h2 className="text-text-primary font-semibold text-sm uppercase tracking-widest">Queue</h2>

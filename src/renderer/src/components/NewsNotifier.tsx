@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useStore, IS_FLOAT_WINDOW } from '../store/useStore'
+import { useStore } from '../store/useStore'
 import { NEWS_ENABLED, type NewsItem } from '../lib/newsApi'
 import {
   checkForNewPosts, fireNewsNotification, mergeSubscriptionsFromProfile,
@@ -27,9 +27,7 @@ export default function NewsNotifier(): JSX.Element | null {
   }, [account])
 
   useEffect(() => {
-    // Only the main window polls: pop-outs share localStorage, so two pollers
-    // would double-fire (and double-advance the high-water mark).
-    if (IS_FLOAT_WINDOW || !NEWS_ENABLED) return
+    if (!NEWS_ENABLED) return
 
     const openPost = (item: NewsItem): void => {
       setActiveView('news')

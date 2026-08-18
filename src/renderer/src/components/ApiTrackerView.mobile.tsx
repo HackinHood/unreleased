@@ -1501,7 +1501,6 @@ export default function ApiTrackerView(): JSX.Element {
   const bulkAddToPlaylist = async (playlistId: number): Promise<void> => {
     await Promise.all(selectedSongs.map(s => userApi.addToPlaylist(playlistId, s.id).catch(() => {})))
     await refreshPlaylists()
-    useStore.getState().autoDownloadIfOffline(playlistId, selectedSongs.map(s => s.id))
     exitSelectMode()
   }
 

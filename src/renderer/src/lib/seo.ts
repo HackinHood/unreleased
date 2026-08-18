@@ -11,15 +11,6 @@
 // playlists), authoring surfaces (editor, contributor, admin), share links,
 // the OAuth callback, and anything still dark (news). Those also get a
 // Disallow in public/robots.txt.
-//
-// WEB ONLY. This file lives on `app` because release.py syncs src/ from app to
-// web (and force-deletes anything web has that app doesn't), so it cannot live
-// on `web` alone — but nothing here may touch the desktop app. Packaged builds
-// load over file://, yet `electron:dev` loads the very same dev server the web
-// uses over http://localhost:3018, so protocol alone is not a safe
-// discriminator: it would retitle the desktop window during development.
-// isElectron() checks the preload bridge instead — the same signal main.tsx
-// uses to decide whether to register the service worker.
 
 import { ViewType } from '../types'
 
@@ -98,17 +89,12 @@ const ROUTES: Record<ViewType, SeoEntry> = {
   contributor: { path: '/contributor', title: 'Contributor', description: 'Contributor tools.', noindex: true },
   admin: { path: '/admin', title: 'Admin', description: 'Administration.', noindex: true },
   'albums-admin': { title: 'Albums', description: 'Album administration.', noindex: true },
-  'local-editor': { title: 'Tag editor', description: 'Edit tags on your local files.', noindex: true },
   'editor-profile': { title: 'Editor profile', description: 'Your editor profile.', noindex: true },
   'contributor-profile': { title: 'Contributor profile', description: 'Your contributor profile.', noindex: true },
   // Flip noindex off with NEWS_ENABLED when the /news backend ships.
   news: { path: '/news', title: 'News', description: 'Juice WRLD news and announcements.', noindex: true },
   'shared-playlist': { title: 'Shared playlist', description: 'A playlist shared from unreleased.', noindex: true },
   'not-found': { title: 'Page not found', description: 'This page does not exist.', noindex: true },
-}
-
-function isElectron(): boolean {
-  return !!(window as unknown as { electron?: unknown }).electron || window.location.protocol === 'file:'
 }
 
 function setMeta(selector: string, attr: 'name' | 'property', key: string, content: string): void {
@@ -133,11 +119,10 @@ function setLink(rel: string, href: string): void {
 
 /**
  * Rewrite the document head for `view`. Safe to call on every navigation —
- * it only ever mutates tags it owns. No-op in the desktop app.
+ * it only ever mutates tags it owns.
  */
 export function applySeo(view: ViewType): void {
   if (typeof document === 'undefined') return
-  if (isElectron()) return
 
   const entry = ROUTES[view] ?? ROUTES['not-found']
   const title = entry.title.includes(SITE) ? entry.title : `${entry.title} · ${SITE}`

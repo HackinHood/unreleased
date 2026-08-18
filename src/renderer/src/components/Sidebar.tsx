@@ -5,15 +5,13 @@ import { useStore, useStorePick } from '../store/useStore'
 import { ViewType } from '../types'
 import { showStaffProfile, staffProfileView, getToken } from '../lib/userApi'
 import { orderedNavItems, isNavItemVisible, orderedNavControls, isNavControlVisible, navTabFor, tabEntryView, type NavControlId } from '../lib/navItems'
-import AppMenu from './AppMenu'
 import PlaylistContextMenu, { PlaylistContextMenuState } from './PlaylistContextMenu'
 
 const LS_COLLAPSED = 'sidebar:collapsed'
 const LS_PLAYLISTS_EXPANDED = 'sidebar:playlistsExpanded'
 
 export default function Sidebar(): JSX.Element {
-  const { activeView, setActiveView, openProfile, toggleSettings, setShowDiagnostics, developerMode, account, logoutAccount, setShowUserAuth, playlists, setPendingPlaylistId, sidebarPosition, navOrder, navVisibility, navControlOrder, navControlVisibility, appMenuPosition, offlinePlaylists } = useStorePick('activeView', 'setActiveView', 'openProfile', 'toggleSettings', 'setShowDiagnostics', 'developerMode', 'account', 'logoutAccount', 'setShowUserAuth', 'playlists', 'setPendingPlaylistId', 'sidebarPosition', 'navOrder', 'navVisibility', 'navControlOrder', 'navControlVisibility', 'appMenuPosition', 'offlinePlaylists')
-  const isElectron = navigator.userAgent.includes('Electron')
+  const { activeView, setActiveView, openProfile, toggleSettings, setShowDiagnostics, developerMode, account, logoutAccount, setShowUserAuth, playlists, setPendingPlaylistId, sidebarPosition, navOrder, navVisibility, navControlOrder, navControlVisibility } = useStorePick('activeView', 'setActiveView', 'openProfile', 'toggleSettings', 'setShowDiagnostics', 'developerMode', 'account', 'logoutAccount', 'setShowUserAuth', 'playlists', 'setPendingPlaylistId', 'sidebarPosition', 'navOrder', 'navVisibility', 'navControlOrder', 'navControlVisibility')
 
   const [collapsed, setCollapsed] = useState<boolean>(
     () => localStorage.getItem(LS_COLLAPSED) === 'true'
@@ -66,7 +64,7 @@ export default function Sidebar(): JSX.Element {
   // Order + which tabs appear both come from Settings → Appearance → Menu
   // items. orderedNavItems sanitizes the saved order; isNavItemVisible drops
   // web-only tabs on web and anything the user has toggled off.
-  const items = orderedNavItems(navOrder).filter((i) => isNavItemVisible(i, navVisibility, isElectron))
+  const items = orderedNavItems(navOrder).filter((i) => isNavItemVisible(i, navVisibility, false))
   // Which tab reads as current — not always activeView, since some views are
   // sub-views of a tab (the games inside Games). See navTabFor.
   const activeTab = navTabFor(activeView)
@@ -84,14 +82,14 @@ export default function Sidebar(): JSX.Element {
   // Foot-of-menu controls (Profile, Log out, Diagnostics, Settings) —
   // ordered and filtered to what's both available and toggled on in Settings.
   // Log in and the collapse toggle are rendered separately (never hideable).
-  const controlCtx = { account: !!account, isElectron, developerMode }
+  const controlCtx = { account: !!account, isElectron: false, developerMode }
   const controls = orderedNavControls(navControlOrder).filter((c) => isNavControlVisible(c, navControlVisibility, controlCtx))
 
   const rowCls = 'flex items-center w-full py-2 rounded text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors gap-3 px-3'
   const iconWrap = 'w-6 h-6 flex items-center justify-center shrink-0'
   const labelCls = `truncate transition-opacity duration-200 ${collapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'}`
 
-  const returnToApiVertical = !isElectron ? (
+  const returnToApiVertical = (
     <a
       key="return-api"
       href="https://juicewrldapi.com"
@@ -103,9 +101,9 @@ export default function Sidebar(): JSX.Element {
       <span className={iconWrap}><ArrowLeft size={18} /></span>
       <span aria-hidden={collapsed} className={labelCls}>Return to API</span>
     </a>
-  ) : null
+  )
 
-  const returnToApiHorizontal = !isElectron ? (
+  const returnToApiHorizontal = (
     <a
       key="return-api"
       href="https://juicewrldapi.com"
@@ -117,7 +115,7 @@ export default function Sidebar(): JSX.Element {
       <span className="w-6 h-6 shrink-0 flex items-center justify-center"><ArrowLeft size={18} /></span>
       <span>Return to API</span>
     </a>
-  ) : null
+  )
 
   // Full-width control row for the vertical (left/right) side menu.
   const profileView = staffProfileView(account)
@@ -202,20 +200,7 @@ export default function Sidebar(): JSX.Element {
     const iconBtn = 'flex items-center justify-center w-8 h-8 rounded text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors shrink-0'
     return (
       <aside className={`app-sidebar hidden md:flex flex-col w-full bg-sidebar shrink-0 border-[var(--border)] ${sidebarPosition === 'top' ? 'border-b' : 'border-t'}`}>
-        {/* Bar touches the frameless window's top edge, so it carries the
-            drag strip that main's overlay provides in the other layouts.
-            mr-[188px] keeps the strip clear of the min/max/close buttons
-            (132px) plus the fixed downloads trigger next to them (right:
-            144px + 36px wide — see DownloadManager) — a drag rect under
-            them would win the draggable-region ordering and swallow their
-            clicks (see WindowControls in App.tsx). */}
-        {isElectron && sidebarPosition === 'top' && appMenuPosition !== 'title-bar' && (
-          <div className="shrink-0 h-7 mr-[188px] select-none" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
-        )}
         <div className="flex items-center gap-1 px-3 py-1.5 min-w-0">
-          {isElectron && appMenuPosition === 'sidebar' && (
-            <div className="shrink-0 mr-0.5"><AppMenu variant="sidebar-icon" /></div>
-          )}
           <nav className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto">
             {returnToApiHorizontal}
             {items.map(({ icon, label, view }) => (
@@ -252,20 +237,6 @@ export default function Sidebar(): JSX.Element {
     <aside
       className={`app-sidebar hidden md:flex flex-col h-full bg-sidebar shrink-0 ${sidebarPosition === 'right' ? 'border-l' : 'border-r'} border-[var(--border)] transition-[width] duration-200 ${collapsed ? 'w-16' : 'w-60'}`}
     >
-      {/* On the right, the sidebar's top edge sits under the window buttons
-          (132px) and the fixed downloads trigger next to them (right: 144px
-          + 36px wide — see DownloadManager) — keep the drag strip out of
-          their 188px corner (same ordering pitfall as the top-bar strip
-          above), and give the first nav item real clearance below them so
-          it doesn't visually run into the buttons when the sidebar is wide
-          enough to sit under them (expanded width, or any width once
-          collapsed still tucks under the min/max/close cluster). */}
-      {isElectron && appMenuPosition !== 'title-bar' && (
-        <div
-          className={`shrink-0 select-none ${sidebarPosition === 'right' ? 'h-9 mr-[188px]' : 'h-7'}`}
-          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-        />
-      )}
       {/* Logo — collapses to zero height (redundant with the WRLD tab icon) */}
       <div
         className="flex flex-col items-center gap-1 shrink-0 px-5 overflow-hidden transition-[max-height,opacity] duration-200 ease-in-out"
@@ -281,14 +252,6 @@ export default function Sidebar(): JSX.Element {
           </span>
         </div>
       </div>
-
-      {/* App menu (File/Edit/View…) parked in the side menu, above the tabs —
-          only when the user chose the 'sidebar' spot over the title-bar pill. */}
-      {isElectron && appMenuPosition === 'sidebar' && (
-        <div className="px-3 pb-1 shrink-0">
-          <AppMenu variant="sidebar" collapsed={collapsed} />
-        </div>
-      )}
 
       {/* Nav items */}
       <nav className="space-y-1 flex-1 min-h-0 overflow-y-auto px-3">
@@ -337,9 +300,6 @@ export default function Sidebar(): JSX.Element {
                     className="flex items-center w-full py-1.5 px-2 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors truncate"
                   >
                     <span className="truncate">{pl.name}</span>
-                    {offlinePlaylists[`api-${pl.id}`] && (
-                      <Download size={10} className="ml-1.5 shrink-0 text-emerald-400" aria-label="Downloaded for offline playback" />
-                    )}
                   </button>
                 ))}
               </div>

@@ -4,18 +4,6 @@
 // there's a trail of what the UI was doing. Fire-and-forget and never throws:
 // logging must not itself break the thing it's diagnosing.
 export function runLog(scope: string, ...args: unknown[]): void {
-  const message = args
-    .map((a) => {
-      if (typeof a === 'string') return a
-      if (a instanceof Error) return a.stack || a.message
-      try { return JSON.stringify(a) } catch { return String(a) }
-    })
-    .join(' ')
-  try {
-    ;(window as any).electron?.runLog?.(scope, message)
-  } catch {
-    /* no-op — never let logging crash the renderer */
-  }
   if (import.meta.env?.DEV) console.log(`[${scope}]`, ...args)
 }
 

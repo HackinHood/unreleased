@@ -2606,7 +2606,6 @@ export default function ApiTrackerView(): JSX.Element {
     // song is eligible.
     await Promise.all(selectedSongs.map(s => userApi.addToPlaylist(playlistId, s.id).catch(() => {})))
     await refreshPlaylists()
-    useStore.getState().autoDownloadIfOffline(playlistId, selectedSongs.map(s => s.id))
     exitSelectMode()
   }
 
