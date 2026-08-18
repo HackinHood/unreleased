@@ -2,7 +2,7 @@
 
 A music player for Juice WRLD — stream the full catalog of released and unreleased songs, right in your browser. Powered by the [Juice WRLD API](https://juicewrldapi.com).
 
-> This is the deployed web build, synced from the [`app` branch](https://github.com/leanwrldd/unreleased/tree/app) on release — that's where the full project (web + desktop), Stack, Development, and Branches docs live. This README only covers what's actually usable at [player.juicewrldapi.com](https://player.juicewrldapi.com).
+> This is the deployed web build — see the [`app` branch](https://github.com/leanwrldd/unreleased/tree/app) for the full project (web + desktop), Stack, Development, and Branches docs. This README only covers what's actually usable at [player.juicewrldapi.com](https://player.juicewrldapi.com).
 
 ![Version](https://img.shields.io/github/v/release/leanwrldd/unreleased?label=version&color=blue)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
@@ -42,12 +42,14 @@ A music player for Juice WRLD — stream the full catalog of released and unrele
 - **Playlists** — Spotify-style hero with 2×2 cover mosaic, custom cover upload, descriptions, drag-to-reorder, and zip-download of all tracks
 - **Playlist folders** — organize playlists into folders, including folders within folders
 - **Sharing** — share any playlist via public link; anyone can play it without an account, or **Follow** it to always see the owner's current tracks
+- **Guest playlists** — not signed in? Build playlists anyway — they're saved to your browser instead of your account
 - **Liked songs** — heart in the player bar, synced to your account
 
 ### Games & stats
 
 - **Heardle** — name the song from its opening seconds. Daily mode shares one puzzle a day with everyone; Personal replays the same rules on demand; Unlimited is fully configurable (guess count, reveal speed, start point, era/category filters); **1v1** matches you live against another player. Live leaderboards for Today, Streaks, and 1v1. Share your result to the clipboard, Wordle-style
 - **Wordle** — guess the song title letter by letter. Type it out on the keyboard (physical or on-screen) or find it by name in the search box; either way the guess has to be a real track whose title is exactly as long as the answer's, so the board narrows the catalog as you go. The keyboard colors in as you rule letters out. Daily shares one title a day with everyone, Unlimited draws them at random (guess count, era/category filters). Streaks, distribution and a spoiler-free share grid
+- **Tier List** — rank songs into S/A/B/C/D (or tiers you build and recolor yourself) by dragging them into rows, or tap-to-select then tap-a-row on touch. A personal ranking with no daily puzzle or score, saved locally
 - **Wrapped** — a listening summary built from your play counts, filterable by All time / 30 days / 7 days, with a recent-plays timeline
 
 ### Personalization
@@ -71,6 +73,8 @@ A music player for Juice WRLD — stream the full catalog of released and unrele
 ## Want more?
 
 The **desktop app** (Windows, macOS, Linux) adds a local file library, offline downloads, format conversion, importing from YouTube/SoundCloud/etc., Discord Rich Presence, a system tray, and more — all built from this same codebase. Grab it from the [releases page](https://github.com/leanwrldd/unreleased/releases/latest), or see the [`app` branch](https://github.com/leanwrldd/unreleased/tree/app) for the full feature list and source.
+
+There are also sideloaded native builds for **Android** (`Unreleased-android-v*.apk`, [releases](https://github.com/leanwrldd/unreleased/releases?q=android-v&expanded=true)) and **iOS** (`Unreleased-ios-v*.ipa`, [releases](https://github.com/leanwrldd/unreleased/releases?q=ios-v&expanded=true), installed via [AltStore](https://altstore.io) or [Sideloadly](https://sideloadly.io) since it's unsigned) — neither is on an app store, since both ship `unreleased`-catalog content.
 
 ---
 

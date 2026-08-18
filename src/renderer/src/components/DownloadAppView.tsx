@@ -18,11 +18,14 @@ import { hasPwaInstallPrompt, onPwaInstallPromptChange, showPwaInstallPrompt } f
 // the page scans the recent release list and serves the newest release that
 // carries .dmg assets — possibly older than the Windows/Linux one.
 //
-// The Android APK is a separate release train off its own branch, tagged
-// `android-vX.Y.Z` (sideloaded — Play Store would reject the content, see
-// the capacitor-android-wrap memory), interleaved with the desktop `vX.Y.Z`
-// tags in the same releases list. Desktop and Android are picked out by
-// which asset extensions each release carries, not by tag string.
+// The Android APK and iOS IPA are each their own release train off their own
+// branch (tagged `android-vX.Y.Z` / `ios-vX.Y.Z` — neither is store-listed,
+// since both ship `unreleased`-catalog content), interleaved with the desktop
+// `vX.Y.Z` tags in the same releases list. Every platform is picked out by
+// which asset extensions each release carries, not by tag string. The iOS
+// build is unsigned (no Apple Developer account behind it) — installed via
+// AltStore/Sideloadly, which re-sign it locally with the user's own free
+// Apple ID.
 
 const REPO_URL = 'https://github.com/Juice-WRLD-API/Unreleased'
 const LATEST_URL = `${REPO_URL}/releases/latest`
@@ -229,6 +232,11 @@ export default function DownloadAppView(): JSX.Element {
   const androidRelease = releases?.find((r) => r.assets.some((a) => a.name.endsWith('.apk'))) ?? null
   const androidApk = androidRelease?.assets.find((a) => a.name.endsWith('.apk'))
 
+  // Same idea for iOS's own `ios-vX.Y.Z` train — an unsigned .ipa, sideloaded
+  // via AltStore/Sideloadly rather than the App Store.
+  const iosRelease = releases?.find((r) => r.assets.some((a) => a.name.endsWith('.ipa'))) ?? null
+  const iosIpa = iosRelease?.assets.find((a) => a.name.endsWith('.ipa'))
+
   const heroAsset = os === 'windows' ? winFull : os === 'linux' ? linuxAppImage : os === 'mac' ? macDmg : os === 'android' ? androidApk : undefined
   const heroLabel = os === 'windows' ? 'Download for Windows' : os === 'linux' ? 'Download for Linux' : os === 'mac' ? 'Download for macOS' : os === 'android' ? 'Download APK' : 'Download'
 
@@ -337,7 +345,7 @@ export default function DownloadAppView(): JSX.Element {
             {' '}and update themselves automatically after that.
           </p>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             <PlatformCard icon={<Monitor size={19} />} name="Windows" requirement="Windows 10 / 11 · 64-bit" detected={os === 'windows'}>
               {loading ? (
                 <div className="h-[42px] rounded-xl bg-surface-raised animate-pulse" />
@@ -405,11 +413,28 @@ export default function DownloadAppView(): JSX.Element {
                 </a>
               )}
             </PlatformCard>
+
+            <PlatformCard icon={<Smartphone size={19} />} name="iOS" requirement={iosRelease ? `IPA · ${iosRelease.version}` : 'Sideloaded IPA'} detected={os === 'ios'}>
+              {loading ? (
+                <div className="h-[42px] rounded-xl bg-surface-raised animate-pulse" />
+              ) : iosIpa ? (
+                <>
+                  <AssetButton asset={iosIpa} label="Download IPA" primary />
+                  <p className="text-text-muted text-[11px] leading-snug">
+                    Unsigned — install with <a href="https://altstore.io" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">AltStore</a> or <a href="https://sideloadly.io" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Sideloadly</a>.
+                  </p>
+                </>
+              ) : (
+                <a href={`${REPO_URL}/releases`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-bold bg-accent text-white hover:bg-accent/90 transition-colors">
+                  <Download size={15} /> Get from GitHub
+                </a>
+              )}
+            </PlatformCard>
           </div>
 
-          {/* ── Phone / PWA — the web-app-to-home-screen route. The only option
-              on iOS; on Android it's the lighter alternative to the APK card
-              above (no "unknown sources" prompt, updates silently). ── */}
+          {/* ── Phone / PWA — the web-app-to-home-screen route. The lighter
+              alternative to sideloading on both Android (no "unknown sources"
+              prompt) and iOS (no AltStore/Sideloadly + re-signing needed). ── */}
           <div id="mobile-install" className="scroll-mt-8 mt-4 rounded-2xl border border-[var(--border)] bg-surface-overlay/40 p-5 md:p-6 flex flex-col md:flex-row md:items-center gap-5">
             <div className="flex items-center gap-4 flex-1 min-w-0">
               <div className="w-12 h-12 rounded-2xl bg-accent/15 text-accent flex items-center justify-center shrink-0">
