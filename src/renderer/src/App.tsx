@@ -5,6 +5,7 @@ import { useThemeEffects } from './lib/themeEffects'
 import { runWhenIdle } from './lib/platform'
 import { applySeo } from './lib/seo'
 import { lazyView } from './lib/lazyView'
+import { useIsMobile } from './hooks/useIsMobile'
 import { ViewType } from './types'
 
 function getViewFromPath(pathname: string): ViewType {
@@ -77,6 +78,7 @@ const DiagnosticsModal = lazyView(() => import('./components/DiagnosticsModal'))
 export default function App(): JSX.Element {
   const { showNowPlaying, showQueue, showSettings, setShowSettings, showDiagnostics, setShowDiagnostics, activeView, sidebarPosition, loadAccount, completeDiscordLogin, showUserAuth, setShowUserAuth, prefetchApiData, refreshPlaylists, heroBleedTop } = useStorePick(
     'showNowPlaying', 'showQueue', 'showSettings', 'setShowSettings', 'showDiagnostics', 'setShowDiagnostics', 'activeView', 'sidebarPosition', 'loadAccount', 'completeDiscordLogin', 'showUserAuth', 'setShowUserAuth', 'prefetchApiData', 'refreshPlaylists', 'heroBleedTop')
+  const isMobile = useIsMobile()
   useThemeEffects()
   // Seed auth token from env in local dev only — import.meta.env.DEV is false in production
   // builds, so this never runs for real users even if the token is baked into the bundle.
@@ -189,7 +191,13 @@ export default function App(): JSX.Element {
               : <ApiTrackerView />}
             </Suspense>
           </ErrorBoundary>
-            {showNowPlaying && activeView !== 'wrld' && <ErrorBoundary><NowPlaying /></ErrorBoundary>}
+            {/* Desktop only — on mobile the WRLD tab is the only "now playing"
+                screen (the mini player expands straight into it), so this
+                would only ever be a redundant second one. Nothing on mobile
+                can actually open it (its trigger button lives in the
+                desktop-only bottom bar), but excluding it here is the real
+                guarantee rather than relying on that. */}
+            {!isMobile && showNowPlaying && activeView !== 'wrld' && <ErrorBoundary><NowPlaying /></ErrorBoundary>}
             {showQueue && activeView !== 'wrld' && <ErrorBoundary><QueuePanel /></ErrorBoundary>}
           </div>
         </main>

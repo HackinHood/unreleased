@@ -1,10 +1,11 @@
-﻿import { useRef, useState, useEffect } from 'react'
+﻿import { useRef, useState } from 'react'
 import { X, GripVertical, ListMusic, Trash2, History, ChevronDown, Radio } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { formatDuration } from '../lib/format'
 import { Track } from '../types'
 import { useResizablePanel } from '../hooks/useResizablePanel'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const MAX_HISTORY_SHOWN = 10
 const MAX_UPCOMING_SHOWN = 60
@@ -17,16 +18,10 @@ export default function QueuePanel(): JSX.Element {
   } = useStorePick('queue', 'queueIndex', 'currentTrack', 'isPlaying', 'shuffle', 'queueFilter', 'queueLoadingMore', 'radioMode', 'radioNext', 'setShowQueue', 'removeFromQueue', 'clearQueue', 'reorderQueue', 'jumpToTrack', '_loadMore')
 
   const [panelWidth, dragHandle] = useResizablePanel(300, 240, 480)
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  const isMobile = useIsMobile()
   const [historyOpen, setHistoryOpen] = useState(false)
   // How many upcoming rows to render — grows when the user clicks "+N more".
   const [visibleCount, setVisibleCount] = useState(MAX_UPCOMING_SHOWN)
-
-  useEffect(() => {
-    const check = (): void => setIsMobile(window.innerWidth < 768)
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [])
 
   // Derived sections
   const history = queue.slice(0, queueIndex)           // played tracks, oldest first
@@ -66,7 +61,9 @@ export default function QueuePanel(): JSX.Element {
     <div
       className="bg-surface-raised flex shrink-0 overflow-hidden animate-slide-in-right"
       style={isMobile
-        ? { position: 'fixed', inset: 0, zIndex: 50 }
+        // Full-screen on a phone, so it sits outside the app shell's
+        // safe-area padding and owns the gesture-bar inset itself.
+        ? { position: 'fixed', inset: 0, zIndex: 50, paddingBottom: 'env(safe-area-inset-bottom, 0px)' }
         : { width: panelWidth, borderLeft: '1px solid var(--border)' }
       }
     >
@@ -80,7 +77,14 @@ export default function QueuePanel(): JSX.Element {
       {/* Content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 pb-3 pt-5 shrink-0 border-b border-[var(--border)]">
+        <div
+          className="flex items-center justify-between px-5 pb-3 shrink-0 border-b border-[var(--border)]"
+          style={{
+            // Clears the status bar when running edge-to-edge on mobile —
+            // this panel is fixed, so the shell's inset doesn't reach it.
+            paddingTop: isMobile ? 'max(20px, env(safe-area-inset-top, 0px))' : 20,
+          }}
+        >
           <div className="flex items-center gap-2">
             <ListMusic size={15} className="text-text-muted" />
             <h2 className="text-text-primary font-semibold text-sm uppercase tracking-widest">Queue</h2>
@@ -258,6 +262,9 @@ function QueueRow({
         isActive ? 'bg-surface-overlay' : 'hover:bg-surface-overlay'
       } ${onPlay && !isActive ? 'cursor-pointer' : ''}`}
       onDoubleClick={onPlay}
+      // Double-click has no touch equivalent worth relying on — same
+      // tap-to-play treatment as the Tracker/Playlists rows.
+      onClick={() => { if (window.matchMedia('(max-width: 767px)').matches && onPlay && !isActive) onPlay() }}
     >
       {/* Drag handle or spacer */}
       {showDrag ? (
@@ -300,11 +307,14 @@ function QueueRow({
           </span>
         )}
         {onRemove && (
+          // Was opacity-0 group-hover:opacity-100 with no touch equivalent —
+          // invisible and undiscoverable on mobile.
           <button
             onClick={(e) => { e.stopPropagation(); onRemove() }}
-            className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-red-400 transition-all ml-1 p-0.5"
+            aria-label="Remove from queue"
+            className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-text-muted hover:text-red-400 transition-all ml-1 w-8 h-8 md:w-auto md:h-auto flex items-center justify-center md:p-0.5"
           >
-            <X size={11} />
+            <X size={14} className="md:w-[11px] md:h-[11px]" />
           </button>
         )}
       </div>
