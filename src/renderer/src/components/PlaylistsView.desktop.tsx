@@ -272,7 +272,7 @@ function LocalPlaylistMosaic({ trackIds, className = '' }: {
 // full grid width (col-span-full breaks the CSS grid's auto-flow onto its own
 // row right there, pushing later cards down onto the row after it — no need
 // to know how many columns are actually rendered).
-function PlaylistExpandPanel({ name, subtitle, cover, tracks, loading, onClose, onPlayTrack, onOpenFull }: {
+function PlaylistExpandPanel({ name, subtitle, cover, tracks, loading, onClose, onPlayTrack, onOpenFull, onTrackContextMenu }: {
   name: string
   subtitle: string
   cover: React.ReactNode
@@ -284,6 +284,7 @@ function PlaylistExpandPanel({ name, subtitle, cover, tracks, loading, onClose, 
    *  offline download, etc.) — this quick-view panel is deliberately a
    *  lighter subset, not a replacement for it. */
   onOpenFull: () => void
+  onTrackContextMenu: (track: Track, e: React.MouseEvent) => void
 }): JSX.Element {
   const currentTrack = useStore(s => s.currentTrack)
   const mid = Math.ceil(tracks.length / 2)
@@ -335,10 +336,11 @@ function PlaylistExpandPanel({ name, subtitle, cover, tracks, loading, onClose, 
               {col.map((t, i) => {
                 const isActive = currentTrack?.id === t.id
                 return (
-                  <button
+                  <div
                     key={t.id}
                     onClick={() => onPlayTrack(t)}
-                    className="flex items-center gap-3 px-1.5 py-1.5 rounded-lg hover:bg-surface-overlay text-left group/track transition-colors"
+                    onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onTrackContextMenu(t, e) }}
+                    className="flex items-center gap-3 px-1.5 py-1.5 rounded-lg hover:bg-surface-overlay text-left group/track transition-colors cursor-pointer"
                   >
                     <span className={`w-5 text-xs tabular-nums text-right shrink-0 ${isActive ? 'text-accent' : 'text-text-muted'}`}>
                       {isActive ? '▶' : colIdx * mid + i + 1}
@@ -347,7 +349,14 @@ function PlaylistExpandPanel({ name, subtitle, cover, tracks, loading, onClose, 
                       {t.title}
                     </span>
                     <span className="text-xs text-text-muted tabular-nums shrink-0">{formatDuration(t.duration, '')}</span>
-                  </button>
+                    <button
+                      onClick={e => { e.stopPropagation(); onTrackContextMenu(t, e) }}
+                      className="p-1 -mr-1 text-text-muted hover:text-text-primary opacity-0 group-hover/track:opacity-100 transition-opacity shrink-0"
+                      title="More options"
+                    >
+                      <MoreHorizontal size={14} />
+                    </button>
+                  </div>
                 )
               })}
             </div>
@@ -414,7 +423,7 @@ function layoutGridEntries(entries: GridEntry[], columns: number): JSX.Element[]
 }
 
 export default function PlaylistsView(): JSX.Element {
-  const { account, playlists, refreshPlaylists, playTrack, playCollection, addToQueue, setShowUserAuth, likedTrackIds, toggleLike, setActiveView, setPendingEditorSongId,
+  const { account, playlists, refreshPlaylists, playTrack, playNext, playCollection, addToQueue, setShowUserAuth, likedTrackIds, toggleLike, setActiveView, setPendingEditorSongId,
     localPlaylists, libraryTracks, libraryArt, loadLibrary, deleteLocalPlaylist, renameLocalPlaylist, updateLocalPlaylist, addToLocalPlaylist,
     pendingPlaylistId, setPendingPlaylistId,
     playlistsSelectedId: selectedId, setPlaylistsSelectedId: setSelectedId,
@@ -426,7 +435,7 @@ export default function PlaylistsView(): JSX.Element {
     // Subscribed purely so the track memo below re-derives when a custom
     // name/cover changes — liteSongToTrack bakes the override in at conversion
     // time, so without this the rows keep the old name until a refetch.
-    songPrefs, openBulkEditor } = useStorePick('account', 'playlists', 'refreshPlaylists', 'playTrack', 'playCollection', 'addToQueue', 'setShowUserAuth', 'likedTrackIds', 'toggleLike', 'setActiveView', 'setPendingEditorSongId', 'localPlaylists', 'libraryTracks', 'libraryArt', 'loadLibrary', 'deleteLocalPlaylist', 'renameLocalPlaylist', 'updateLocalPlaylist', 'addToLocalPlaylist', 'pendingPlaylistId', 'setPendingPlaylistId', 'playlistsSelectedId', 'setPlaylistsSelectedId', 'playlistsSelectedLocalId', 'setPlaylistsSelectedLocalId', 'playlistsSort', 'setPlaylistsSort', 'playlistsOpenFolderId', 'setPlaylistsOpenFolderId', 'followedPlaylists', 'followPlaylist', 'unfollowPlaylist', 'updateFollowedPlaylistMeta', 'playlistFolders', 'createFolder', 'renameFolder', 'deleteFolder', 'movePlaylistsToFolder', 'appTextScale', 'songPrefs', 'openBulkEditor')
+    songPrefs, openBulkEditor } = useStorePick('account', 'playlists', 'refreshPlaylists', 'playTrack', 'playNext', 'playCollection', 'addToQueue', 'setShowUserAuth', 'likedTrackIds', 'toggleLike', 'setActiveView', 'setPendingEditorSongId', 'localPlaylists', 'libraryTracks', 'libraryArt', 'loadLibrary', 'deleteLocalPlaylist', 'renameLocalPlaylist', 'updateLocalPlaylist', 'addToLocalPlaylist', 'pendingPlaylistId', 'setPendingPlaylistId', 'playlistsSelectedId', 'setPlaylistsSelectedId', 'playlistsSelectedLocalId', 'setPlaylistsSelectedLocalId', 'playlistsSort', 'setPlaylistsSort', 'playlistsOpenFolderId', 'setPlaylistsOpenFolderId', 'followedPlaylists', 'followPlaylist', 'unfollowPlaylist', 'updateFollowedPlaylistMeta', 'playlistFolders', 'createFolder', 'renameFolder', 'deleteFolder', 'movePlaylistsToFolder', 'appTextScale', 'songPrefs', 'openBulkEditor')
   // Cast back to the component's own SortField union — the store keeps the
   // field as a plain string so it doesn't have to import this component's type.
   const sort = sortRaw as SortState
@@ -444,6 +453,12 @@ export default function PlaylistsView(): JSX.Element {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [expandedTracks, setExpandedTracks] = useState<Track[]>([])
   const [expandedLoading, setExpandedLoading] = useState(false)
+  // Toggles a card's quick-view panel, closing any open folder first — see
+  // the note on openFolder for why the two can't both be open at once.
+  const toggleExpanded = useCallback((key: string) => {
+    setPlaylistsOpenFolderId(null)
+    setExpandedKey(k => k === key ? null : key)
+  }, [setPlaylistsOpenFolderId])
   // One column-count measurement per distinct grid container that can host a
   // quick-view panel — see useGridColumnCount above. State (not useRef) so
   // the measuring effect re-fires when the element actually mounts — needed
@@ -469,6 +484,13 @@ export default function PlaylistsView(): JSX.Element {
   // Context menus
   const [trackMenu, setTrackMenu] = useState<SongContextMenuState | null>(null)
   const [cardMenu, setCardMenu] = useState<CardMenuState | null>(null)
+  // Shared by every quick-view panel's track rows — same trackMenu state the
+  // full playlist page's own SongContextMenu uses, just opened from a
+  // different place (the two never show at once, since a quick-view panel
+  // only ever renders in the grid views, not the full-page detail view).
+  const openTrackMenu = useCallback((track: Track, e: React.MouseEvent) => {
+    setTrackMenu({ track, songId: userApi.trackIdToSongId(track.id), x: e.clientX, y: e.clientY })
+  }, [])
 
   // Multi-select of playlists in the library grid — ctrl/cmd-click a card to
   // toggle it, mirroring the file browser's selection model (ApiFilesView).
@@ -1593,7 +1615,7 @@ export default function PlaylistsView(): JSX.Element {
           onClick={e => {
             if (e.ctrlKey || e.metaKey) { togglePlaylistSelect(plKey); return }
             if (plSelectMode) { togglePlaylistSelect(plKey); return }
-            setExpandedKey(k => k === plKey ? null : plKey)
+            toggleExpanded(plKey)
           }}
           onContextMenu={e => {
             e.preventDefault(); e.stopPropagation()
@@ -1623,6 +1645,7 @@ export default function PlaylistsView(): JSX.Element {
           loading={expandedLoading}
           onClose={() => setExpandedKey(null)}
           onPlayTrack={t => playTrack(t, expandedTracks)}
+          onTrackContextMenu={openTrackMenu}
           onOpenFull={() => setSelectedId(p.id)}
         />
     ) : null
@@ -1647,7 +1670,7 @@ export default function PlaylistsView(): JSX.Element {
           onClick={e => {
             if (e.ctrlKey || e.metaKey) { togglePlaylistSelect(plKey); return }
             if (plSelectMode) { togglePlaylistSelect(plKey); return }
-            setExpandedKey(k => k === plKey ? null : plKey)
+            toggleExpanded(plKey)
           }}
           onContextMenu={e => {
             e.preventDefault(); e.stopPropagation()
@@ -1676,6 +1699,7 @@ export default function PlaylistsView(): JSX.Element {
           loading={expandedLoading}
           onClose={() => setExpandedKey(null)}
           onPlayTrack={t => playTrack(t, expandedTracks)}
+          onTrackContextMenu={openTrackMenu}
           onOpenFull={() => setLocalSelectedId(lp.id)}
         />
     ) : null
@@ -1774,7 +1798,16 @@ export default function PlaylistsView(): JSX.Element {
   // navigating to a separate page — clicking the open folder again collapses
   // it. `playlistsOpenFolderId` still lives in the store so it survives the
   // tab-unmount-on-switch behavior noted at its declaration.
-  const openFolder = (id: string): void => setPlaylistsOpenFolderId(playlistsOpenFolderId === id ? null : id)
+  // Closes any open playlist quick-view first — a folder tile and a playlist
+  // card can land in the same grid row, and a row can only have one full-width
+  // break point without disturbing its neighbors (see layoutGridEntries), so
+  // a folder panel and a playlist panel open at once would otherwise collide
+  // there and the second one would render stacked under the first instead of
+  // under its own row.
+  const openFolder = (id: string): void => {
+    setExpandedKey(null)
+    setPlaylistsOpenFolderId(playlistsOpenFolderId === id ? null : id)
+  }
 
   /** Folder tiles — one PlaylistCard-styled tile per folder, meant to be
    *  spread directly into the same grid as the playlists (not a separate
@@ -2093,6 +2126,19 @@ export default function PlaylistsView(): JSX.Element {
         )}
         {renderCardMenu()}
         {renderFolderMenu()}
+        {trackMenu && (
+          <SongContextMenu
+            state={trackMenu}
+            onClose={() => setTrackMenu(null)}
+            canEdit={canEdit}
+            onInfo={() => trackMenu.songId != null && openSongInfo(trackMenu.songId)}
+            onPlay={() => playTrack(trackMenu.track, expandedTracks)}
+            onPlayNext={() => playNext(trackMenu.track)}
+            onAddToQueue={() => addToQueue(trackMenu.track)}
+            liked={likedTrackIds.includes(trackMenu.track.id)}
+            onToggleLike={() => toggleLike(trackMenu.track.id)}
+          />
+        )}
       </div>
     )
   }
@@ -2981,14 +3027,14 @@ export default function PlaylistsView(): JSX.Element {
               value={newFolderName}
               onChange={e => setNewFolderName(e.target.value)}
               onKeyDown={e => {
-                if (e.key === 'Enter' && newFolderName.trim()) { const id = createFolder(newFolderName); if (id) setPlaylistsOpenFolderId(id); setCreatingFolder(false); setNewFolderName('') }
+                if (e.key === 'Enter' && newFolderName.trim()) { const id = createFolder(newFolderName); if (id) { setExpandedKey(null); setPlaylistsOpenFolderId(id) }; setCreatingFolder(false); setNewFolderName('') }
                 else if (e.key === 'Escape') { setCreatingFolder(false); setNewFolderName('') }
               }}
               placeholder="Folder name"
               autoFocus
               className="flex-1 bg-surface-overlay border border-[var(--border)] rounded-xl px-3.5 py-2.5 text-text-primary text-sm focus:outline-none focus:border-accent/50"
             />
-            <button onClick={() => { const id = createFolder(newFolderName); if (id) setPlaylistsOpenFolderId(id); setCreatingFolder(false); setNewFolderName('') }} className="px-4 py-2.5 rounded-xl bg-accent text-black text-sm font-semibold">Create</button>
+            <button onClick={() => { const id = createFolder(newFolderName); if (id) { setExpandedKey(null); setPlaylistsOpenFolderId(id) }; setCreatingFolder(false); setNewFolderName('') }} className="px-4 py-2.5 rounded-xl bg-accent text-black text-sm font-semibold">Create</button>
             <button onClick={() => { setCreatingFolder(false); setNewFolderName('') }} className="p-2.5 rounded-xl text-text-muted hover:text-text-primary"><X size={16} /></button>
           </div>
         )}
@@ -3001,7 +3047,7 @@ export default function PlaylistsView(): JSX.Element {
             {
               key: 'liked',
               tile: (
-                <button key="liked" onClick={() => setExpandedKey(k => k === 'liked' ? null : 'liked')} className="group text-left cursor-pointer">
+                <button key="liked" onClick={() => toggleExpanded('liked')} className="group text-left cursor-pointer">
                   <div className="aspect-square rounded-2xl bg-gradient-to-br from-accent/50 to-accent/10 flex items-center justify-center mb-2.5 shadow-md group-hover:shadow-xl group-hover:-translate-y-1 transition-all duration-200">
                     <Heart size={44} className="text-accent" fill="currentColor" />
                   </div>
@@ -3019,6 +3065,7 @@ export default function PlaylistsView(): JSX.Element {
                   loading={expandedLoading}
                   onClose={() => setExpandedKey(null)}
                   onPlayTrack={t => playTrack(t, expandedTracks)}
+                  onTrackContextMenu={openTrackMenu}
                   onOpenFull={() => { setExpandedKey(null); setShowLiked(true) }}
                 />
               ) : null,
@@ -3218,6 +3265,20 @@ export default function PlaylistsView(): JSX.Element {
       {renderCardMenu()}
 
       {renderFolderMenu()}
+
+      {trackMenu && (
+        <SongContextMenu
+          state={trackMenu}
+          onClose={() => setTrackMenu(null)}
+          canEdit={canEdit}
+          onInfo={() => trackMenu.songId != null && openSongInfo(trackMenu.songId)}
+          onPlay={() => playTrack(trackMenu.track, expandedTracks)}
+          onPlayNext={() => playNext(trackMenu.track)}
+          onAddToQueue={() => addToQueue(trackMenu.track)}
+          liked={likedTrackIds.includes(trackMenu.track.id)}
+          onToggleLike={() => toggleLike(trackMenu.track.id)}
+        />
+      )}
     </div>
   )
 }
