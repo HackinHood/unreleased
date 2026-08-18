@@ -193,7 +193,10 @@ export default function SongInfoModal({ song, onClose, onEdit }: Props): JSX.Ele
       className="fixed inset-0 z-[160] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-0 md:p-4"
       onClick={(e) => { if (e.target === overlayRef.current) onClose() }}
     >
-      <div className="select-text bg-surface flex flex-col overflow-hidden border border-[var(--border)] rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-lg max-h-[92svh] md:max-h-[86vh]">
+      <div
+        className="select-text bg-surface flex flex-col overflow-hidden border border-[var(--border)] rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-lg max-h-[92svh] md:max-h-[86vh]"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      >
 
         <div className="relative shrink-0 overflow-hidden">
           {coverUrl && (
@@ -221,8 +224,7 @@ export default function SongInfoModal({ song, onClose, onEdit }: Props): JSX.Ele
             </button>
           </div>
           <div className="relative flex items-end gap-4 px-5 pt-8 pb-5">
-            {/* Cover — hovering reveals copy/save actions. */}
-            <div className="group/cover relative shrink-0 w-24 h-24 rounded-xl overflow-hidden shadow-2xl bg-surface-overlay">
+            <div className="relative shrink-0 w-24 h-24 rounded-xl overflow-hidden shadow-2xl bg-surface-overlay">
               {coverUrl ? (
                 <ProgressiveCover src={coverUrl} alt={primaryTitle} className="w-full h-full object-cover" />
               ) : (
@@ -235,22 +237,25 @@ export default function SongInfoModal({ song, onClose, onEdit }: Props): JSX.Ele
                   <span className="text-white text-[10px] font-semibold">{coverMsg}</span>
                 </div>
               ) : (
-                <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/60 opacity-0 group-hover/cover:opacity-100 focus-within:opacity-100 transition-opacity">
+                // Copy/save actions — always visible (no hover on touch),
+                // tucked in the bottom-right corner so they don't compete with
+                // the cover itself.
+                <div className="absolute bottom-1 right-1 flex items-center gap-1">
                   <button
                     onClick={() => runCoverAction('copy')}
                     disabled={!!coverBusy}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 text-white hover:bg-white/25 disabled:opacity-50 transition-colors"
+                    className="w-6 h-6 flex items-center justify-center rounded-lg bg-black/50 text-white active:bg-black/70 disabled:opacity-50 transition-colors"
                     title="Copy cover image"
                   >
-                    {coverBusy === 'copy' ? <Loader2 size={14} className="animate-spin" /> : <Copy size={14} />}
+                    {coverBusy === 'copy' ? <Loader2 size={11} className="animate-spin" /> : <Copy size={11} />}
                   </button>
                   <button
                     onClick={() => runCoverAction('save')}
                     disabled={!!coverBusy}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 text-white hover:bg-white/25 disabled:opacity-50 transition-colors"
+                    className="w-6 h-6 flex items-center justify-center rounded-lg bg-black/50 text-white active:bg-black/70 disabled:opacity-50 transition-colors"
                     title="Save cover image"
                   >
-                    {coverBusy === 'save' ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                    {coverBusy === 'save' ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
                   </button>
                 </div>
               ))}
