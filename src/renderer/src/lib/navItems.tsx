@@ -1,14 +1,14 @@
-import { SearchCode, HardDrive, Library, ListMusic, Heart, BookOpen, Newspaper, Gamepad2, BarChart3, User, LogOut, Download, Info, Settings } from 'lucide-react'
+import { SearchCode, HardDrive, ListMusic, Heart, BookOpen, Newspaper, Gamepad2, BarChart3, User, LogOut, Download, Info, Settings } from 'lucide-react'
 import type { ReactNode } from 'react'
 import logo from '../assets/logo.png'
 import type { ViewType } from '../types'
 
 // The primary nav destinations available to the desktop side menu (Sidebar).
 // `view` doubles as the stable id persisted in the saved order/visibility —
-// don't rename these. `electronOnly` items (Library) are hidden on the web
-// build. `defaultHidden` items ship off — they're the extras the user can add
-// to the menu from Settings. The mobile BottomNav uses its own curated set and
-// is unaffected.
+// don't rename these. `electronOnly` items are hidden on the web build.
+// `defaultHidden` items ship off — they're the extras the user can add to the
+// menu from Settings. The mobile BottomNav uses its own curated set and is
+// unaffected.
 export interface NavItemDef {
   view: ViewType
   label: string
@@ -21,7 +21,6 @@ export const NAV_ITEMS: NavItemDef[] = [
   { view: 'wrld', label: 'WRLD', icon: <img src={logo} alt="WRLD" className="w-[24px] h-[24px] object-contain" /> },
   { view: 'api-tracker', label: 'Tracker', icon: <SearchCode size={18} /> },
   { view: 'api-files', label: 'Files', icon: <HardDrive size={18} /> },
-  { view: 'library', label: 'Library', icon: <Library size={18} />, electronOnly: true },
   { view: 'playlists', label: 'Playlists', icon: <ListMusic size={18} /> },
   // `view` stays 'heardle' — it's the persisted id (and the /heardle route);
   // only the label is Games, so the tab can hold more than one game later.

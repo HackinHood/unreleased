@@ -13,7 +13,6 @@ import { APP_VERSION } from '../lib/appVersion'
 const VIEW_HOTKEYS: Partial<Record<ViewType, string>> = {
   'api-tracker': 'view-tracker',
   playlists: 'view-playlists',
-  library: 'view-library',
   wrld: 'view-wrld',
 }
 

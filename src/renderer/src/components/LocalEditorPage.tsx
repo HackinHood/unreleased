@@ -65,7 +65,7 @@ export default function LocalEditorPage(): JSX.Element {
   // "Edit metadata" can be triggered from anywhere a local track shows up
   // (library, now playing, mini player) — return to wherever that was rather
   // than always dumping the user back in the library.
-  const backView = previousView && previousView !== 'local-editor' ? previousView : 'library'
+  const backView = previousView && previousView !== 'local-editor' ? previousView : 'playlists'
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving]   = useState(false)

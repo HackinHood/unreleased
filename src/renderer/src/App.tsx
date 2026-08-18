@@ -24,7 +24,6 @@ function getViewFromPath(pathname: string): ViewType {
   if (pathname === '/stats') return 'stats'
   if (pathname === '/download') return 'download'
   if (pathname.startsWith('/shared/')) return 'shared-playlist'
-  if (pathname === '/library') return 'library'
   if (pathname === '/auth/discord/callback') return 'api-tracker'
   return 'not-found'
 }
@@ -52,7 +51,6 @@ import Player from './components/Player'
 import NowPlaying from './components/NowPlaying'
 import QueuePanel from './components/QueuePanel'
 import DownloadManager from './components/DownloadManager'
-import LibraryTab from './components/LibraryTab'
 import AppMenu from './components/AppMenu'
 import ErrorBoundary from './components/ErrorBoundary'
 
@@ -286,7 +284,6 @@ export default function App(): JSX.Element {
               : activeView === 'tierlist' ? <TierlistView />
               : activeView === 'stats' ? <StatsView />
               : activeView === 'download' ? <DownloadAppView />
-              : activeView === 'library' ? <LibraryTab />
               : activeView === 'local-editor' ? <LocalEditorPage />
               : activeView === 'albums-admin' ? <AlbumsAdminView />
               : activeView === 'not-found' ? <NotFoundView />

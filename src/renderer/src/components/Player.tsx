@@ -1384,7 +1384,6 @@ export default function Player(): JSX.Element {
     'seek-90': () => seekToPercent(0.9),
     'view-tracker':   () => setActiveView('api-tracker'),
     'view-playlists': () => setActiveView('playlists'),
-    'view-library':   () => setActiveView('library'),
     'view-wrld':      () => setActiveView('wrld'),
     'view-admin':     () => {
       // Admin tools live in the editor profile page's Admin tab now.
