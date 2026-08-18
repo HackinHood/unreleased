@@ -63,7 +63,7 @@ export const CompactGroupRow = memo(function CompactGroupRow({
     <div
       onClick={onToggle}
       onContextMenu={onContextMenu}
-      className="group w-full flex items-center gap-3 px-3 py-2.5 md:py-2 hover:bg-surface-overlay rounded-lg transition-colors text-left cursor-pointer"
+      className="group w-full flex items-center gap-3 px-3 py-2.5 md:py-2 active:bg-surface-overlay md:hover:bg-surface-overlay rounded-lg transition-colors text-left cursor-pointer"
     >
       {/* # stays put — it used to swap for the play button on hover, but
           since this row is flex (not the fixed-column grid the list view
@@ -86,10 +86,12 @@ export const CompactGroupRow = memo(function CompactGroupRow({
       <div className={`relative shrink-0 ${coverBoxClass} rounded overflow-hidden bg-surface-overlay`}>
         <AlbumArtThumbnail track={coverTrack} size={coverSize} shimmer={false} eager />
         {onPlay && (
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+          // Always visible on mobile — this is a touch surface, and hover
+          // never fires there. Desktop keeps the hover-reveal.
+          <div className="absolute inset-0 bg-black/30 md:bg-black/0 md:group-hover:bg-black/30 transition-colors flex items-center justify-center">
             <button
               onClick={e => { e.stopPropagation(); onPlay() }}
-              className="text-white opacity-0 group-hover:opacity-100 transition-opacity"
+              className="text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
               title="Play"
             >
               <Play size={14} fill="currentColor" />
