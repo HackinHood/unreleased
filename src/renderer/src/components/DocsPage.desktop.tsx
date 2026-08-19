@@ -330,6 +330,26 @@ function OverviewTab() {
         <p className="text-xs text-text-muted">
           <Code>version_title</Code> / <Code>versions</Code> are omitted unless the request includes <Code>?versions=true</Code> — see the <Code>/songs/</Code> params below.
         </p>
+        <p className="text-xs text-text-muted font-semibold mt-3">
+          <Code>synced_lyrics</Code> — no separate param, no opt-in flag
+        </p>
+        <p className="text-xs text-text-muted">
+          Unlike <Code>version_title</Code>/<Code>versions</Code> above, <Code>synced_lyrics</Code> is a plain field
+          on the song object like <Code>lyrics</Code> — it comes back on every request that returns a song (list,
+          detail, radio, live), with no query param needed to request it. It&apos;s <Code>null</Code> when the song
+          has no synced lyrics.
+        </p>
+        <p className="text-xs text-text-muted">
+          Format is <span className="font-semibold text-text-primary">LRC</span> — one timestamp per line,{' '}
+          <Code>[mm:ss.xx]</Code> (also accepts <Code>[mm:ss:xx]</Code>), text after the bracket:
+        </p>
+        <Pre>{`[00:12.50]First line
+[00:15.80]Second line
+[00:19.10](ad-lib) Next line`}</Pre>
+        <p className="text-xs text-text-muted">
+          A line can carry more than one timestamp (repeats the same text at each). Parenthesized runs like{' '}
+          <Code>(ad-lib)</Code> are a convention this app renders dimmer, not part of the LRC spec itself.
+        </p>
       </Section>
     </div>
   )

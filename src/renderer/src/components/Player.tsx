@@ -139,7 +139,7 @@ export default function Player(): JSX.Element {
   const currentSongId = currentTrack ? trackIdToSongId(currentTrack.id) : null
   const { radioMode, radioNext } = useStorePick('radioMode', 'radioNext')
   const { radioFmActive, radioFmNowPlaying, radioFmMatchedSong } = useStorePick('radioFmActive', 'radioFmNowPlaying', 'radioFmMatchedSong')
-  const { eqEnabled, eqGains, eqBalance, eqMono, skipSilence } = useStorePick('eqEnabled', 'eqGains', 'eqBalance', 'eqMono', 'skipSilence')
+  const { eqEnabled, eqGains, eqBalance, eqMono, eqBoost, skipSilence } = useStorePick('eqEnabled', 'eqGains', 'eqBalance', 'eqMono', 'eqBoost', 'skipSilence')
   const { reverbEnabled, reverbMix, reverbDecay, pitchShift } = useStorePick('reverbEnabled', 'reverbMix', 'reverbDecay', 'pitchShift')
   const { abLoopStart, abLoopEnd, setAbLoopPoint, clearAbLoop } = useStorePick('abLoopStart', 'abLoopEnd', 'setAbLoopPoint', 'clearAbLoop')
 
@@ -320,7 +320,7 @@ export default function Player(): JSX.Element {
   // what makes background playback fragile there, and the overwhelming
   // majority of listeners never touch the EQ — no reason to make them pay for
   // it. Desktop attaches on mount as it always has.
-  const effectsInUse = eqEnabled || eqBalance !== 0 || eqMono || reverbEnabled || skipSilence
+  const effectsInUse = eqEnabled || eqBalance !== 0 || eqMono || eqBoost !== 1 || reverbEnabled || skipSilence
   useEffect(() => {
     if (effectsInUse) setEffectsChainWanted(true)
     attachAudioElement(slotA.current)
@@ -336,8 +336,9 @@ export default function Player(): JSX.Element {
       mono: eqMono,
       reverbMix: reverbEnabled ? reverbMix : 0,
       reverbDecay,
+      boost: eqBoost,
     })
-  }, [eqEnabled, eqGains, eqBalance, eqMono, reverbEnabled, reverbMix, reverbDecay])
+  }, [eqEnabled, eqGains, eqBalance, eqMono, eqBoost, reverbEnabled, reverbMix, reverbDecay])
 
   // Expose seek and duration to other components
   useEffect(() => {
@@ -1392,7 +1393,7 @@ export default function Player(): JSX.Element {
     }
   }, [showEqPanel])
   // Accent the button when anything in the panel deviates from neutral.
-  const eqActive = eqEnabled || playbackSpeed !== 1 || eqBalance !== 0 || eqMono || skipSilence || reverbEnabled
+  const eqActive = eqEnabled || playbackSpeed !== 1 || eqBalance !== 0 || eqMono || eqBoost !== 1 || skipSilence || reverbEnabled
 
 
   // (Play/pause on Space is handled by the unified hotkey system above — the

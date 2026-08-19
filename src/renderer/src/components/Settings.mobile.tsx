@@ -26,6 +26,7 @@ import { useDragReorder } from './mobile/useDragReorder'
 import type { ViewType } from '../types'
 import ReportForm from './ReportForm'
 import LegalModal, { type LegalDoc } from './LegalModal'
+import EraCoversSection from './EraCoversSection'
 
 const ACCENT_PRESETS = [
   '#1db954', '#7c3aed', '#2563eb', '#dc2626',
@@ -1158,6 +1159,9 @@ export default function Settings(): JSX.Element {
                     sub="Songs without a custom cover show a different cover from the API files each play"
                     labelExtra={<Toggle on={rotateSuggestedCovers} onClick={() => setRotateSuggestedCovers(!rotateSuggestedCovers)} />}
                   />
+                  <div className="py-2">
+                    <EraCoversSection />
+                  </div>
                 </SettingsCard>
 
                 <SettingsCard title="Lyrics">
