@@ -15,6 +15,11 @@ type ErasResponse = JWApiEra[] | { count: number; next: string | null; results: 
 const MAX_PAGES = 10
 
 const names: Record<string, string> = {}
+// Every era seen so far, in API order — dedup'd by name since ingest() runs
+// both from the synchronous offline-cache seed and the async fetch below and
+// would otherwise double up entries.
+const eraOrder: string[] = []
+const eraByName: Record<string, JWApiEra> = {}
 let loadPromise: Promise<void> | null = null
 
 function fullName(era: JWApiEra): string | undefined {
@@ -42,6 +47,8 @@ function ingest(data: ErasResponse | undefined): boolean {
   for (const era of results) {
     const full = fullName(era)
     if (full) names[era.name] = full
+    if (!eraByName[era.name]) eraOrder.push(era.name)
+    eraByName[era.name] = era
   }
   return !Array.isArray(data) && !!data.next
 }
@@ -70,4 +77,12 @@ export function loadEraFullNames(): Promise<void> {
  *  undefined until loadEraFullNames (or the offline cache) has run. */
 export function eraFullName(abbrev: string | null | undefined): string | undefined {
   return abbrev ? names[abbrev] : undefined
+}
+
+/** Every era seen so far, in API order. Populated by the same offline-cache
+ *  seed and loadEraFullNames fetch as the name lookup above — call
+ *  loadEraFullNames first (or accept whatever the offline cache seeded) if
+ *  the caller needs the full set. */
+export function listEras(): JWApiEra[] {
+  return eraOrder.map((name) => eraByName[name])
 }

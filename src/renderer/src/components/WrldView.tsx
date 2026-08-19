@@ -89,7 +89,7 @@ export default function WrldView(): JSX.Element {
     setShowQueue: s.setShowQueue,
     toggleEqPanel: s.toggleEqPanel,
     // Same "anything non-neutral" indicator as the player bar's EQ button.
-    eqFxActive: s.eqEnabled || s.playbackSpeed !== 1 || s.eqBalance !== 0 || s.eqMono || s.skipSilence || s.reverbEnabled,
+    eqFxActive: s.eqEnabled || s.playbackSpeed !== 1 || s.eqBalance !== 0 || s.eqMono || s.eqBoost !== 1 || s.skipSilence || s.reverbEnabled,
     sidebarPosition: s.sidebarPosition,
   })))
 
@@ -614,12 +614,20 @@ export default function WrldView(): JSX.Element {
  *  the page — the lyrics screen — has to repaint it rather than sit on an
  *  opaque theme colour, or a dark cover under a light skin puts white text on
  *  a white background. */
-function ArtBackdrop({ artSrc, artError, isDarkSkin, radioFmActive, onError }: {
+function ArtBackdrop({ artSrc, artError, isDarkSkin, radioFmActive, onError, extraDim }: {
   artSrc: string | null
   artError: boolean
   isDarkSkin: boolean
   radioFmActive: boolean
   onError?: () => void
+  /** The base gradient below leaves the vertical middle fully transparent
+   *  (`via-transparent`), which is fine for the main WRLD page but leaves the
+   *  lyrics screen's text sitting directly on the raw blurred cover with no
+   *  extra darkening where the lines actually are — busy art underneath can
+   *  fight the faded past/future lines for legibility. LyricsScreen opts into
+   *  a flat wash over the whole backdrop to fix that without touching the
+   *  main page's look. */
+  extraDim?: boolean
 }): JSX.Element {
   return (
     <div className="absolute inset-0 overflow-hidden">
@@ -654,6 +662,7 @@ function ArtBackdrop({ artSrc, artError, isDarkSkin, radioFmActive, onError }: {
         <div className={`absolute inset-0 ${radioFmActive ? 'bg-gradient-to-br from-red-950/60 to-black' : 'bg-gradient-to-br from-gray-200 to-gray-100 dark:from-gray-900 dark:to-black'}`} />
       )}
       <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/20 dark:from-black/40 dark:via-transparent dark:to-black/70" />
+      {extraDim && <div className="absolute inset-0 bg-black/35" />}
       {/* A near-black diagonal gradient (or a 60px blur pushed to very low
           brightness) has almost no per-pixel colour variation, which is
           exactly what triggers 8-bit banding on phone panels — flat
@@ -1277,7 +1286,7 @@ function LyricsScreen({
       {/* Repaints the page's own backdrop instead of an opaque theme colour —
           the text colours below were picked against the artwork, not against
           --surface. */}
-      <ArtBackdrop artSrc={artSrc} artError={artError} isDarkSkin={isDarkSkin} radioFmActive={radioFmActive} />
+      <ArtBackdrop artSrc={artSrc} artError={artError} isDarkSkin={isDarkSkin} radioFmActive={radioFmActive} extraDim />
 
       <div
         className="relative shrink-0 flex items-center gap-1 px-2"

@@ -19,6 +19,8 @@ import { IS_IOS, IS_MOBILE } from './platform'
 
 export const EQ_BANDS = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
 export const EQ_GAIN_LIMIT = 12
+// Volume boost range — 1 = 100% (unity, no boost), 2 = 200%.
+export const EQ_BOOST_MAX = 2
 
 export interface EqPreset {
   id: string
@@ -72,6 +74,11 @@ export interface AudioEffectSettings {
   reverbMix: number
   // Impulse-response tail length in seconds.
   reverbDecay: number
+  // Post-EQ makeup gain, 1 (100%, unity) .. EQ_BOOST_MAX (200%). Lets tracks
+  // that are just quiet get louder than the element's own 0..1 volume range
+  // allows. Runs through the same safety limiter as everything else in the
+  // chain, so it clamps rather than clips.
+  boost: number
 }
 
 // ── iOS background-audio guard ──────────────────────────────────────────────
@@ -113,6 +120,7 @@ let analyserBuf: Float32Array<ArrayBuffer> | null = null
 let dryGain: GainNode | null = null
 let wetGain: GainNode | null = null
 let convolver: ConvolverNode | null = null
+let boostGain: GainNode | null = null
 let builtDecay = 0
 let decayRebuildTimer: number | null = null
 
@@ -128,7 +136,7 @@ const pendingEls = new Set<HTMLAudioElement>()
 
 // Settings/sink can arrive from the store before the first element attaches
 // (i.e. before the graph exists) — hold them and apply on creation.
-let lastSettings: AudioEffectSettings = { eqEnabled: false, gains: FLAT_GAINS, balance: 0, mono: false, reverbMix: 0, reverbDecay: 3 }
+let lastSettings: AudioEffectSettings = { eqEnabled: false, gains: FLAT_GAINS, balance: 0, mono: false, reverbMix: 0, reverbDecay: 3, boost: 1 }
 let lastSinkId = ''
 
 // Synthetic impulse response: stereo noise burst with an exponential-ish
@@ -218,6 +226,12 @@ function ensureGraph(): AudioContext | null {
   wetGain.gain.value = 0
   convolver = ctx.createConvolver()
 
+  // Boost: makeup gain applied after the dry/wet mix, before the limiter —
+  // so boosted peaks still get caught by the same safety compressor instead
+  // of clipping straight through.
+  boostGain = ctx.createGain()
+  boostGain.gain.value = 1
+
   let node: AudioNode = chainInput
   for (const f of bandFilters) { node.connect(f); node = f }
   node.connect(monoNode)
@@ -225,8 +239,9 @@ function ensureGraph(): AudioContext | null {
   panner.connect(dryGain)
   panner.connect(convolver)
   convolver.connect(wetGain)
-  dryGain.connect(limiter)
-  wetGain.connect(limiter)
+  dryGain.connect(boostGain)
+  wetGain.connect(boostGain)
+  boostGain.connect(limiter)
   limiter.connect(ctx.destination)
 
   applyAudioEffects(lastSettings)
@@ -277,6 +292,10 @@ export function applyAudioEffects(settings: AudioEffectSettings): void {
     f.gain.setTargetAtTime(target, t, 0.05)
   })
   panner.pan.setTargetAtTime(Math.max(-1, Math.min(1, settings.balance)), t, 0.05)
+
+  if (boostGain) {
+    boostGain.gain.setTargetAtTime(Math.max(1, Math.min(EQ_BOOST_MAX, settings.boost || 1)), t, 0.05)
+  }
 
   // Reverb dry/wet — equal-power crossfade so mid positions don't dip in
   // loudness and full-wet is actually reachable.

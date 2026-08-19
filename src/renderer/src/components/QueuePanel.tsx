@@ -1,5 +1,5 @@
 ﻿import { useRef, useState, useEffect } from 'react'
-import { X, GripVertical, ListMusic, Trash2, History, ChevronDown, Radio } from 'lucide-react'
+import { X, GripVertical, ListMusic, Trash2, History, ChevronDown, Radio, Search } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { formatDuration } from '../lib/format'
@@ -21,6 +21,7 @@ export default function QueuePanel(): JSX.Element {
   const [historyOpen, setHistoryOpen] = useState(false)
   // How many upcoming rows to render — grows when the user clicks "+N more".
   const [visibleCount, setVisibleCount] = useState(MAX_UPCOMING_SHOWN)
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     const check = (): void => setIsMobile(window.innerWidth < 768)
@@ -31,6 +32,14 @@ export default function QueuePanel(): JSX.Element {
   // Derived sections
   const history = queue.slice(0, queueIndex)           // played tracks, oldest first
   const upcoming = queue.slice(queueIndex + 1)          // unplayed tracks
+
+  const query = search.trim().toLowerCase()
+  const matchesQuery = (track: Track): boolean =>
+    !query || track.title.toLowerCase().includes(query) || track.artist.toLowerCase().includes(query)
+  // Pair each track with its original absolute index so onPlay/onRemove keep
+  // working correctly after filtering shrinks the array.
+  const upcomingIndexed = upcoming.map((track, i) => ({ track, i }))
+  const filteredUpcoming = query ? upcomingIndexed.filter(({ track }) => matchesQuery(track)) : upcomingIndexed
 
   // Drag state (upcoming indices only)
   const [dragIdx, setDragIdx] = useState<number | null>(null)
@@ -110,6 +119,30 @@ export default function QueuePanel(): JSX.Element {
           </div>
         </div>
 
+        {/* Search */}
+        {queue.length > 0 && (
+          <div className="px-4 pt-3 shrink-0">
+            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-surface-overlay">
+              <Search size={13} className="text-text-muted shrink-0" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search queue"
+                className="flex-1 min-w-0 bg-transparent text-xs text-text-primary placeholder:text-text-muted outline-none"
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  className="text-text-muted hover:text-text-primary transition-colors shrink-0"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
 
@@ -129,37 +162,49 @@ export default function QueuePanel(): JSX.Element {
                   className={`transition-transform ${historyOpen ? 'rotate-180' : ''}`}
                 />
               </button>
-              {historyOpen && (
-                <div className="opacity-50 space-y-0.5">
-                  {[...history].reverse().slice(0, MAX_HISTORY_SHOWN).map((track, i) => (
-                    <QueueRow
-                      key={`hist-${track.id}-${i}`}
-                      track={track}
-                      isActive={false}
-                      isPlaying={false}
-                      // Displayed newest-first, so reversed index i maps back
-                      // to absolute queue position history.length - 1 - i.
-                      onPlay={() => jumpToTrack(track, history.length - 1 - i)}
-                    />
-                  ))}
-                  {history.length > MAX_HISTORY_SHOWN && (
-                    <p className="text-text-muted text-[10px] text-center py-1 opacity-60">
-                      +{history.length - MAX_HISTORY_SHOWN} older
-                    </p>
-                  )}
-                </div>
-              )}
+              {historyOpen && (() => {
+                // Displayed newest-first, so reversed index i maps back to
+                // absolute queue position history.length - 1 - i.
+                const reversedIndexed = [...history].reverse().map((track, i) => ({ track, i }))
+                const filtered = query ? reversedIndexed.filter(({ track }) => matchesQuery(track)) : reversedIndexed
+                const shown = query ? filtered : filtered.slice(0, MAX_HISTORY_SHOWN)
+                return (
+                  <div className="opacity-50 space-y-0.5">
+                    {shown.map(({ track, i }) => (
+                      <QueueRow
+                        key={`hist-${track.id}-${i}`}
+                        track={track}
+                        isActive={false}
+                        isPlaying={false}
+                        onPlay={() => jumpToTrack(track, history.length - 1 - i)}
+                      />
+                    ))}
+                    {!query && filtered.length > MAX_HISTORY_SHOWN && (
+                      <p className="text-text-muted text-[10px] text-center py-1 opacity-60">
+                        +{filtered.length - MAX_HISTORY_SHOWN} older
+                      </p>
+                    )}
+                    {query && shown.length === 0 && (
+                      <p className="text-text-muted text-[10px] text-center py-1 opacity-60">
+                        No matches
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
           )}
 
           {/* ── Now Playing ── */}
           {currentTrack ? (
-            <div className="px-4 py-3">
-              <p className="text-text-muted text-[10px] uppercase tracking-widest px-1 mb-2 font-semibold">
-                Now Playing
-              </p>
-              <QueueRow track={currentTrack} isActive isPlaying={isPlaying} />
-            </div>
+            !query && (
+              <div className="px-4 py-3">
+                <p className="text-text-muted text-[10px] uppercase tracking-widest px-1 mb-2 font-semibold">
+                  Now Playing
+                </p>
+                <QueueRow track={currentTrack} isActive isPlaying={isPlaying} />
+              </div>
+            )
           ) : (
             <div className="flex flex-col items-center justify-center h-44 gap-2 text-center px-8">
               <ListMusic className="text-text-muted w-8 h-8 opacity-20" />
@@ -169,10 +214,10 @@ export default function QueuePanel(): JSX.Element {
           )}
 
           {/* Divider */}
-          {currentTrack && <div className="mx-4 border-t border-[var(--border)] opacity-40" />}
+          {!query && currentTrack && <div className="mx-4 border-t border-[var(--border)] opacity-40" />}
 
           {/* ── Radio: show pre-fetched next track or loading indicator ── */}
-          {radioMode && (
+          {!query && radioMode && (
             <div className="px-4 pt-3 pb-4">
               <p className="text-text-muted text-[10px] uppercase tracking-widest px-1 mb-2 font-semibold flex items-center gap-1.5">
                 <Radio size={10} className="text-accent" />
@@ -191,22 +236,22 @@ export default function QueuePanel(): JSX.Element {
           )}
 
           {/* ── Upcoming (non-radio) ── */}
-          {!radioMode && upcoming.length > 0 ? (
+          {!radioMode && filteredUpcoming.length > 0 ? (
             <div className="px-4 pt-3 pb-6">
               <p className="text-text-muted text-[10px] uppercase tracking-widest px-1 mb-2 font-semibold flex items-center gap-1.5">
-                {upcomingLabel}
+                {query ? 'Results' : upcomingLabel}
                 <span className="opacity-60">
-                  · {upcoming.length}{hasMore ? '+' : ''}
+                  · {filteredUpcoming.length}{!query && hasMore ? '+' : ''}
                 </span>
                 {queueLoadingMore && (
                   <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse ml-auto" />
                 )}
               </p>
 
-              {upcoming.slice(0, visibleCount).map((track, i) => (
+              {(query ? filteredUpcoming : filteredUpcoming.slice(0, visibleCount)).map(({ track, i }) => (
                 <div
                   key={`up-${track.id}-${queueIndex + 1 + i}`}
-                  draggable
+                  draggable={!query}
                   onDragStart={(e) => handleDragStart(e, i)}
                   onDragOver={(e) => handleDragOver(e, i)}
                   onDrop={() => handleDrop(i)}
@@ -219,7 +264,7 @@ export default function QueuePanel(): JSX.Element {
                     track={track}
                     isActive={false}
                     isPlaying={false}
-                    showDrag
+                    showDrag={!query}
                     // jumpToTrack, not playTrack: rebuilding the queue from a
                     // slice here dropped history AND reset queueFilter, which
                     // permanently killed lazy loading for the session.
@@ -229,15 +274,19 @@ export default function QueuePanel(): JSX.Element {
                 </div>
               ))}
 
-              {upcoming.length > visibleCount && (
+              {!query && filteredUpcoming.length > visibleCount && (
                 <button
                   onClick={showMoreUpcoming}
                   className="w-full text-text-muted hover:text-text-primary text-xs text-center py-2 rounded-lg hover:bg-surface-overlay transition-colors"
                 >
-                  +{upcoming.length - visibleCount}{hasMore ? '+' : ''} more
+                  +{filteredUpcoming.length - visibleCount}{hasMore ? '+' : ''} more
                 </button>
               )}
             </div>
+          ) : !radioMode && query ? (
+            <p className="text-text-muted text-xs text-center py-4 opacity-50">
+              No matches
+            </p>
           ) : !radioMode && currentTrack ? (
             <p className="text-text-muted text-xs text-center py-4 opacity-50">
               Nothing up next

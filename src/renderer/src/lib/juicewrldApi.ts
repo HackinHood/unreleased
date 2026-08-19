@@ -3,6 +3,7 @@ import { apiRequest } from './apiClient'
 import { cacheGet } from './apiCache'
 import { peekSongPref } from './songPrefs'
 import { peekRotatedCover } from './coverRotation'
+import { peekEraCover } from './eraCovers'
 
 export const JWAPI_BASE = 'https://juicewrldapi.com/juicewrld'
 
@@ -492,9 +493,12 @@ export function songToTrack(song: JWApiSong): Track {
   const apiTitle = song.name
   const apiImageUrl = buildImageUrl(song.image_url)
   const pref = peekSongPref(song.id)
-  // A user-set cover always wins; a rotated suggestion only fills in where
-  // there is none (and is only ever populated while the setting is on).
-  const coverUrl = resolvePrefCoverUrl(pref?.cover_url) ?? peekRotatedCover(song.id)
+  // A user-set cover always wins; a rotated suggestion fills in next; an era
+  // cover override fills in after that — and only for songs that aren't
+  // released, since released songs have their own real art JWA already shows.
+  const coverUrl = resolvePrefCoverUrl(pref?.cover_url)
+    ?? peekRotatedCover(song.id)
+    ?? (song.category !== 'released' ? resolvePrefCoverUrl(peekEraCover(song.era?.name)) : undefined)
   return {
     id: `jw-${song.id}`,
     path: song.path,

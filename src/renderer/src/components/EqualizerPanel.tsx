@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { RotateCcw, ChevronDown, Check, X } from 'lucide-react'
 import { useStorePick } from '../store/useStore'
-import { EQ_BANDS, EQ_GAIN_LIMIT, EQ_PRESETS, EFFECTS_SUPPORTED } from '../lib/audioEffects'
+import { EQ_BANDS, EQ_GAIN_LIMIT, EQ_BOOST_MAX, EQ_PRESETS, EFFECTS_SUPPORTED } from '../lib/audioEffects'
 import { formatDuration } from '../lib/format'
 
 // Short axis labels for the band sliders (32 … 16K).
@@ -159,6 +159,7 @@ export default function EqualizerPanel(): JSX.Element {
     eqPreset, setEqPreset,
     eqBalance, setEqBalance,
     eqMono, setEqMono,
+    eqBoost, setEqBoost,
     skipSilence, setSkipSilence,
     playbackSpeed, setPlaybackSpeed,
     pitchShift, setPitchShift,
@@ -171,7 +172,7 @@ export default function EqualizerPanel(): JSX.Element {
     sleepTimerEnd, setSleepTimer,
     audioOutput, setAudioOutput,
     radioFmActive,
-  } = useStorePick('eqEnabled', 'setEqEnabled', 'eqGains', 'setEqBand', 'eqPreset', 'setEqPreset', 'eqBalance', 'setEqBalance', 'eqMono', 'setEqMono', 'skipSilence', 'setSkipSilence', 'playbackSpeed', 'setPlaybackSpeed', 'pitchShift', 'setPitchShift', 'reverbEnabled', 'setReverbEnabled', 'reverbMix', 'setReverbMix', 'reverbDecay', 'setReverbDecay', 'communityEdits', 'playCommunityEdit', 'abLoopStart', 'abLoopEnd', 'setAbLoopPoint', 'clearAbLoop', 'preferOgVersion', 'setPreferOgVersion', 'sleepTimerEnd', 'setSleepTimer', 'audioOutput', 'setAudioOutput', 'radioFmActive')
+  } = useStorePick('eqEnabled', 'setEqEnabled', 'eqGains', 'setEqBand', 'eqPreset', 'setEqPreset', 'eqBalance', 'setEqBalance', 'eqMono', 'setEqMono', 'eqBoost', 'setEqBoost', 'skipSilence', 'setSkipSilence', 'playbackSpeed', 'setPlaybackSpeed', 'pitchShift', 'setPitchShift', 'reverbEnabled', 'setReverbEnabled', 'reverbMix', 'setReverbMix', 'reverbDecay', 'setReverbDecay', 'communityEdits', 'playCommunityEdit', 'abLoopStart', 'abLoopEnd', 'setAbLoopPoint', 'clearAbLoop', 'preferOgVersion', 'setPreferOgVersion', 'sleepTimerEnd', 'setSleepTimer', 'audioOutput', 'setAudioOutput', 'radioFmActive')
 
   const balancePct = Math.round(eqBalance * 100)
   const balanceLabel = balancePct === 0 ? 'C' : balancePct < 0 ? `L ${-balancePct}` : `R ${balancePct}`
@@ -325,6 +326,19 @@ export default function EqualizerPanel(): JSX.Element {
         </div>
         <Toggle on={eqMono} onClick={() => setEqMono(!eqMono)} />
       </div>
+
+      {/* Volume boost — makeup gain above the element's own 0..100% range,
+          for tracks that are just quiet. Runs through the same limiter as
+          everything else in the chain so it clamps loud peaks instead of
+          clipping them. */}
+      <SliderRow label="Volume boost" formatted={`${Math.round(eqBoost * 100)}%`} dirty={eqBoost !== 1} onReset={() => setEqBoost(1)}>
+        <input
+          type="range" min={1} max={EQ_BOOST_MAX} step={0.05}
+          value={eqBoost}
+          onChange={(e) => setEqBoost(parseFloat(e.target.value))}
+          className="flex-1 accent-[var(--accent)]"
+        />
+      </SliderRow>
 
       {/* Skip silence */}
       <div className="flex items-center justify-between px-5 py-2.5">
