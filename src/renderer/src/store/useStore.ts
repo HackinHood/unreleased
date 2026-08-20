@@ -6,6 +6,7 @@ import { ls } from '../lib/persist'
 import * as userApi from '../lib/userApi'
 import type { AccountUser, PlaylistSummary } from '../lib/userApi'
 import * as preferencesApi from '../lib/preferencesApi'
+import * as profilePushApi from '../lib/profilePushApi'
 import { apiFetch, apiPeek, buildStreamUrl, buildImageUrl, parseDuration, resolvePrefCoverUrl, fetchChannels } from '../lib/juicewrldApi'
 import type { JWApiSong, JWApiChannel } from '../lib/juicewrldApi'
 import {
@@ -37,6 +38,7 @@ import type { CommunityEdit } from '../lib/audioEffects'
 import { HOTKEY_ACTIONS, effectiveBinding, effectiveGlobalBinding, defaultGlobalBinding } from '../lib/hotkeys'
 import { DEFAULT_NAV_ORDER, DEFAULT_NAV_VISIBILITY, DEFAULT_NAV_CONTROL_ORDER, DEFAULT_NAV_CONTROL_VISIBILITY } from '../lib/navItems'
 import { getLastfmSession } from '../lib/lastfm'
+import { useSandboxStore } from '../components/Modal'
 import { runWhenIdle } from '../lib/platform'
 
 // Lightweight localStorage persistence helper — see lib/persist.ts (it lives
@@ -342,7 +344,7 @@ interface AppState {
   // A comp proposal started from the Files page's context menu — the
    // contributor page reads it once on mount and clears it, the same
    // hand-off pendingEditorSongId does for the song editor.
-  pendingCompProposal: { paths: string[]; changeType: 'delete' | 'replace' } | null
+  pendingCompProposal: { paths: string[]; changeType: 'delete' | 'replace' | 'upload' } | null
 
   // Editor
   pendingEditorSongId: number | null
@@ -527,12 +529,6 @@ interface AppActions {
   _setSongPrefs: (next: SongPrefMap) => void
   /** Internal — the single write path for listeningPlays (state + localStorage). */
   _setListeningPlays: (next: ListeningPlayEvent[]) => void
-  /** Internal — debounced whole-array push of songPrefs to the profile. */
-  _schedulePrefsPush: () => void
-  /** Internal — debounced whole-array push of listeningPlays to the profile.
-   *  Whole-array because there's no append endpoint; see the cap in
-   *  lib/listeningPlays for why the array can't be allowed to grow freely. */
-  _scheduleListeningPlaysPush: () => void
   /** Internal — patches one song's row and syncs it to the server. */
   _writeSongPref: (songId: number, patch: SongPrefPatch) => void
   /** Internal — pushes a row's name/cover onto Tracks already in the queue. */
@@ -576,8 +572,10 @@ interface AppActions {
   syncFolders: (serverFolders?: ServerPlaylistFolder[]) => Promise<void>
   /** Internal — the single write path for playlistFolders. */
   _setFolders: (next: PlaylistFolder[]) => void
-  /** Internal — debounced whole-array push of folders to the profile. */
-  _scheduleFoldersPush: () => void
+  /** Internal — marks the given profile-blob field(s) dirty and (re)schedules
+   *  the single shared debounced PATCH that pushes all dirty fields together
+   *  in one request, whole-array, rather than one PATCH per field. */
+  _scheduleProfilePush: (fields: ('songPrefs' | 'listeningPlays' | 'folders')[]) => void
 
   setApiTrackerCategory: (cat: string) => void
   setApiTrackerEra: (era: string) => void
@@ -598,7 +596,7 @@ interface AppActions {
   setPlaylistsSort: (sort: { field: string; dir: 'asc' | 'desc' }) => void
   setPlaylistsOpenFolderId: (id: string | null) => void
 
-  setPendingCompProposal: (v: { paths: string[]; changeType: 'delete' | 'replace' } | null) => void
+  setPendingCompProposal: (v: { paths: string[]; changeType: 'delete' | 'replace' | 'upload' } | null) => void
   setPendingEditorSongId: (id: number | null) => void
   openSongEditor: (songId: number) => void
   setPendingEditProposal: (p: { id: number; songId: number | null; proposedData: Record<string, unknown>; editorNotes: string } | null) => void
@@ -680,6 +678,13 @@ let _playlistsInFlight = false
 let _detailsPrefetchInFlight = false
 // Dedup flag: same idea for the Tracker/Files offline-cache warm-up
 let _apiPrefetchInFlight = false
+// Shares one loadAccount() run across overlapping callers instead of each
+// re-running the whole sync (and its handful of PATCH /me/ pushes) from
+// scratch — App.tsx alone calls loadAccount() from two separate mount
+// effects, and React 18 StrictMode double-invokes both in dev, so without
+// this a cold load could fire the sync 3-4x and turn 3 PATCH /me/ requests
+// into 9-12.
+let _loadAccountInFlight: Promise<void> | null = null
 
 // Pending cover-art results awaiting a batched flush (see applyLibraryArt).
 // Covers arrive in bursts — one per visible row — and applying each through
@@ -761,15 +766,16 @@ let _reportsFlushing = false
 
 // ─── Profile-blob push debounce ───────────────────────────────────────────────
 
-// Preferences and folders each live as one JSON field on /account/me/, PATCHed
-// whole. Debouncing collapses a burst of edits (typing a rename, a run of
-// playcount bumps) into a single PATCH instead of one request per keystroke.
-// Failures are swallowed: state is local-first, and the next push — or the
-// next login's merge — re-sends everything anyway.
+// Preferences, listening plays, and folders each live as one JSON field on
+// /account/me/, PATCHed whole. A single shared timer/dirty-set collapses a
+// burst of edits across ANY of the three fields (typing a rename, a run of
+// playcount bumps, a song skip that touches both prefs and listening plays)
+// into one combined PATCH instead of one request per field. Failures are
+// swallowed: state is local-first, and the next push — or the next login's
+// merge — re-sends everything anyway.
 const PROFILE_PUSH_DEBOUNCE_MS = 1500
-let _prefsPushTimer: ReturnType<typeof setTimeout> | null = null
-let _listeningPlaysPushTimer: ReturnType<typeof setTimeout> | null = null
-let _foldersPushTimer: ReturnType<typeof setTimeout> | null = null
+let _profilePushTimer: ReturnType<typeof setTimeout> | null = null
+let _profilePushDirty = { songPrefs: false, listeningPlays: false, folders: false }
 
 // ── M3U import helpers (shared by the file-picker and drag-drop paths) ──────
 // Match parsed .m3u entries against scanned library tracks by file path.
@@ -1004,7 +1010,15 @@ export const useStore = create<AppStore>((set, get, store) => ({
   setRadioFmUpNext: (radioFmUpNext) => set({ radioFmUpNext }),
   setRadioFmQueuePreview: (radioFmQueuePreview) => set({ radioFmQueuePreview }),
   setRadioFmMatchedSong: (radioFmMatchedSong) => set({ radioFmMatchedSong }),
-  setShowSettings: (showSettings) => set({ showSettings }),
+  setShowSettings: (showSettings) => {
+    // Settings docks into the sandbox notch (see Modal.tsx) and stays
+    // mounted once opened — collapsing the notch just hides it. Re-opening
+    // while it's already mounted (showSettings already true) wouldn't
+    // re-trigger the dock/expand in ModalOverlay's mount effect, so expand
+    // the notch here too or the button would look like it's doing nothing.
+    if (showSettings) useSandboxStore.getState().expand()
+    set({ showSettings })
+  },
   setSettingsTab: (settingsTab) => set({ settingsTab }),
   openSettings: (tab) => {
     if (tab) set({ settingsTab: tab })
@@ -1022,7 +1036,12 @@ export const useStore = create<AppStore>((set, get, store) => ({
   setShowQueue: (showQueue) => set({ showQueue }),
   setShowEqPanel: (showEqPanel) => set({ showEqPanel }),
   toggleEqPanel: () => set((s) => ({ showEqPanel: !s.showEqPanel })),
-  setInfoSongId: (infoSongId) => set({ infoSongId }),
+  setInfoSongId: (infoSongId) => {
+    // Mirrors setShowSettings: re-opening while already docked wouldn't
+    // otherwise re-expand a collapsed sandbox notch.
+    if (infoSongId != null) useSandboxStore.getState().expand()
+    set({ infoSongId })
+  },
   setPlayerCollapsed: (playerCollapsed) => { set({ playerCollapsed }); ls.set('playerCollapsed', playerCollapsed) },
   setWrldFullscreen: (wrldFullscreen) => set({ wrldFullscreen }),
   setHeroBleedTop: (heroBleedTop) => set({ heroBleedTop }),
@@ -1282,26 +1301,25 @@ export const useStore = create<AppStore>((set, get, store) => ({
     })
   },
 
-  _schedulePrefsPush: () => {
-    if (!get().account || !preferencesApi.preferencesApiEnabled) return
-    if (_prefsPushTimer) clearTimeout(_prefsPushTimer)
-    _prefsPushTimer = setTimeout(() => {
-      _prefsPushTimer = null
-      preferencesApi.pushPreferences(Object.values(get().songPrefs)).catch(() => {})
-    }, PROFILE_PUSH_DEBOUNCE_MS)
-  },
-
   _setListeningPlays: (next) => {
     set({ listeningPlays: next })
     ls.set('listeningPlays', next)
   },
 
-  _scheduleListeningPlaysPush: () => {
+  _scheduleProfilePush: (fields) => {
     if (!get().account || !preferencesApi.preferencesApiEnabled) return
-    if (_listeningPlaysPushTimer) clearTimeout(_listeningPlaysPushTimer)
-    _listeningPlaysPushTimer = setTimeout(() => {
-      _listeningPlaysPushTimer = null
-      preferencesApi.pushListeningPlays(get().listeningPlays).catch(() => {})
+    for (const f of fields) _profilePushDirty[f] = true
+    if (_profilePushTimer) clearTimeout(_profilePushTimer)
+    _profilePushTimer = setTimeout(() => {
+      _profilePushTimer = null
+      const dirty = _profilePushDirty
+      _profilePushDirty = { songPrefs: false, listeningPlays: false, folders: false }
+      const state = get()
+      profilePushApi.pushProfile({
+        songPrefs: dirty.songPrefs ? Object.values(state.songPrefs) : undefined,
+        listeningPlays: dirty.listeningPlays ? state.listeningPlays : undefined,
+        folders: dirty.folders ? state.playlistFolders : undefined,
+      }).catch(() => {})
     }, PROFILE_PUSH_DEBOUNCE_MS)
   },
 
@@ -1311,7 +1329,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
     // No rollback on push failure: the local write is already durable, and the
     // profile blob is replaced wholesale on the next push or login merge — a
     // transient PATCH failure shouldn't undo an edit the user just made.
-    get()._schedulePrefsPush()
+    get()._scheduleProfilePush(['songPrefs'])
   },
 
   setSongName: (songId, name) => get()._writeSongPref(songId, { name: normalizePrefText(name) }),
@@ -1325,7 +1343,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
     delete next[songId]
     get()._setSongPrefs(next)
     get()._reapplySongPref(songId)
-    get()._schedulePrefsPush()
+    get()._scheduleProfilePush(['songPrefs'])
   },
 
   bumpSongPlaycount: (songId) => {
@@ -1337,8 +1355,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
     // appended alongside it is additive instead — merges union the two sides.
     get()._setSongPrefs(patchPrefMap(prefs, songId, { playcount: (prefs[songId]?.playcount ?? 0) + 1 }))
     get()._setListeningPlays(appendListeningPlay(get().listeningPlays, songId))
-    get()._schedulePrefsPush()
-    get()._scheduleListeningPlaysPush()
+    get()._scheduleProfilePush(['songPrefs', 'listeningPlays'])
   },
 
   syncSongPrefs: async (serverPrefs) => {
@@ -1362,7 +1379,12 @@ export const useStore = create<AppStore>((set, get, store) => ({
         if (!merged[pref.song]) merged[pref.song] = pref
       }
       get()._setSongPrefs(merged)
-      await preferencesApi.pushPreferences(Object.values(merged)).catch(() => {})
+      // Goes through the shared debounced scheduler rather than pushing
+      // immediately — loadAccount calls this alongside syncListeningPlays and
+      // syncFolders right after, and routing all three through the same
+      // timer collapses what used to be three separate login-time PATCHes
+      // into one.
+      get()._scheduleProfilePush(['songPrefs'])
     } catch {}
   },
 
@@ -1374,7 +1396,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
         .filter((row): row is ListeningPlayEvent => row != null)
       const merged = mergeListeningPlays(get().listeningPlays, serverRows)
       get()._setListeningPlays(merged)
-      await preferencesApi.pushListeningPlays(merged).catch(() => {})
+      get()._scheduleProfilePush(['listeningPlays'])
     } catch {}
   },
 
@@ -1466,15 +1488,6 @@ export const useStore = create<AppStore>((set, get, store) => ({
     ls.set('playlistFolders', next)
   },
 
-  _scheduleFoldersPush: () => {
-    if (!get().account || !foldersApi.foldersApiEnabled) return
-    if (_foldersPushTimer) clearTimeout(_foldersPushTimer)
-    _foldersPushTimer = setTimeout(() => {
-      _foldersPushTimer = null
-      foldersApi.pushFolders(get().playlistFolders).catch(() => {})
-    }, PROFILE_PUSH_DEBOUNCE_MS)
-  },
-
   createFolder: (name, playlistKeys = []) => {
     const clean = normalizeFolderName(name)
     if (!clean) return null
@@ -1488,7 +1501,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
     }))
     const folder: PlaylistFolder = { id, name: clean, playlistKeys: [...seed], createdAt: now, updatedAt: now }
     get()._setFolders([...existing, folder])
-    get()._scheduleFoldersPush()
+    get()._scheduleProfilePush(['folders'])
     return id
   },
 
@@ -1499,12 +1512,12 @@ export const useStore = create<AppStore>((set, get, store) => ({
       f.id === id ? { ...f, name: clean, updatedAt: Date.now() } : f,
     )
     get()._setFolders(next)
-    get()._scheduleFoldersPush()
+    get()._scheduleProfilePush(['folders'])
   },
 
   deleteFolder: (id) => {
     get()._setFolders(get().playlistFolders.filter((f) => f.id !== id))
-    get()._scheduleFoldersPush()
+    get()._scheduleProfilePush(['folders'])
   },
 
   movePlaylistsToFolder: (playlistKeys, folderId) => {
@@ -1518,7 +1531,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
       return without.length === f.playlistKeys.length ? f : { ...f, playlistKeys: without, updatedAt: now }
     })
     get()._setFolders(next)
-    get()._scheduleFoldersPush()
+    get()._scheduleProfilePush(['folders'])
   },
 
   pruneFolders: (validKeys) => {
@@ -1534,7 +1547,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
       if (server.length === 0) {
         // Nothing on the account yet — push what's here so this device's
         // folders become the starting point.
-        if (local.length > 0) await foldersApi.pushFolders(local).catch(() => {})
+        if (local.length > 0) get()._scheduleProfilePush(['folders'])
         return
       }
       // The profile's list is the source of truth for synced-playlist
@@ -1565,7 +1578,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
         if (!serverIds.has(f.id) && hasLocal && !hasApi) merged.push(f)
       }
       get()._setFolders(merged)
-      await foldersApi.pushFolders(merged).catch(() => {})
+      get()._scheduleProfilePush(['folders'])
     } catch {}
   },
 
@@ -1612,48 +1625,57 @@ export const useStore = create<AppStore>((set, get, store) => ({
   setShowUserAuth: (showUserAuth) => set({ showUserAuth }),
 
   loadAccount: async () => {
-    if (!userApi.getToken()) return
-    try {
-      const account = await userApi.getMe()
-      set({ account })
-    } catch (err) {
-      // Only clear token on auth errors — network/server errors should not log the user out
-      const msg = String(err)
-      if (msg.includes('401') || msg.includes('403') || msg.includes('Unauthorized') || msg.includes('Forbidden')) {
-        userApi.clearToken()
-        set({ account: null, playlists: [] })
+    // Overlapping callers (see the flag's comment above) await the same run
+    // instead of each kicking off their own — the GET /me itself dedupes via
+    // apiClient's in-flight map, but the PATCH /me pushes further down don't
+    // (only GETs with a cacheKey do), so without this each duplicate caller
+    // was pushing prefs/plays/folders all over again.
+    if (_loadAccountInFlight) return _loadAccountInFlight
+    _loadAccountInFlight = (async () => {
+      if (!userApi.getToken()) return
+      try {
+        const account = await userApi.getMe()
+        set({ account })
+      } catch (err) {
+        // Only clear token on auth errors — network/server errors should not log the user out
+        const msg = String(err)
+        if (msg.includes('401') || msg.includes('403') || msg.includes('Unauthorized') || msg.includes('Forbidden')) {
+          userApi.clearToken()
+          set({ account: null, playlists: [] })
+        }
+        return
       }
-      return
-    }
-    try {
-      const favorites = await userApi.getFavorites()
-      const serverIds = favorites.map((f) => `jw-${f.song.id}`)
-      const localOnly = get().likedTrackIds.filter((id) => !serverIds.includes(id))
-      await Promise.all(
-        localOnly
-          .map((id) => userApi.trackIdToSongId(id))
-          .filter((sid): sid is number => sid != null)
-          .map((sid) => userApi.addFavorite(sid).catch(() => undefined)),
-      )
-      const merged = Array.from(new Set([...serverIds, ...localOnly]))
-      set({ likedTrackIds: merged })
-      ls.set('likedTrackIds', merged)
-    } catch {}
-    // The preference/folder blobs ride on the getMe() response — merge them
-    // with local state and push the result back, no extra requests needed.
-    const profile = get().account
-    await get().syncSongPrefs(profile?.user_preferences)
-    get().syncListeningPlays(profile?.listening_plays)
-    get().syncFolders(profile?.playlist_folders)
-    // Deliver any reports queued while signed out — a logged-in flush can
-    // attach the account's Discord username as the contact field.
-    get()._flushReports()
-    await get().refreshPlaylists()
-    // Fire-and-forget: warm playlist tracks + covers in the background so the
-    // Playlists page is ready before the user ever navigates to it. Two
-    // requests per playlist, so it waits for idle rather than piling onto the
-    // startup burst.
-    runWhenIdle(() => { get().prefetchPlaylistDetails() })
+      try {
+        const favorites = await userApi.getFavorites()
+        const serverIds = favorites.map((f) => `jw-${f.song.id}`)
+        const localOnly = get().likedTrackIds.filter((id) => !serverIds.includes(id))
+        await Promise.all(
+          localOnly
+            .map((id) => userApi.trackIdToSongId(id))
+            .filter((sid): sid is number => sid != null)
+            .map((sid) => userApi.addFavorite(sid).catch(() => undefined)),
+        )
+        const merged = Array.from(new Set([...serverIds, ...localOnly]))
+        set({ likedTrackIds: merged })
+        ls.set('likedTrackIds', merged)
+      } catch {}
+      // The preference/folder blobs ride on the getMe() response — merge them
+      // with local state and push the result back, no extra requests needed.
+      const profile = get().account
+      await get().syncSongPrefs(profile?.user_preferences)
+      get().syncListeningPlays(profile?.listening_plays)
+      get().syncFolders(profile?.playlist_folders)
+      // Deliver any reports queued while signed out — a logged-in flush can
+      // attach the account's Discord username as the contact field.
+      get()._flushReports()
+      await get().refreshPlaylists()
+      // Fire-and-forget: warm playlist tracks + covers in the background so the
+      // Playlists page is ready before the user ever navigates to it. Two
+      // requests per playlist, so it waits for idle rather than piling onto the
+      // startup burst.
+      runWhenIdle(() => { get().prefetchPlaylistDetails() })
+    })().finally(() => { _loadAccountInFlight = null })
+    return _loadAccountInFlight
   },
 
   loginWithDiscord: async () => {

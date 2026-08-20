@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, ReactNode } from 'react'
-import { createPortal } from 'react-dom'
+import { useEffect, useState, ReactNode } from 'react'
+import { ModalOverlay, LockToggle } from './Modal'
 import {
   X, Music2, Pencil, Flag,
   Clock, Hash, MicVocal, Music, Wrench, FileText, Piano, MapPin,
@@ -72,8 +72,6 @@ interface Props {
 }
 
 export default function SongInfoModal({ song, onClose, onEdit }: Props): JSX.Element | null {
-  const overlayRef = useRef<HTMLDivElement>(null)
-
   const songPrefs = useStore((s) => s.songPrefs)
   const openReport = useStore((s) => s.openReport)
 
@@ -184,22 +182,25 @@ export default function SongInfoModal({ song, onClose, onEdit }: Props): JSX.Ele
     }
   }
 
-  // Portal to <body> so the overlay is never trapped inside a caller with a
-  // CSS transform/animation/overflow (e.g. NowPlaying's slide-in panel) — a
-  // transformed ancestor becomes the containing block for position: fixed,
-  // which would otherwise render this "modal" clipped inside that panel.
-  return createPortal(
-    <div
-      ref={overlayRef}
-      className="fixed inset-0 z-[160] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-0 md:p-4"
-      onClick={(e) => { if (e.target === overlayRef.current) onClose() }}
+  // ModalOverlay portals to <body> so the overlay is never trapped inside a
+  // caller with a CSS transform/animation/overflow (e.g. NowPlaying's
+  // slide-in panel) — a transformed ancestor becomes the containing block for
+  // position: fixed, which would otherwise render this "modal" clipped
+  // inside that panel.
+  return (
+    <ModalOverlay
+      onClose={onClose}
+      zIndexClassName="z-[160]"
+      panelClassName="bg-surface border border-[var(--border)] rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-lg max-h-[92svh] md:max-h-[86vh]"
+      minWidth={420} minHeight={480}
     >
+      {({ onHandleMouseDown, locked, toggleLock }) => (
       <div
-        className="select-text bg-surface flex flex-col overflow-hidden border border-[var(--border)] rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-lg max-h-[92svh] md:max-h-[86vh]"
+        className="select-text bg-surface w-full h-full flex flex-col overflow-hidden"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
 
-        <div className="relative shrink-0 overflow-hidden">
+        <div className="relative shrink-0 overflow-hidden cursor-grab active:cursor-grabbing" onMouseDown={onHandleMouseDown}>
           {coverUrl && (
             <div
               className="absolute inset-0 bg-cover bg-center scale-110"
@@ -208,6 +209,13 @@ export default function SongInfoModal({ song, onClose, onEdit }: Props): JSX.Ele
           )}
           <div className="absolute inset-0 bg-gradient-to-b from-transparent to-surface" />
           <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5">
+            <LockToggle
+              locked={locked}
+              onClick={toggleLock}
+              className={`w-7 h-7 flex items-center justify-center rounded-full transition-colors ${
+                locked ? 'bg-accent/80 text-white' : 'bg-black/40 text-white/70 hover:text-white'
+              }`}
+            />
             {onEdit && (
               <button
                 onClick={() => { onEdit(displaySong.id); onClose() }}
@@ -418,8 +426,8 @@ export default function SongInfoModal({ song, onClose, onEdit }: Props): JSX.Ele
 
         </div>
       </div>
-    </div>,
-    document.body
+      )}
+    </ModalOverlay>
   )
 }
 

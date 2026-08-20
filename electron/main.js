@@ -5,7 +5,13 @@ const fs = require('fs')
 
 const isDev = process.env.NODE_ENV === 'development'
 
-app.setAppUserModelId('Unreleased')
+// Dev runs (unpackaged, launched via `electron .`) must NOT share the
+// packaged app's AppUserModelID — Windows uses this id to decide whether two
+// processes/shortcuts are "the same app" for taskbar grouping, jump lists,
+// and pinning. Sharing it let a stray dev run poison the shell's cached icon
+// for the real installed app (dev's raw node_modules/electron/dist/electron.exe
+// showing up in place of the installed Unreleased.exe).
+app.setAppUserModelId(app.isPackaged ? 'Unreleased' : 'Unreleased.Dev')
 Menu.setApplicationMenu(null)
 
 // ── Settings persistence ──────────────────────────────────────────────────────
@@ -38,7 +44,15 @@ autoUpdater.logger = { info: log, warn: log, error: log, debug: () => {} }
 autoUpdater.autoDownload = appSettings.autoDownload
 autoUpdater.autoInstallOnAppQuit = true
 
-const iconPath = path.join(__dirname, 'icon.ico')
+// On Windows, BrowserWindow/Tray icons are loaded by native code that can't
+// read files packed inside app.asar — it silently falls back to Electron's
+// default icon (only the taskbar/alt-tab icon is affected; the .exe's own
+// PE resource icon, used by File Explorer and shortcuts, is unaffected).
+// So when packaged, load icon.ico from the extraResources copy sitting next
+// to app.asar instead of the one bundled inside it.
+const iconPath = app.isPackaged
+  ? path.join(process.resourcesPath, 'icon.ico')
+  : path.join(__dirname, 'icon.ico')
 const preloadPath = path.join(__dirname, 'preload.js')
 
 let mainWindow = null
@@ -207,6 +221,10 @@ ipcMain.handle('force-update', async () => {
 ipcMain.handle('check-for-updates', () => {
   log('Manual update check triggered')
   return autoUpdater.checkForUpdatesAndNotify()
+})
+ipcMain.handle('install-update', () => {
+  log('Manual install-update triggered')
+  autoUpdater.quitAndInstall(true, true)
 })
 ipcMain.handle('minimize-window', () => mainWindow?.minimize())
 ipcMain.handle('maximize-window', () => {
@@ -550,6 +568,14 @@ ipcMain.handle('select-image-file', async () => {
   } catch { return null }
 })
 
+// Set for the duration of the app-launch check so 'update-downloaded' can tell
+// a fresh-at-startup download (or a previous session's update that never got
+// installed, e.g. the user declined the restart prompt and later relaunched
+// instead of hitting Restart) apart from one found mid-session. Startup
+// installs silently and relaunches; mid-session still asks before restarting
+// the user's active work.
+let isStartupUpdateCheck = false
+
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   createWindow()
@@ -558,6 +584,7 @@ app.whenReady().then(() => {
   if (!isDev) {
     mainWindow.once('ready-to-show', () => {
       log('Checking for updates on startup...')
+      isStartupUpdateCheck = true
       autoUpdater.checkForUpdatesAndNotify().catch(err => log('checkForUpdates error:', err.message))
     })
   }
@@ -586,6 +613,7 @@ autoUpdater.on('update-available', (info) => {
 
 autoUpdater.on('update-not-available', (info) => {
   log('Up to date:', info.version)
+  isStartupUpdateCheck = false
   mainWindow?.webContents.send('update-status', { type: 'not-available', version: info.version })
 })
 
@@ -601,6 +629,19 @@ autoUpdater.on('download-progress', (p) => {
 autoUpdater.on('update-downloaded', (info) => {
   log('Update downloaded:', info.version)
   mainWindow?.webContents.send('update-status', { type: 'downloaded', version: info.version })
+
+  // At launch there's no in-progress work to interrupt — and this is also the
+  // path that catches an update the user downloaded but declined to restart
+  // into last time (checkForUpdatesAndNotify re-validates the cached
+  // installer against latest.yml and fires this same event without
+  // re-downloading). Install it now instead of prompting again.
+  if (isStartupUpdateCheck) {
+    isStartupUpdateCheck = false
+    log('Update ready at launch — installing silently')
+    autoUpdater.quitAndInstall(true, true)
+    return
+  }
+
   dialog.showMessageBox(mainWindow, {
     type: 'info',
     title: 'Update ready',
@@ -615,5 +656,6 @@ autoUpdater.on('update-downloaded', (info) => {
 
 autoUpdater.on('error', (err) => {
   log('Auto-updater error:', err.message)
+  isStartupUpdateCheck = false
   mainWindow?.webContents.send('update-status', { type: 'error', message: err.message })
 })

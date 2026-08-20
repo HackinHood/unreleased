@@ -1,4 +1,4 @@
-import { createPortal } from 'react-dom'
+import { ModalOverlay, LockToggle } from './Modal'
 import { X, Flag, MessageSquareText } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import ReportForm from './ReportForm'
@@ -16,19 +16,28 @@ export default function ReportModal(): JSX.Element | null {
   const title = isSong ? 'Report an issue' : 'Send feedback'
   const Icon = isSong ? Flag : MessageSquareText
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[170] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-0 md:p-4"
-      onClick={(e) => { if (e.currentTarget === e.target) closeReport() }}
+  return (
+    <ModalOverlay
+      onClose={closeReport}
+      zIndexClassName="z-[170]"
+      panelClassName="bg-surface border border-[var(--border)] rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-md max-h-[92svh]"
+      minWidth={380} minHeight={380}
     >
-      <div className="bg-surface border border-[var(--border)] rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-md max-h-[92svh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] sticky top-0 bg-surface">
+      {({ onHandleMouseDown, locked, toggleLock }) => (
+      <div className="bg-surface w-full h-full overflow-y-auto">
+        <div
+          className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] sticky top-0 bg-surface cursor-grab active:cursor-grabbing"
+          onMouseDown={onHandleMouseDown}
+        >
           <h2 className="flex items-center gap-2 text-text-primary text-sm font-semibold">
             <Icon size={15} className="text-accent" /> {title}
           </h2>
-          <button onClick={closeReport} className="text-text-muted hover:text-text-primary transition-colors">
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-1">
+            <LockToggle locked={locked} onClick={toggleLock} />
+            <button onClick={closeReport} className="text-text-muted hover:text-text-primary transition-colors">
+              <X size={18} />
+            </button>
+          </div>
         </div>
         <div className="px-5 py-4">
           <ReportForm
@@ -37,7 +46,7 @@ export default function ReportModal(): JSX.Element | null {
           />
         </div>
       </div>
-    </div>,
-    document.body
+      )}
+    </ModalOverlay>
   )
 }

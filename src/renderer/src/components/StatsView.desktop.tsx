@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { BarChart3, Play, Loader2, MoreHorizontal, Music2, Clock, ListMusic, Disc3, CalendarDays, Info } from 'lucide-react'
-import { useStorePick } from '../store/useStore'
+import { useStore, useStorePick } from '../store/useStore'
 import { useCanEdit } from '../hooks/useChannelRoles'
-import { apiFetch, JWApiSong } from '../lib/juicewrldApi'
 import {
   joinPlayedSongs, buildListeningStats, formatListeningTime,
   prefsForPeriod, eventsForPeriod, periodCoverage, type RankedEntry, type ListeningPeriod,
@@ -10,7 +9,6 @@ import {
 import { resolveStatsSongs, statsSongToTrack, type StatsSong, type ResolveProgress } from '../lib/statsCatalog'
 import { sortListeningPlays } from '../lib/listeningPlays'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
-import SongInfoModal from './SongInfoModal'
 import SongContextMenu, { SongContextMenuState } from './SongContextMenu'
 import { relativeTime, shortDate } from './adminShared'
 
@@ -92,8 +90,8 @@ function BarList({ title, entries, empty }: { title: string; entries: RankedEntr
 }
 
 export default function StatsView(): JSX.Element {
-  const { listeningPlays, account, playTrack, playCollection, playNext, setActiveView, setPendingEditorSongId } = useStorePick(
-    'listeningPlays', 'account', 'playTrack', 'playCollection', 'playNext', 'setActiveView', 'setPendingEditorSongId')
+  const { listeningPlays, account, playTrack, playCollection, playNext } = useStorePick(
+    'listeningPlays', 'account', 'playTrack', 'playCollection', 'playNext')
   const canEdit = useCanEdit()
 
   const [period, setPeriod] = useState<ListeningPeriod>('all')
@@ -102,7 +100,6 @@ export default function StatsView(): JSX.Element {
   const [progress, setProgress] = useState<ResolveProgress | null>(null)
   const [expanded, setExpanded] = useState(false)
   const [ctxMenu, setCtxMenu] = useState<SongContextMenuState | null>(null)
-  const [infoSong, setInfoSong] = useState<JWApiSong | null>(null)
 
   const prefs = useMemo(() => prefsForPeriod(listeningPlays, period), [listeningPlays, period])
   const periodEvents = useMemo(() => sortListeningPlays(eventsForPeriod(listeningPlays, period)), [listeningPlays, period])
@@ -160,8 +157,11 @@ export default function StatsView(): JSX.Element {
   const visible = expanded ? stats.played : stats.played.slice(0, TOP_SONGS_COLLAPSED)
   const topPlays = stats.played[0]?.playcount ?? 0
 
-  const openSongInfo = async (songId: number): Promise<void> => {
-    try { setInfoSong(await apiFetch<JWApiSong>(`/songs/${songId}/`)) } catch {}
+  // Global infoSongId (not local state) so the info panel survives switching
+  // to another tab, which unmounts this view. GlobalSongInfoHost does its own
+  // fetch by id, so no need to resolve the song here first.
+  const openSongInfo = (songId: number): void => {
+    useStore.getState().setInfoSongId(songId)
   }
 
   // Bail to the empty screen only when the user has never played anything.
@@ -419,11 +419,6 @@ export default function StatsView(): JSX.Element {
           onPlayNext={() => playNext(ctxMenu.track)}
         />
       )}
-      <SongInfoModal
-        song={infoSong}
-        onClose={() => setInfoSong(null)}
-        onEdit={canEdit ? (songId) => { setInfoSong(null); setPendingEditorSongId(songId); setActiveView('editor') } : undefined}
-      />
     </>
   )
 }

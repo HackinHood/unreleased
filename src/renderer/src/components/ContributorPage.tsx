@@ -178,11 +178,16 @@ export default function ContributorPage(): JSX.Element {
   useEffect(() => {
     if (!pendingCompProposal || !isContributor) return
     const { paths, changeType: type } = pendingCompProposal
-    if (paths.length === 0) { setPendingCompProposal(null); return }
     setChangeType(type)
     if (type === 'delete') {
+      if (paths.length === 0) { setPendingCompProposal(null); return }
       setDeletePaths((prev) => [...prev, ...paths.filter((x) => !prev.includes(x))])
+    } else if (type === 'upload') {
+      // The Files context menu hands over the folder being browsed, not a
+      // file — there's nothing to pick apart into folder + name yet.
+      setFolderPath(paths[0] ?? '')
     } else {
+      if (paths.length === 0) { setPendingCompProposal(null); return }
       // Replace is single by definition — a selection can only seed the first.
       setFolderPath(parentOf(paths[0]))
       setFileName(basename(paths[0]))

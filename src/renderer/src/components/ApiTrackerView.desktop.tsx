@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react'
 import {
   Search, Play, Loader2, Music2, X, Check,
-  LayoutList, Rows3, Info, ListPlus, PanelLeft,
+  LayoutList, Rows3, Info, ListPlus, ListFilter,
   ChevronUp, ChevronDown, MoreHorizontal, Plus, ListMusic, PackageOpen,
   CheckSquare2, Square, Link2, Layers, LayoutGrid, Mic2, CalendarDays, ChevronLeft, ChevronRight, Users,
   AlertTriangle, Pencil, Clock, Timer, User, MapPin, Folder, SlidersHorizontal, Download, Type,
@@ -9,7 +9,6 @@ import {
 import { useStore } from '../store/useStore'
 import { useShallow } from 'zustand/react/shallow'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
-import SongInfoModal from './SongInfoModal'
 import SongContextMenu from './SongContextMenu'
 import { CompactGroupRow, useExpandedGroups } from './CompactGroupRow'
 import {
@@ -28,6 +27,7 @@ import { useVirtualWindow } from '../hooks/useVirtualWindow'
 import { runLog } from '../lib/runLog'
 import { formatDuration } from '../lib/format'
 import { parseSearchQuery, matchesFieldFilters, SEARCH_FIELD_HELP } from '../lib/trackerSearch'
+import { useMultiSelect } from '../hooks/useMultiSelect'
 
 type Category = 'released' | 'unreleased' | 'unsurfaced' | 'recording_session' | ''
 type ViewMode = 'list' | 'detail' | 'grid'
@@ -69,7 +69,6 @@ function groupCategory(members: { item: JWApiSong }[]): Category {
 
 const PAGE_SIZE = 50
 const LS_TRACKER_VIEW = 'api-tracker:viewMode'
-const LS_TRACKER_SIDEBAR = 'api-tracker:showSidebar'
 const LS_TRACKER_COMPACT = 'api-tracker:compactView'
 const LS_TRACKER_SEARCH  = 'api-tracker:search'
 const LS_TRACKER_CALENDAR_MONTH = 'api-tracker:calendarMonth'
@@ -313,23 +312,28 @@ function SidebarCheckRow({ label, count, checked, onClick }: {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 px-3 py-1.5 text-sm transition-colors text-left ${
-        checked ? 'text-accent font-semibold bg-accent/5' : 'text-text-secondary hover:text-text-primary hover:bg-surface-raised'
+      className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm transition-colors text-left ${
+        checked ? 'bg-accent/12 text-accent font-medium' : 'text-text-secondary hover:text-text-primary hover:bg-surface-raised'
       }`}
     >
       {checked
-        ? <CheckSquare2 size={13} className="text-accent shrink-0" />
-        : <Square size={13} className="text-text-muted opacity-50 shrink-0" />}
+        ? <CheckSquare2 size={14} className="text-accent shrink-0" />
+        : <Square size={14} className="text-text-muted opacity-40 shrink-0" />}
       <span className="flex-1 truncate">{label}</span>
       {count !== undefined && (
-        <span className="text-text-muted text-[0.625rem] tabular-nums ml-1">{count.toLocaleString()}</span>
+        <span className={`text-[0.625rem] tabular-nums ml-1 ${checked ? 'text-accent/70' : 'text-text-muted'}`}>
+          {count.toLocaleString()}
+        </span>
       )}
     </button>
   )
 }
 
-function CategorySidebar({
-  stats, eras, selectedCategories, selectedEras, onCategory, onEra, onClearCategories, onClearEras,
+// Popover version of the old always-on sidebar — opens from the filter
+// button next to the search box, closes on outside click/Escape like
+// SearchHelpPopover, and only takes up space while actually in use.
+function FilterPopover({
+  stats, eras, selectedCategories, selectedEras, onCategory, onEra, onClearCategories, onClearEras, onClearAll, onClose,
 }: {
   stats: JWApiStats | null
   eras: JWApiEra[]
@@ -339,45 +343,79 @@ function CategorySidebar({
   onEra: (e: string) => void
   onClearCategories: () => void
   onClearEras: () => void
+  onClearAll: () => void
+  onClose: () => void
 }): JSX.Element {
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handle = (e: MouseEvent): void => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    const handleKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('mousedown', handle)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handle)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [onClose])
+
   const counts: Record<string, number | undefined> = {
     released:          stats?.category_stats.released,
     unreleased:        stats?.category_stats.unreleased,
     unsurfaced:        stats?.category_stats.unsurfaced,
     recording_session: stats?.category_stats.recording_session,
   }
+  const hasFilters = selectedCategories.size > 0 || selectedEras.size > 0
 
   return (
-    <div className="w-44 shrink-0 border-r border-[var(--border)] overflow-y-auto flex flex-col py-2">
-      <p className="text-[0.5625rem] font-bold uppercase tracking-widest text-text-muted px-3 pt-1 pb-2">Category</p>
-      <SidebarCheckRow
-        label="All"
-        count={stats?.total_songs}
-        checked={selectedCategories.size === 0}
-        onClick={onClearCategories}
-      />
-      {CAT_SIDEBAR.map((cat) => (
+    <div
+      ref={ref}
+      className="absolute right-0 top-full mt-2 w-64 max-h-96 overflow-y-auto bg-surface border border-[var(--border)] rounded-xl shadow-2xl z-50 p-3"
+    >
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-text-primary text-xs font-semibold">Filters</p>
+        {hasFilters && (
+          <button onClick={onClearAll} className="text-accent text-[0.6875rem] font-medium hover:underline">
+            Clear all
+          </button>
+        )}
+      </div>
+
+      <p className="text-[0.625rem] font-bold uppercase tracking-widest text-text-muted pt-2 pb-1">Category</p>
+      <div className="flex flex-col gap-0.5">
         <SidebarCheckRow
-          key={cat.key}
-          label={cat.label}
-          count={counts[cat.key]}
-          checked={selectedCategories.has(cat.key)}
-          onClick={() => onCategory(cat.key)}
+          label="All"
+          count={stats?.total_songs}
+          checked={selectedCategories.size === 0}
+          onClick={onClearCategories}
         />
-      ))}
+        {CAT_SIDEBAR.map((cat) => (
+          <SidebarCheckRow
+            key={cat.key}
+            label={cat.label}
+            count={counts[cat.key]}
+            checked={selectedCategories.has(cat.key)}
+            onClick={() => onCategory(cat.key)}
+          />
+        ))}
+      </div>
 
       {eras.length > 0 && (
         <>
-          <p className="text-[0.5625rem] font-bold uppercase tracking-widest text-text-muted px-3 pt-4 pb-2">Era</p>
-          <SidebarCheckRow label="All eras" checked={selectedEras.size === 0} onClick={onClearEras} />
-          {eras.map((era) => (
-            <SidebarCheckRow
-              key={era.id}
-              label={era.name}
-              checked={selectedEras.has(era.name)}
-              onClick={() => onEra(era.name)}
-            />
-          ))}
+          <p className="text-[0.625rem] font-bold uppercase tracking-widest text-text-muted pt-3 pb-1">Era</p>
+          <div className="flex flex-col gap-0.5">
+            <SidebarCheckRow label="All eras" checked={selectedEras.size === 0} onClick={onClearEras} />
+            {eras.map((era) => (
+              <SidebarCheckRow
+                key={era.id}
+                label={era.name}
+                checked={selectedEras.has(era.name)}
+                onClick={() => onEra(era.name)}
+              />
+            ))}
+          </div>
         </>
       )}
     </div>
@@ -1799,13 +1837,12 @@ export default function ApiTrackerView(): JSX.Element {
 
   const [trackerTab, setTrackerTab] = useState<TrackerTab>('songs')
 
-  const [selectedSong, setSelectedSong] = useState<JWApiSong | null>(null)
   const [contextMenu, setContextMenu] = useState<{ song: JWApiSong; x: number; y: number } | null>(null)
   const [bulkContextMenu, setBulkContextMenu] = useState<BulkContextMenuState | null>(null)
 
-  // Multi-select — mirrors the same pattern used in ApiFilesView's bulk select.
-  const [selectMode, setSelectMode] = useState(false)
-  const [selected, setSelected] = useState<Map<number, JWApiSong>>(new Map())
+  // Multi-select — see the useMultiSelect() call further down (needs
+  // compactView/fetchAllMode/sortedSongs, which aren't defined yet here) for
+  // selectMode/selected/toggleSelect/exitSelectMode.
   const [bulkZipStatus, setBulkZipStatus] = useState<'idle' | 'zipping' | 'done' | 'partial' | 'none' | 'error'>('idle')
   const [bulkZipSkipped, setBulkZipSkipped] = useState(0)
   const [showBulkPlaylists, setShowBulkPlaylists] = useState(false)
@@ -1815,35 +1852,6 @@ export default function ApiTrackerView(): JSX.Element {
   // view (see getAllVersionGroups, which only surfaces titled groups).
   const [titlePromptGroupId, setTitlePromptGroupId] = useState<number | null>(null)
   const [savingTitlePrompt, setSavingTitlePrompt] = useState(false)
-
-  // useCallback so SongRow's memo isn't defeated — a fresh identity here would
-  // re-render every row on each selection toggle (functional setState keeps it
-  // dependency-free and stable).
-  const toggleSelect = useCallback((song: JWApiSong): void => {
-    setSelectMode(true)
-    setSelected(prev => {
-      const next = new Map(prev)
-      if (next.has(song.id)) next.delete(song.id)
-      else next.set(song.id, song)
-      return next
-    })
-  }, [])
-
-  const exitSelectMode = (): void => {
-    setSelectMode(false)
-    setSelected(new Map())
-    setBulkZipStatus('idle')
-    setBulkZipSkipped(0)
-    setShowBulkPlaylists(false)
-  }
-
-  // Deselecting the last song (via row/card click, "Clear", context menu
-  // unlink, etc.) turns select mode back off on its own, so there's no
-  // separate "Cancel" affordance needed once you're in it — Escape still
-  // works too (see the effect below).
-  useEffect(() => {
-    if (selectMode && selected.size === 0) setSelectMode(false)
-  }, [selectMode, selected])
 
   // Compact view — shows only songs grouped into a titled version group,
   // collapsed to one row per group; expanding it reveals the individual
@@ -1966,12 +1974,9 @@ export default function ApiTrackerView(): JSX.Element {
     const stored = localStorage.getItem(LS_TRACKER_VIEW)
     return stored === 'detail' || stored === 'grid' ? stored : 'list'
   })
-  const [showSidebar, setShowSidebarState] = useState<boolean>(
-    () => localStorage.getItem(LS_TRACKER_SIDEBAR) !== 'false'
-  )
+  const [showFilterMenu, setShowFilterMenu] = useState(false)
 
   const setViewMode = (v: ViewMode): void => { setViewModeState(v); localStorage.setItem(LS_TRACKER_VIEW, v) }
-  const setShowSidebar = (v: boolean): void => { setShowSidebarState(v); localStorage.setItem(LS_TRACKER_SIDEBAR, String(v)) }
 
   const [orderField, setOrderField] = useState<OrderField | null>(null)
   const [orderDir, setOrderDir] = useState<'asc' | 'desc'>('asc')
@@ -2306,49 +2311,26 @@ export default function ApiTrackerView(): JSX.Element {
     loadingRef.current = true
     setLoading(true); setError(null); setSongs([]); setHasMore(false); setCount(0)
     const t0 = performance.now()
-    const PAGE_SIZE_SORT = 200 // bigger batches to reduce round-trips
-    const CONCURRENCY = 6 // fetch several pages in parallel instead of one at a time
     runLog('tracker-sort', `start search=${JSON.stringify(debouncedSearch)} category=${categoryParam || '-'} era=${eraParam || '-'} multi=${multiFilterActive} fields=${parsedSearch.filters.length}`)
     // Field filters (artists:"...", etc.) can't be sent to the server, so
     // they're checked here alongside category/era.
     const passesAll = (s: JWApiSong): boolean => matchesFilters(s) && matchesFieldFilters(s, parsedSearch.filters)
-    const fetchPage = (p: number): Promise<JWApiPaginatedResponse> => apiFetch<JWApiPaginatedResponse>('/songs/', {
-      searchall: parsedSearch.freeText || undefined,
-      category: categoryParam || undefined,
-      era: eraParam || undefined,
-      page: p,
-      page_size: PAGE_SIZE_SORT,
-    })
+    // `all=true` returns the whole (filtered) catalogue as a plain array in
+    // one request — server-side page_size is capped below what we'd need to
+    // paginate reliably, so this avoids under-counting totalPages against it.
     ;(async () => {
       try {
-        const first = await fetchPage(1)
+        const all = await apiFetch<JWApiSong[]>('/songs/', {
+          searchall: parsedSearch.freeText || undefined,
+          category: categoryParam || undefined,
+          era: eraParam || undefined,
+          all: 'true',
+        })
         if (cancelled) return
-        const all: JWApiSong[] = [...first.results]
-        setSongs(all.filter(passesAll))
-        setCount(first.count)
-        runLog('tracker-sort', `page 1 loaded, accumulated ${all.length}/${first.count}`)
-
-        const totalPages = Math.ceil(first.count / PAGE_SIZE_SORT)
-        let nextPage = 2
-        const worker = async (): Promise<void> => {
-          while (!cancelled) {
-            const p = nextPage++
-            if (p > totalPages) return
-            const data = await fetchPage(p)
-            if (cancelled) return
-            all.push(...data.results)
-            setSongs(all.filter(passesAll)) // progressive display while loading
-            runLog('tracker-sort', `page ${p} loaded, accumulated ${all.length}/${first.count}`)
-          }
-        }
-        await Promise.all(Array.from({ length: Math.min(CONCURRENCY, Math.max(totalPages - 1, 0)) }, worker))
-        if (!cancelled) {
-          // Once everything is in, the real total is however many actually
-          // pass the (possibly multi-value) filter, not the server's raw
-          // category/era-agnostic-or-partial count.
-          setCount(all.filter(passesAll).length)
-          runLog('tracker-sort', `done ${all.length} songs in ${Math.round(performance.now() - t0)}ms`)
-        }
+        const filtered = all.filter(passesAll)
+        setSongs(filtered)
+        setCount(filtered.length)
+        runLog('tracker-sort', `done ${all.length} songs in ${Math.round(performance.now() - t0)}ms`)
       } catch (e) {
         if (!cancelled) { setError((e as Error).message); runLog('tracker-sort', 'ERROR', e as Error) }
       } finally {
@@ -2481,6 +2463,62 @@ export default function ApiTrackerView(): JSX.Element {
     return sorted
   }, [compactGroups, parsedSearch, compactSort, categoryFilter, eraFilter, matchesFilters])
 
+  // Multi-select — select mode, the selected-songs Map, Escape-to-exit, and
+  // Ctrl/Cmd+A "select all" are all handled by the shared hook (see its docs
+  // for why: a race between an async select-all fetch and the auto-exit-on-
+  // empty-selection effect used to silently discard the whole selection).
+  // `all=true` returns the whole (filtered) catalogue as a plain array in one
+  // request — the server caps page_size well below what pagination here
+  // would need to stay accurate, so this is used instead of paging through it.
+  const {
+    selectMode, setSelectMode, selected, setSelected, selectAllLoading,
+    toggle: toggleSongSelect, exitSelectMode, selectAll: selectAllSongs,
+  } = useMultiSelect<number, JWApiSong>({
+    onExit: () => {
+      setBulkZipStatus('idle')
+      setBulkZipSkipped(0)
+      setShowBulkPlaylists(false)
+    },
+    ctrlA: {
+      enabled: trackerTab === 'songs',
+      getAll: () => {
+        if (compactView) {
+          const all = new Map<number, JWApiSong>()
+          for (const g of filteredCompactGroups) for (const m of g.members) all.set(m.item.id, m.item)
+          return all
+        }
+        return new Map(sortedSongs.map((s) => [s.id, s]))
+      },
+      needsFetch: () => !compactView && !fetchAllMode && (loadingRef.current || hasMoreRef.current),
+      fetchAll: async () => {
+        loadingRef.current = true
+        setLoading(true)
+        try {
+          const all = await apiFetch<JWApiSong[]>('/songs/', {
+            searchall: debouncedSearch || undefined,
+            category: categoryParam || undefined,
+            era: eraParam || undefined,
+            all: 'true',
+          })
+          setSongs(all)
+          setCount(all.length)
+          setHasMore(false)
+          hasMoreRef.current = false
+          return new Map(all.map((s) => [s.id, s]))
+        } catch (e) {
+          setError((e as Error).message)
+          return null
+        } finally {
+          loadingRef.current = false
+          setLoading(false)
+        }
+      },
+    },
+  })
+  // useCallback so SongRow's memo isn't defeated — a fresh identity here would
+  // re-render every row on each selection toggle.
+  const toggleSelect = useCallback((song: JWApiSong): void => toggleSongSelect(song.id, song), [toggleSongSelect])
+
   const handlePlay = useCallback((song: JWApiSong) => {
     const track = songToTrack(song)
     // If shuffle is already on, start radio mode from this track instead of
@@ -2501,7 +2539,9 @@ export default function ApiTrackerView(): JSX.Element {
     } : null, 'tracker')
   }, [playTrack, startRadio, shuffle, sortedSongs, categoryParam, eraParam, debouncedSearch, count, hasMore, fetchAllMode, page])
 
-  const handleInfo = useCallback((song: JWApiSong) => { setSelectedSong(song) }, [])
+  // Global infoSongId (not local state) so the info panel — and its place in
+  // the sandbox — survives switching to another tab, which unmounts this view.
+  const handleInfo = useCallback((song: JWApiSong) => { useStore.getState().setInfoSongId(song.id) }, [])
   const handleQueue = useCallback((track: Track) => { addToQueue(track) }, [addToQueue])
 
   const handleContextMenu = useCallback((song: JWApiSong, e: React.MouseEvent): void => {
@@ -2523,39 +2563,6 @@ export default function ApiTrackerView(): JSX.Element {
     setSelectMode(true)
     setBulkContextMenu({ x: e.clientX, y: e.clientY, showPlaylists: false })
   }, [])
-
-  // ESC exits select mode
-  useEffect(() => {
-    if (!selectMode) return
-    const onKeyDown = (e: KeyboardEvent): void => { if (e.key === 'Escape') exitSelectMode() }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectMode])
-
-  // Ctrl/Cmd+A selects every currently-visible song (entering select mode if
-  // it isn't already active) instead of the browser's page-text select-all.
-  // Skipped while focus is in a text field (search box, notes, etc.) so
-  // normal text selection still works there.
-  useEffect(() => {
-    if (trackerTab !== 'songs') return
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'a') return
-      const target = e.target as HTMLElement | null
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
-      e.preventDefault()
-      if (compactView) {
-        const all = new Map<number, JWApiSong>()
-        for (const g of filteredCompactGroups) for (const m of g.members) all.set(m.item.id, m.item)
-        setSelected(all)
-      } else {
-        setSelected(new Map(sortedSongs.map((s) => [s.id, s])))
-      }
-      setSelectMode(true)
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [trackerTab, compactView, filteredCompactGroups, sortedSongs])
 
   const selectedSongs = useMemo(() => [...selected.values()], [selected])
   // Sessions/unsurfaced songs can't go in playlists or the queue — same rule
@@ -2746,9 +2753,43 @@ export default function ApiTrackerView(): JSX.Element {
                 </button>
               )}
             </div>
+            <div className="relative shrink-0 hidden md:block">
+              <button
+                onClick={() => setShowFilterMenu((v) => !v)}
+                onMouseDown={(e) => e.stopPropagation()}
+                className={`relative flex items-center justify-center p-2.5 md:p-2 rounded-lg transition-colors ${
+                  showFilterMenu || multiFilterActive || categoryFilter.size > 0 || eraFilter.size > 0
+                    ? 'bg-accent/15 text-accent'
+                    : 'bg-surface-overlay text-text-muted hover:text-text-secondary'
+                }`}
+                title="Filters"
+              >
+                <ListFilter size={15} />
+                {(categoryFilter.size + eraFilter.size) > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-[3px] rounded-full bg-accent text-[0.5625rem] leading-[15px] font-bold text-white text-center">
+                    {categoryFilter.size + eraFilter.size}
+                  </span>
+                )}
+              </button>
+              {showFilterMenu && (
+                <FilterPopover
+                  stats={stats}
+                  eras={eras}
+                  selectedCategories={categoryFilter}
+                  selectedEras={eraFilter}
+                  onCategory={(c) => { toggleCategoryFilter(c); resetSongs() }}
+                  onEra={(e) => { toggleEraFilter(e); resetSongs() }}
+                  onClearCategories={() => { setCategoryFilter(new Set()); resetSongs() }}
+                  onClearEras={() => { setEraFilter(new Set()); resetSongs() }}
+                  onClearAll={() => { setCategoryFilter(new Set()); setEraFilter(new Set()); resetSongs() }}
+                  onClose={() => setShowFilterMenu(false)}
+                />
+              )}
+            </div>
             <div className="relative shrink-0">
               <button
                 onClick={() => setShowSearchHelp((v) => !v)}
+                onMouseDown={(e) => e.stopPropagation()}
                 className={`p-2.5 md:p-2 rounded-lg transition-colors ${showSearchHelp ? 'bg-accent/15 text-accent' : 'bg-surface-overlay text-text-muted hover:text-text-secondary'}`}
                 title="Search syntax help"
               >
@@ -2756,36 +2797,8 @@ export default function ApiTrackerView(): JSX.Element {
               </button>
               {showSearchHelp && <SearchHelpPopover onClose={() => setShowSearchHelp(false)} />}
             </div>
-          </div>
 
-          {/* Second row */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={() => setShowSidebar(!showSidebar)}
-              className={`hidden md:flex items-center gap-1.5 px-2.5 py-2.5 md:py-2 rounded-lg text-xs transition-colors shrink-0 ${
-                showSidebar
-                  ? 'bg-accent/15 text-accent border border-accent/30'
-                  : 'bg-surface-overlay text-text-muted hover:text-text-secondary border border-transparent'
-              }`}
-              title="Toggle search settings"
-            >
-              <PanelLeft size={13} />
-              <span className="hidden sm:inline">Search Settings</span>
-            </button>
-
-            <select
-              value={categoryParam}
-              onChange={(e) => { setCategoryFilter(new Set(e.target.value ? [e.target.value as Category] : [])); resetSongs() }}
-              className="md:hidden flex-1 min-w-0 bg-surface-overlay text-text-primary text-sm px-3 py-2.5 rounded-lg outline-none border border-transparent focus:ring-1 ring-accent focus:border-accent/40 cursor-pointer"
-            >
-              <option value="">{categoryFilter.size > 1 ? `${categoryFilter.size} categories` : 'All categories'}</option>
-              <option value="released">Released</option>
-              <option value="unreleased">Unreleased</option>
-              <option value="unsurfaced">Unsurfaced</option>
-              <option value="recording_session">Sessions</option>
-            </select>
-
-            <div className="flex items-center bg-surface-overlay rounded-lg p-0.5 shrink-0 ml-auto">
+            <div className="flex items-center bg-surface-overlay rounded-lg p-0.5 shrink-0">
               <button
                 onClick={() => { setViewMode('list'); setCompactView(false) }}
                 className={`p-2 md:p-1.5 rounded-md transition-colors ${viewMode === 'list' && !compactView ? 'bg-surface-raised text-text-primary' : 'text-text-muted hover:text-text-secondary'}`}
@@ -2817,6 +2830,21 @@ export default function ApiTrackerView(): JSX.Element {
                 </button>
               )}
             </div>
+          </div>
+
+          {/* Second row — mobile-only category select (desktop uses the filter popover above) */}
+          <div className="md:hidden flex items-center gap-2 flex-wrap">
+            <select
+              value={categoryParam}
+              onChange={(e) => { setCategoryFilter(new Set(e.target.value ? [e.target.value as Category] : [])); resetSongs() }}
+              className="flex-1 min-w-0 bg-surface-overlay text-text-primary text-sm px-3 py-2.5 rounded-lg outline-none border border-transparent focus:ring-1 ring-accent focus:border-accent/40 cursor-pointer"
+            >
+              <option value="">{categoryFilter.size > 1 ? `${categoryFilter.size} categories` : 'All categories'}</option>
+              <option value="released">Released</option>
+              <option value="unreleased">Unreleased</option>
+              <option value="unsurfaced">Unsurfaced</option>
+              <option value="recording_session">Sessions</option>
+            </select>
           </div>
 
           {/* Active filter chips — one per selected category/era, each
@@ -3232,21 +3260,6 @@ export default function ApiTrackerView(): JSX.Element {
         </div>
       ) : (
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {showSidebar && (
-          <div className="hidden md:flex min-h-0">
-            <CategorySidebar
-              stats={stats}
-              eras={eras}
-              selectedCategories={categoryFilter}
-              selectedEras={eraFilter}
-              onCategory={(c) => { toggleCategoryFilter(c); resetSongs() }}
-              onEra={(e) => { toggleEraFilter(e); resetSongs() }}
-              onClearCategories={() => { setCategoryFilter(new Set()); resetSongs() }}
-              onClearEras={() => { setEraFilter(new Set()); resetSongs() }}
-            />
-          </div>
-        )}
-
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
           {/* Column headers. Compact view swaps in its own pair (Title /
               Versions sorting the grouped rows) in the SAME outer slot as the
@@ -3413,14 +3426,16 @@ export default function ApiTrackerView(): JSX.Element {
             </div>
           )}
           <div className="px-4 py-2.5 flex items-center gap-2">
-          <span className="text-sm text-text-primary font-medium flex-1">
-            {selected.size} {selected.size === 1 ? 'song' : 'songs'} selected
+          <span className="text-sm text-text-primary font-medium flex-1 flex items-center gap-1.5">
+            {selectAllLoading
+              ? <><Loader2 size={13} className="animate-spin" /> Selecting all…</>
+              : <>{selected.size} {selected.size === 1 ? 'song' : 'songs'} selected</>}
           </span>
           <button
-            onClick={() => setSelected(new Map(sortedSongs.map(s => [s.id, s])))}
+            onClick={selectAllSongs}
             className="text-xs text-text-muted hover:text-text-primary px-2 py-1 rounded transition-colors"
           >
-            Select all
+            {selectAllLoading ? 'Cancel' : 'Select all'}
           </button>
           <button
             onClick={() => setSelected(new Map())}
@@ -3552,18 +3567,6 @@ export default function ApiTrackerView(): JSX.Element {
           </button>
           </div>
         </div>
-      )}
-
-      {selectedSong && (
-        <SongInfoModal
-          song={selectedSong}
-          onClose={() => setSelectedSong(null)}
-          onEdit={canEdit ? (songId) => {
-            setSelectedSong(null)
-            setPendingEditorSongId(songId)
-            setActiveView('editor')
-          } : undefined}
-        />
       )}
 
       {contextMenu && (

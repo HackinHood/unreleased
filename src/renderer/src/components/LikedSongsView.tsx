@@ -6,8 +6,7 @@ import { useCanEdit } from '../hooks/useChannelRoles'
 import { Track, LibraryTrack } from '../types'
 import { libraryTrackToTrack } from '../lib/fileTypes'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
-import { apiFetch, JWApiSong, apiFileIdToPath, apiFilePathToTrack } from '../lib/juicewrldApi'
-import SongInfoModal from './SongInfoModal'
+import { apiFileIdToPath, apiFilePathToTrack } from '../lib/juicewrldApi'
 import SongContextMenu, { SongContextMenuState } from './SongContextMenu'
 import { formatDuration } from '../lib/format'
 
@@ -17,7 +16,6 @@ export default function LikedSongsView(): JSX.Element {
   const [apiTracks, setApiTracks] = useState<Track[]>([])
   const [loading, setLoading] = useState(true)
   const [ctxMenu, setCtxMenu] = useState<SongContextMenuState | null>(null)
-  const [infoSong, setInfoSong] = useState<JWApiSong | null>(null)
 
   const load = useCallback(async () => {
     if (!account) { setLoading(false); return }
@@ -34,8 +32,10 @@ export default function LikedSongsView(): JSX.Element {
 
   useEffect(() => { load() }, [load])
 
-  const openSongInfo = async (songId: number): Promise<void> => {
-    try { setInfoSong(await apiFetch<JWApiSong>(`/songs/${songId}/`)) } catch {}
+  // Global infoSongId (not local state) so the info panel survives switching
+  // to another tab, which unmounts this view.
+  const openSongInfo = (songId: number): void => {
+    useStore.getState().setInfoSongId(songId)
   }
 
   // Local-file likes live in the store (libraryTracks/likedTrackIds), so
@@ -170,11 +170,6 @@ export default function LikedSongsView(): JSX.Element {
         removeAction={{ label: 'Unlike', onClick: () => removeLiked(ctxMenu.track) }}
       />
     )}
-    <SongInfoModal
-      song={infoSong}
-      onClose={() => setInfoSong(null)}
-      onEdit={canEdit ? (songId) => { setInfoSong(null); setPendingEditorSongId(songId); setActiveView('editor') } : undefined}
-    />
     </>
   )
 }

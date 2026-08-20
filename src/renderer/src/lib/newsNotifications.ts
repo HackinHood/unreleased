@@ -120,8 +120,9 @@ export async function ensureNotifyPermission(): Promise<boolean> {
 export function fireNewsNotification(item: NewsItem, onOpen: (item: NewsItem) => void): void {
   if (!notificationsSupported() || Notification.permission !== 'granted') return
   try {
+    const body = item.summary?.trim() || item.body?.trim().slice(0, 140) || ''
     const n = new Notification(item.title, {
-      body: item.summary,
+      body,
       icon: item.image_url ?? undefined,
       tag: `news-${item.id}`, // dedupes if the same post somehow fires twice
     })

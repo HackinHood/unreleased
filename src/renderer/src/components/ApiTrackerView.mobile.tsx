@@ -1250,47 +1250,27 @@ export default function ApiTrackerView(): JSX.Element {
     loadingRef.current = true
     setLoading(true); setError(null); setSongs([]); setHasMore(false); setCount(0)
     const t0 = performance.now()
-    const PAGE_SIZE_SORT = 200 // bigger batches to reduce round-trips
-    const CONCURRENCY = 6
     runLog('tracker-sort', `start search=${JSON.stringify(debouncedSearch)} category=${categoryParam || '-'} era=${eraParam || '-'} multi=${multiFilterActive} advanced=${advancedSearchActive}`)
     const matchesAll = (s: JWApiSong): boolean => matchesFilters(s) && matchesSearch(s)
-    const fetchPage = (p: number): Promise<JWApiPaginatedResponse> => apiFetch<JWApiPaginatedResponse>('/songs/', {
-      // field:value tokens are stripped out — parsedSearch.freeText is what's
-      // left, which the server still searches; matchesSearch narrows further
-      // by the field filters below.
-      searchall: parsedSearch.freeText || undefined,
-      category: categoryParam || undefined,
-      era: eraParam || undefined,
-      page: p,
-      page_size: PAGE_SIZE_SORT,
-    })
+    // `all=true` returns the whole (filtered) catalogue as a plain array in
+    // one request — server-side page_size is capped below what we'd need to
+    // paginate reliably, so this avoids under-counting totalPages against it.
     ;(async () => {
       try {
-        const first = await fetchPage(1)
+        const all = await apiFetch<JWApiSong[]>('/songs/', {
+          // field:value tokens are stripped out — parsedSearch.freeText is what's
+          // left, which the server still searches; matchesSearch narrows further
+          // by the field filters below.
+          searchall: parsedSearch.freeText || undefined,
+          category: categoryParam || undefined,
+          era: eraParam || undefined,
+          all: 'true',
+        })
         if (cancelled) return
-        const all: JWApiSong[] = [...first.results]
-        setSongs(all.filter(matchesAll))
-        setCount(first.count)
-        runLog('tracker-sort', `page 1 loaded, accumulated ${all.length}/${first.count}`)
-
-        const totalPages = Math.ceil(first.count / PAGE_SIZE_SORT)
-        let nextPage = 2
-        const worker = async (): Promise<void> => {
-          while (!cancelled) {
-            const p = nextPage++
-            if (p > totalPages) return
-            const data = await fetchPage(p)
-            if (cancelled) return
-            all.push(...data.results)
-            setSongs(all.filter(matchesAll)) // progressive display while loading
-            runLog('tracker-sort', `page ${p} loaded, accumulated ${all.length}/${first.count}`)
-          }
-        }
-        await Promise.all(Array.from({ length: Math.min(CONCURRENCY, Math.max(totalPages - 1, 0)) }, worker))
-        if (!cancelled) {
-          setCount(all.filter(matchesAll).length)
-          runLog('tracker-sort', `done ${all.length} songs in ${Math.round(performance.now() - t0)}ms`)
-        }
+        const filtered = all.filter(matchesAll)
+        setSongs(filtered)
+        setCount(filtered.length)
+        runLog('tracker-sort', `done ${all.length} songs in ${Math.round(performance.now() - t0)}ms`)
       } catch (e) {
         if (!cancelled) { setError((e as Error).message); runLog('tracker-sort', 'ERROR', e as Error) }
       } finally {
@@ -1721,7 +1701,7 @@ export default function ApiTrackerView(): JSX.Element {
 
           {/* Search */}
           {(trackerTab === 'songs' || trackerTab === 'lyrics') && (
-            <div className="px-4 pt-2.5">
+            <div className="px-4 pt-2.5 pb-2">
               <div className="relative flex items-center">
                 {trackerTab === 'songs'
                   ? <Search size={16} className="absolute left-3.5 text-text-muted pointer-events-none" />

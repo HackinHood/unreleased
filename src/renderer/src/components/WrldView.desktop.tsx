@@ -15,7 +15,6 @@ import { getVersionGroup } from '../lib/versionsApi'
 import type { JWApiSong } from '../lib/juicewrldApi'
 import * as userApi from '../lib/userApi'
 import { useCanEdit } from '../hooks/useChannelRoles'
-import SongInfoModal from './SongInfoModal'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { ProgressiveCover } from './ProgressiveCover'
 import SongContextMenu from './SongContextMenu'
@@ -1506,21 +1505,17 @@ const FmLikeButton = memo(function FmLikeButton({ light }: { light: boolean }): 
 // (like LyricsPanel/FmProgressBar) so it reads the store directly instead of
 // drilling props from WrldView.
 const SongMenu = memo(function SongMenu({ light }: { light: boolean }): JSX.Element {
-  const { currentTrack, radioFmActive, radioFmNowPlaying, radioFmMatchedSong, likedTrackIds, toggleLike, setActiveView, setPendingEditorSongId } = useStore(useShallow(s => ({
+  const { currentTrack, radioFmActive, radioFmNowPlaying, radioFmMatchedSong, likedTrackIds, toggleLike } = useStore(useShallow(s => ({
     currentTrack: s.currentTrack,
     radioFmActive: s.radioFmActive,
     radioFmNowPlaying: s.radioFmNowPlaying,
     radioFmMatchedSong: s.radioFmMatchedSong,
     likedTrackIds: s.likedTrackIds,
     toggleLike: s.toggleLike,
-    setActiveView: s.setActiveView,
-    setPendingEditorSongId: s.setPendingEditorSongId,
   })))
   const canEdit = useCanEdit()
 
   const [open, setOpen] = useState(false)
-  const [showSongInfo, setShowSongInfo] = useState(false)
-  const [songInfoData, setSongInfoData] = useState<JWApiSong | null>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
 
   const currentSongId = !radioFmActive && currentTrack ? userApi.trackIdToSongId(currentTrack.id) : null
@@ -1529,13 +1524,11 @@ const SongMenu = memo(function SongMenu({ light }: { light: boolean }): JSX.Elem
   const fmSongId = radioFmActive ? (radioFmNowPlaying?.song_id ?? radioFmMatchedSong?.songId ?? null) : null
   const hasTarget = radioFmActive ? fmSongId != null : !!currentTrack
 
+  // Global infoSongId (not local state) so the info panel survives switching
+  // to another tab, which unmounts this view.
   const openInfo = (songId: number): void => {
     setOpen(false)
-    setSongInfoData(null)
-    setShowSongInfo(true)
-    apiFetch<JWApiSong>(`/songs/${songId}/`)
-      .then(song => setSongInfoData(song))
-      .catch(() => setShowSongInfo(false))
+    useStore.getState().setInfoSongId(songId)
   }
 
   if (!hasTarget) return <></>
@@ -1605,19 +1598,6 @@ const SongMenu = memo(function SongMenu({ light }: { light: boolean }): JSX.Elem
           onInfo={() => currentSongId != null && openInfo(currentSongId)}
           liked={likedTrackIds.includes(currentTrack.id)}
           onToggleLike={() => toggleLike(currentTrack.id)}
-        />,
-        document.body
-      )}
-
-      {showSongInfo && createPortal(
-        <SongInfoModal
-          song={songInfoData}
-          onClose={() => { setShowSongInfo(false); setSongInfoData(null) }}
-          onEdit={canEdit ? (songId) => {
-            setShowSongInfo(false); setSongInfoData(null)
-            setPendingEditorSongId(songId)
-            setActiveView('editor')
-          } : undefined}
         />,
         document.body
       )}

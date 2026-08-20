@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('electron', {
   // Window controls
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   forceUpdate:     () => ipcRenderer.invoke('force-update'),
+  installUpdate:   () => ipcRenderer.invoke('install-update'),
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
   maximizeWindow: () => ipcRenderer.invoke('maximize-window'),
   closeWindow:    () => ipcRenderer.invoke('close-window'),

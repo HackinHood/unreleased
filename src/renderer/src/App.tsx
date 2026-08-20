@@ -50,6 +50,7 @@ import NowPlaying from './components/NowPlaying'
 import QueuePanel from './components/QueuePanel'
 import DownloadManager from './components/DownloadManager'
 import ErrorBoundary from './components/ErrorBoundary'
+import SandboxNotch from './components/SandboxNotch'
 
 // Rarely-visited views load on first navigation instead of inflating the
 // startup bundle. Suspense fallback is null: these chunks are local (Electron)
@@ -241,6 +242,7 @@ export default function App(): JSX.Element {
       <ErrorBoundary fallback={null}><CookieNotice /></ErrorBoundary>
       <ErrorBoundary variant="overlay"><GlobalSongInfoHost /></ErrorBoundary>
       <ErrorBoundary fallback={null}><DownloadManager /></ErrorBoundary>
+      <ErrorBoundary fallback={null}><SandboxNotch /></ErrorBoundary>
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { createPortal } from 'react-dom'
+import { ModalOverlay, LockToggle } from './Modal'
 import { X, ImagePlus, Paperclip, Trash2, Star, FileText } from 'lucide-react'
 import { compressImageFile } from '../lib/userApi'
 import Markdown from './Markdown'
@@ -79,7 +79,7 @@ export default function NewsComposeModal({ channels, initialChannel, editing, on
 
   const removeAttachment = (i: number): void => setAttachments((prev) => prev.filter((_, idx) => idx !== i))
 
-  const canSave = title.trim() && summary.trim() && channel && !saving
+  const canSave = title.trim() && channel && !saving
 
   const save = async (): Promise<void> => {
     if (!canSave) return
@@ -113,19 +113,28 @@ export default function NewsComposeModal({ channels, initialChannel, editing, on
   const label = 'block text-xs font-semibold text-text-muted mb-1'
   const field = 'w-full bg-[var(--surface-raised)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent/50 transition-colors'
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[170] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-0 md:p-4"
-      onClick={(e) => { if (e.currentTarget === e.target && !saving) onClose() }}
+  return (
+    <ModalOverlay
+      onClose={onClose}
+      zIndexClassName="z-[170]"
+      panelClassName="bg-surface border border-[var(--border)] rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-lg max-h-[92svh]"
+      minWidth={420} minHeight={420}
     >
-      <div className="bg-surface border border-[var(--border)] rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-lg max-h-[92svh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] sticky top-0 bg-surface z-10">
+      {({ onHandleMouseDown, locked, toggleLock }) => (
+      <div className="bg-surface w-full h-full overflow-y-auto">
+        <div
+          className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] sticky top-0 bg-surface z-10 cursor-grab active:cursor-grabbing"
+          onMouseDown={onHandleMouseDown}
+        >
           <h2 className="flex items-center gap-2 text-text-primary text-sm font-semibold">
             <FileText size={15} className="text-accent" /> {editing ? 'Edit post' : 'New post'}
           </h2>
-          <button onClick={onClose} disabled={saving} className="text-text-muted hover:text-text-primary transition-colors disabled:opacity-50">
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-1">
+            <LockToggle locked={locked} onClick={toggleLock} />
+            <button onClick={onClose} disabled={saving} className="text-text-muted hover:text-text-primary transition-colors disabled:opacity-50">
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         <div className="px-5 py-4 space-y-4">
@@ -174,7 +183,7 @@ export default function NewsComposeModal({ channels, initialChannel, editing, on
           </div>
 
           <div>
-            <label className={label}>Summary</label>
+            <label className={label}>Summary <span className="text-text-muted/60 font-normal">(optional)</span></label>
             <textarea className={`${field} resize-none`} rows={2} value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="One or two lines shown in the feed" maxLength={280} />
           </div>
 
@@ -262,7 +271,7 @@ export default function NewsComposeModal({ channels, initialChannel, editing, on
           </button>
         </div>
       </div>
-    </div>,
-    document.body,
+      )}
+    </ModalOverlay>
   )
 }

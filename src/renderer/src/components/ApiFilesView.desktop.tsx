@@ -22,15 +22,15 @@ import {
   parseBrowseEntries as parseEntries,
   JWApiFileEntry,
   JWApiBrowseResponse,
-  JWApiSong,
   JWApiPaginatedResponse,
   JWAPI_BASE,
 } from '../lib/juicewrldApi'
 import { getFileExt, getMediaType, toFileUrl } from '../lib/fileTypes'
+import { useMultiSelect } from '../hooks/useMultiSelect'
+import { ClampedMenu } from './ClampedMenu'
 import { Track } from '../types'
 import { ProgressiveCover } from './ProgressiveCover'
 import MediaLightbox, { LightboxItem } from './MediaLightbox'
-import SongInfoModal from './SongInfoModal'
 import TextFileViewer, { TextFileSource } from './TextFileViewer'
 
 type ViewMode = 'list' | 'grid'
@@ -168,7 +168,7 @@ function urlToPath(pathname: string): string {
 }
 
 export default function ApiFilesView(): JSX.Element {
-  const { playTrack, addToQueue, apiFilesPath, setApiFilesPath, apiFilesLastPath, setApiFilesLastPath, account, setActiveView, setPendingEditorSongId, setPendingCompProposal, likedTrackIds, toggleLike, playlists, refreshPlaylists, setShowUserAuth, channels, activeChannel, setActiveChannel, loadChannels } = useStorePick('playTrack', 'addToQueue', 'apiFilesPath', 'setApiFilesPath', 'apiFilesLastPath', 'setApiFilesLastPath', 'account', 'setActiveView', 'setPendingEditorSongId', 'setPendingCompProposal', 'likedTrackIds', 'toggleLike', 'playlists', 'refreshPlaylists', 'setShowUserAuth', 'channels', 'activeChannel', 'setActiveChannel', 'loadChannels')
+  const { playTrack, addToQueue, apiFilesPath, setApiFilesPath, apiFilesLastPath, setApiFilesLastPath, account, setActiveView, setPendingCompProposal, likedTrackIds, toggleLike, playlists, refreshPlaylists, setShowUserAuth, channels, activeChannel, setActiveChannel, loadChannels } = useStorePick('playTrack', 'addToQueue', 'apiFilesPath', 'setApiFilesPath', 'apiFilesLastPath', 'setApiFilesLastPath', 'account', 'setActiveView', 'setPendingCompProposal', 'likedTrackIds', 'toggleLike', 'playlists', 'refreshPlaylists', 'setShowUserAuth', 'channels', 'activeChannel', 'setActiveChannel', 'loadChannels')
   const isPrimary = isPrimaryChannelSlug(channels, activeChannel)
   const canEdit = userApi.isChannelEditor(account, activeChannel, isPrimary)
   const canPropose = userApi.isChannelContributor(account, activeChannel, isPrimary)
@@ -195,7 +195,6 @@ export default function ApiFilesView(): JSX.Element {
   const playlistItemRef = useRef<HTMLButtonElement>(null)
   const playlistFlyoutRef = useRef<HTMLDivElement>(null)
   const [playlistFlyoutPos, setPlaylistFlyoutPos] = useState({ top: 0, left: 0 })
-  const [infoSong, setInfoSong] = useState<JWApiSong | null>(null)
   const [ctxMenu, setCtxMenu] = useState<{ entry: JWApiFileEntry; x: number; y: number } | null>(null)
   // Whether a right-clicked audio file actually has a matching song in the
   // Tracker — resolved lazily per path on menu-open (not for every row up
@@ -203,20 +202,10 @@ export default function ApiFilesView(): JSX.Element {
   // of opening the info modal on nothing. undefined = not looked up yet,
   // null = looked up, no match.
   const [trackerMatches, setTrackerMatches] = useState<Map<string, number | null>>(new Map())
-  // Clamped against the actual rendered size (not a static guess) — the
-  // menu's height varies with the entry type and canEdit, so a fixed guess
-  // undershoots near the screen edges and spills the menu off-screen.
-  // useLayoutEffect runs before paint, so there's no visible flash at (0,0).
+  // Position clamping is handled by the shared <ClampedMenu> at render time —
+  // this ref is kept only so the playlist flyout below can measure it.
   const ctxMenuRef = useRef<HTMLDivElement>(null)
   const [ctxMenuPos, setCtxMenuPos] = useState({ left: 0, top: 0 })
-  useLayoutEffect(() => {
-    const el = ctxMenuRef.current
-    if (!el || !ctxMenu) return
-    const rect = el.getBoundingClientRect()
-    const top = Math.max(8, Math.min(ctxMenu.y, window.innerHeight - rect.height - 8))
-    const left = Math.max(8, Math.min(ctxMenu.x, window.innerWidth - rect.width - 8))
-    setCtxMenuPos({ top, left })
-  }, [ctxMenu])
 
   // Closing/reopening the menu resets the playlist flyout so it never
   // re-opens against a different entry than the one it was populated for.
@@ -246,9 +235,9 @@ export default function ApiFilesView(): JSX.Element {
   const [searchLoading, setSearchLoading] = useState(false)
   const isSearching = debouncedSearch.trim().length > 0
 
-  // Multi-select state
-  const [selectMode, setSelectMode] = useState(false)
-  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
+  // Multi-select state — see the useMultiSelect() call further down (needs
+  // filteredEntries, which isn't defined yet here) for
+  // selectMode/selectedPaths/enterSelectMode/toggleSelect/exitSelectMode.
   const [zipStatus, setZipStatus] = useState<ZipStatus>('idle')
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -397,14 +386,6 @@ export default function ApiFilesView(): JSX.Element {
     navigateRef.current('', false)
   }, [activeChannel]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ESC exits select mode
-  useEffect(() => {
-    if (!selectMode) return
-    const handleKeyDown = (e: KeyboardEvent): void => { if (e.key === 'Escape') exitSelectMode() }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectMode]) // eslint-disable-line react-hooks/exhaustive-deps
-
   // ESC closes an open context menu, like a native one. Registered separately
   // from the select-mode handler so it works whether or not that's active.
   useEffect(() => {
@@ -434,10 +415,10 @@ export default function ApiFilesView(): JSX.Element {
     try {
       const data = await apiFetch<JWApiPaginatedResponse>('/songs/', { search: title, page_size: 5 })
       const match = data.results[0] ?? null
-      setInfoSong(match)
-    } catch {
-      setInfoSong(null)
-    }
+      // Global infoSongId (not local state) so the info panel survives
+      // switching to another tab, which unmounts this view.
+      if (match) useStore.getState().setInfoSongId(match.id)
+    } catch { /* no match — leave whatever's already open (if anything) alone */ }
   }
 
   // Resolves (and caches) whether an audio file has a matching Tracker entry,
@@ -554,27 +535,10 @@ export default function ApiFilesView(): JSX.Element {
   }
 
   // ── Selection helpers ──────────────────────────────────────────────────────
-
-  const enterSelectMode = (entry: JWApiFileEntry): void => {
-    setSelectMode(true)
-    setSelectedPaths(new Set([entry.path]))
-    setCtxMenu(null)
-  }
-
-  const toggleSelect = (path: string): void => {
-    setSelectedPaths(prev => {
-      const next = new Set(prev)
-      if (next.has(path)) next.delete(path)
-      else next.add(path)
-      return next
-    })
-  }
-
-  const exitSelectMode = (): void => {
-    setSelectMode(false)
-    setSelectedPaths(new Set())
-    setZipStatus('idle')
-  }
+  // enterSelectMode/toggleSelect/exitSelectMode are defined further down,
+  // right after the useMultiSelect() call (needs filteredEntries) — this
+  // closure only runs later, on an actual long-press, so referencing them
+  // here before that point is fine.
 
   const handleLongPressStart = (entry: JWApiFileEntry): void => {
     longPressTimer.current = setTimeout(() => enterSelectMode(entry), 500)
@@ -625,7 +589,7 @@ export default function ApiFilesView(): JSX.Element {
     }
   }
 
-  const downloadZip = (): Promise<void> => startZip([...selectedPaths], 'selection.zip')
+  const downloadZip = (): Promise<void> => startZip([...selectedPaths.keys()], 'selection.zip')
 
   const downloadFolder = (entry: JWApiFileEntry): Promise<void> => startZip([entry.path], `${entry.name}.zip`)
 
@@ -644,6 +608,26 @@ export default function ApiFilesView(): JSX.Element {
       : sortedEntries.filter((e) => e.type === 'directory' || getMediaType(e.name) === typeFilter),
     [sortedEntries, typeFilter]
   )
+
+  // Multi-select — select mode, the selected-paths Map, Escape-to-exit, and
+  // Ctrl/Cmd+A "select all" are handled by the shared hook. Value === key
+  // (path) here since there's nothing extra to carry per entry — `.has()`/
+  // `.size` behave the same as the old Set<string>; only spreads need
+  // `.keys()` now instead of spreading the Map itself.
+  const {
+    selectMode, selected: selectedPaths, selectMany: selectManyPaths, toggle,
+    exitSelectMode, selectAll: selectAllEntries, clear: clearSelection,
+  } = useMultiSelect<string>({
+    onExit: () => setZipStatus('idle'),
+    ctrlA: {
+      getAll: () => new Map(filteredEntries.map(e => [e.path, e.path])),
+    },
+  })
+  const enterSelectMode = (entry: JWApiFileEntry): void => {
+    selectManyPaths(new Map([[entry.path, entry.path]]))
+    setCtxMenu(null)
+  }
+  const toggleSelect = (path: string): void => toggle(path, path)
 
   const crumbs = breadcrumbs(currentPath)
   const channelDescription = channels.find((c) => c.slug === activeChannel)?.description?.trim() || ''
@@ -836,7 +820,6 @@ export default function ApiFilesView(): JSX.Element {
                     }`}
                     onClick={(e) => {
                       if (e.ctrlKey || e.metaKey) {
-                        if (!selectMode) setSelectMode(true)
                         toggleSelect(entry.path)
                         return
                       }
@@ -946,7 +929,6 @@ export default function ApiFilesView(): JSX.Element {
                     }`}
                     onClick={(e) => {
                       if (e.ctrlKey || e.metaKey) {
-                        if (!selectMode) setSelectMode(true)
                         toggleSelect(entry.path)
                         return
                       }
@@ -1064,13 +1046,13 @@ export default function ApiFilesView(): JSX.Element {
               {selectedPaths.size} {selectedPaths.size === 1 ? 'item' : 'items'} selected
             </span>
             <button
-              onClick={() => setSelectedPaths(new Set(filteredEntries.map(e => e.path)))}
+              onClick={selectAllEntries}
               className="text-xs text-text-muted hover:text-text-primary px-2 py-1 rounded transition-colors"
             >
               Select all
             </button>
             <button
-              onClick={() => setSelectedPaths(new Set())}
+              onClick={clearSelection}
               className="text-xs text-text-muted hover:text-text-primary px-2 py-1 rounded transition-colors"
             >
               Clear
@@ -1156,11 +1138,12 @@ export default function ApiFilesView(): JSX.Element {
       {ctxMenu && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setCtxMenu(null)} />
-          <div
+          <ClampedMenu
             ref={ctxMenuRef}
-            className="fixed z-50 bg-surface border border-[var(--border)] rounded-xl shadow-2xl py-1 min-w-[180px]"
-            style={{ left: ctxMenuPos.left, top: ctxMenuPos.top }}
-            onClick={e => e.stopPropagation()}
+            x={ctxMenu.x}
+            y={ctxMenu.y}
+            className="min-w-[180px]"
+            onPositioned={setCtxMenuPos}
           >
             {/* Playlist flyout — a child of the menu so the click-away overlay
                 still counts clicks in it as "inside", but positioned beside it. */}
@@ -1305,20 +1288,8 @@ export default function ApiFilesView(): JSX.Element {
                 <Download size={14} className="text-text-muted" /> Download
               </button>
             )}
-          </div>
+          </ClampedMenu>
         </>
-      )}
-
-      {infoSong && (
-        <SongInfoModal
-          song={infoSong}
-          onClose={() => setInfoSong(null)}
-          onEdit={canEdit ? (songId) => {
-            setInfoSong(null)
-            setPendingEditorSongId(songId)
-            setActiveView('editor')
-          } : undefined}
-        />
       )}
     </>
   )

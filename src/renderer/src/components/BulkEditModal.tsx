@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { ModalOverlay, LockToggle } from './Modal'
 import {
   Loader2, Check, AlertCircle, X, Pencil, ChevronDown, ChevronRight, Eraser, ArrowRight,
 } from 'lucide-react'
@@ -730,27 +730,36 @@ function BulkEditor<T>({ spec, onClose }: { spec: BulkSpec<T>; onClose: () => vo
     )
   }
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[170] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-0 md:p-4"
-      onClick={(e) => { if (e.currentTarget === e.target) attemptClose() }}
+  return (
+    <ModalOverlay
+      onClose={attemptClose}
+      zIndexClassName="z-[170]"
+      panelClassName="bg-surface border border-[var(--border)] rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-2xl max-h-[92svh]"
+      minWidth={420} minHeight={420}
     >
-      <div className="bg-surface border border-[var(--border)] rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-2xl max-h-[92svh] flex flex-col">
+      {({ onHandleMouseDown, locked, toggleLock }) => (
+      <div className="bg-surface w-full h-full flex flex-col">
 
-        <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-[var(--border)] shrink-0">
+        <div
+          className="flex items-center justify-between gap-3 px-5 py-4 border-b border-[var(--border)] shrink-0 cursor-grab active:cursor-grabbing"
+          onMouseDown={onHandleMouseDown}
+        >
           <div className="min-w-0">
             <h2 className="flex items-center gap-2 text-text-primary text-sm font-semibold">
               <Pencil size={15} className="text-accent" /> Edit {items.length} {noun(items.length)}
             </h2>
             <p className="text-text-muted text-xs mt-0.5">{spec.subtitle}</p>
           </div>
-          <button
-            onClick={attemptClose}
-            disabled={status === 'submitting'}
-            className="text-text-muted hover:text-text-primary disabled:opacity-40 transition-colors shrink-0"
-          >
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <LockToggle locked={locked} onClick={toggleLock} />
+            <button
+              onClick={attemptClose}
+              disabled={status === 'submitting'}
+              className="text-text-muted hover:text-text-primary disabled:opacity-40 transition-colors"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {spec.unavailable ? (
@@ -886,7 +895,7 @@ function BulkEditor<T>({ spec, onClose }: { spec: BulkSpec<T>; onClose: () => vo
           </>
         )}
       </div>
-    </div>,
-    document.body
+      )}
+    </ModalOverlay>
   )
 }

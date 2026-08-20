@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react'
-import { createPortal } from 'react-dom'
+import { useEffect } from 'react'
+import { ModalOverlay, LockToggle } from './Modal'
 import { X, Download, Copy, Trash2, Moon, Sun, Check, RotateCcw } from 'lucide-react'
 import { useStorePick } from '../store/useStore'
 import {
@@ -53,7 +53,6 @@ export default function SkinEditorModal({
     'customSkins', 'saveCustomSkin', 'deleteCustomSkin', 'setTheme',
   )
   const skin = customSkins.find((s) => s.id === skinId) ?? null
-  const overlayRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') onClose() }
@@ -87,20 +86,32 @@ export default function SkinEditorModal({
     onEditSkin(copy.id)
   }
 
-  return createPortal(
-    <div
-      ref={overlayRef}
-      onMouseDown={(e) => { if (e.target === overlayRef.current) onClose() }}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+  return (
+    <ModalOverlay
+      onClose={onClose}
+      zIndexClassName="z-[60]"
+      panelClassName="rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl w-full max-w-lg max-h-[85vh]"
+      minWidth={420} minHeight={420}
     >
-      <div className="w-full max-w-lg max-h-[85vh] flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl overflow-hidden">
+      {({ onHandleMouseDown, locked, toggleLock }) => (
+      <div className="w-full h-full flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-[var(--border)] bg-[var(--surface-raised)]">
+        <div
+          className="flex items-center gap-3 px-5 py-4 border-b border-[var(--border)] bg-[var(--surface-raised)] cursor-grab active:cursor-grabbing"
+          onMouseDown={onHandleMouseDown}
+        >
           <input
             value={skin.name}
             onChange={(e) => patch({ name: e.target.value.slice(0, 40) })}
             placeholder="Skin name"
             className="flex-1 min-w-0 bg-transparent text-text-primary text-base font-semibold outline-none placeholder:text-text-muted"
+          />
+          <LockToggle
+            locked={locked}
+            onClick={toggleLock}
+            className={`w-6 h-6 flex items-center justify-center rounded-lg transition-colors ${
+              locked ? 'text-accent' : 'text-text-muted hover:text-text-primary hover:bg-[var(--surface-overlay)]'
+            }`}
           />
           <button
             onClick={onClose}
@@ -245,7 +256,7 @@ export default function SkinEditorModal({
           </button>
         </div>
       </div>
-    </div>,
-    document.body,
+      )}
+    </ModalOverlay>
   )
 }

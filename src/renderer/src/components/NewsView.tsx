@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { useStorePick } from '../store/useStore'
 import {
-  fetchNews, fetchChannels, fetchNewsItem, deleteNewsItem, isImageAttachment, isAudioAttachment,
+  fetchNews, peekNews, fetchChannels, fetchNewsItem, deleteNewsItem, isImageAttachment, isAudioAttachment,
   buildNewsAttachmentStreamUrl, ensureHttpsMediaUrl,
   ALL_CHANNEL, DEFAULT_NEWS_CHANNEL, NEWS_CHANNELS,
   type NewsItem, type NewsChannel, type NewsAttachment, type NewsSort,
@@ -23,6 +23,28 @@ function formatDate(iso: string): string {
   const d = new Date(iso)
   if (isNaN(d.getTime())) return ''
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+// Crude markdown -> plain text for the summary fallback below: strips the
+// syntax that would otherwise show up as literal symbols (headings,
+// emphasis, links, code, bullets) and collapses all whitespace to single
+// spaces so it reads as one flowing blurb regardless of the source's line
+// breaks.
+function stripMarkdown(md: string): string {
+  return md
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[#>*_~`-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// Falls back to a snippet of the body when no summary was written — the
+// composer no longer requires one.
+function displaySummary(item: NewsItem): string {
+  const trimmed = item.summary?.trim()
+  return trimmed || stripMarkdown(item.body || '')
 }
 
 function humanSize(bytes: number): string {
@@ -85,7 +107,7 @@ function FeaturedCard({ item, onOpen, canManage, onEdit, onDelete }: CardProps) 
                 <span className="text-xs text-white/80 drop-shadow">{formatDate(item.published_at)}</span>
               </div>
               <h2 className="text-white text-xl font-bold leading-snug mb-1.5 drop-shadow-sm">{item.title}</h2>
-              <p className="text-sm text-white/85 leading-relaxed line-clamp-2 drop-shadow-sm">{item.summary}</p>
+              <p className="text-sm text-white/85 leading-relaxed line-clamp-2 drop-shadow-sm">{displaySummary(item)}</p>
             </div>
           </div>
         ) : (
@@ -96,7 +118,7 @@ function FeaturedCard({ item, onOpen, canManage, onEdit, onDelete }: CardProps) 
               <span className="text-xs text-text-muted">{formatDate(item.published_at)}</span>
             </div>
             <h2 className="text-text-primary text-lg font-bold leading-snug mb-1.5">{item.title}</h2>
-            <p className="text-sm text-text-secondary leading-relaxed line-clamp-3">{item.summary}</p>
+            <p className="text-sm text-text-secondary leading-relaxed line-clamp-3">{displaySummary(item)}</p>
           </div>
         )}
       </button>
@@ -131,7 +153,7 @@ function NewsCard({ item, onOpen, canManage, onEdit, onDelete }: CardProps) {
             )}
           </div>
           <h3 className="text-text-primary text-sm font-semibold leading-snug mb-1 line-clamp-2">{item.title}</h3>
-          <p className="text-xs text-text-secondary leading-relaxed line-clamp-2">{item.summary}</p>
+          <p className="text-xs text-text-secondary leading-relaxed line-clamp-2">{displaySummary(item)}</p>
         </div>
       </button>
       {canManage && <ManageActions onEdit={() => onEdit(item)} onDelete={() => onDelete(item)} />}
@@ -348,13 +370,22 @@ export default function NewsView(): JSX.Element {
   }, [])
 
   const load = useCallback(async () => {
-    setLoading(true)
+    // Stale-while-revalidate: show the last cached page for this exact
+    // channel+sort instantly (no spinner flash on every channel switch),
+    // then let the network response below replace it once it lands.
+    const cached = peekNews({ channel, sort })
+    if (cached) {
+      setItems(cached.results)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
     setError(null)
     try {
       const res = await fetchNews({ channel, sort })
       setItems(res.results)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load news')
+      if (!cached) setError(err instanceof Error ? err.message : 'Failed to load news')
     } finally {
       setLoading(false)
     }

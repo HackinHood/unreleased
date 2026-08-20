@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useCallback, useEffect, useState } from 'react'
+import { ModalOverlay, LockToggle } from './Modal'
 import { X, Folder, FolderOpen, ArrowLeft, Home, ChevronRight, Loader2, ImageIcon, Search, Check, Music2, File, FolderCheck, FolderPlus } from 'lucide-react'
 import {
   apiFetch, apiPeek, buildStreamUrl, smallCoverUrl, parseBrowseEntries, cleanTitleForSearch, filterSearchResults,
@@ -107,7 +107,6 @@ export default function FilePickerModal({ kind = 'image', songTitle, altTitles =
   const altQueries = altTitles
     .map(cleanTitleForSearch)
     .filter((q, i, arr) => q && q.toLowerCase() !== initialQuery.toLowerCase() && arr.indexOf(q) === i)
-  const overlayRef = useRef<HTMLDivElement>(null)
   const [currentPath, setCurrentPath] = useState('')
   const [entries, setEntries] = useState<JWApiFileEntry[]>([])
   const [loading, setLoading] = useState(!initialQuery)
@@ -226,25 +225,33 @@ export default function FilePickerModal({ kind = 'image', songTitle, altTitles =
   const shown = sortForPicker(isSearching ? searchResults : entries, kind)
   const crumbs = breadcrumbs(currentPath)
 
-  return createPortal(
-    <div
-      ref={overlayRef}
-      className="fixed inset-0 z-[170] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-0 md:p-4"
-      onClick={(e) => { if (e.target === overlayRef.current) onClose() }}
+  return (
+    <ModalOverlay
+      onClose={onClose}
+      zIndexClassName="z-[170]"
+      panelClassName="bg-surface border border-[var(--border)] rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-lg h-[85svh] md:h-[600px] max-h-[92svh] md:max-h-[86vh]"
+      minWidth={420} minHeight={420}
     >
+      {({ onHandleMouseDown, locked, toggleLock }) => (
       <div
-        className="select-text bg-surface flex flex-col overflow-hidden border border-[var(--border)] rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-lg h-[85svh] md:h-[600px] max-h-[92svh] md:max-h-[86vh]"
+        className="select-text bg-surface w-full h-full flex flex-col overflow-hidden"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
         {/* Header */}
-        <div className="shrink-0 px-4 pt-4 pb-3 border-b border-[var(--border)]">
+        <div
+          className="shrink-0 px-4 pt-4 pb-3 border-b border-[var(--border)] cursor-grab active:cursor-grabbing"
+          onMouseDown={onHandleMouseDown}
+        >
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-text-primary text-sm font-semibold">
               {title ?? (isAudio ? 'Choose an audio file from API files' : kind === 'any' ? 'Choose a file from API files' : 'Choose a cover from API files')}
             </h2>
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-overlay transition-colors" title="Close">
-              <X size={15} className="text-text-muted" />
-            </button>
+            <div className="flex items-center gap-1">
+              <LockToggle locked={locked} onClick={toggleLock} />
+              <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-overlay transition-colors" title="Close">
+                <X size={15} className="text-text-muted" />
+              </button>
+            </div>
           </div>
 
           <div className="relative mb-2.5">
@@ -515,7 +522,7 @@ export default function FilePickerModal({ kind = 'image', songTitle, altTitles =
           </div>
         )}
       </div>
-    </div>,
-    document.body
+      )}
+    </ModalOverlay>
   )
 }

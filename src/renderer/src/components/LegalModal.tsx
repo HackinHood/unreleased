@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { X, ScrollText, ShieldCheck } from 'lucide-react'
+import { ModalOverlay, LockToggle } from './Modal'
 
 export type LegalDoc = 'terms' | 'privacy'
 
@@ -276,7 +277,6 @@ function PrivacyContent(): JSX.Element {
 // ─── Modal shell ──────────────────────────────────────────────────────────────
 
 export default function LegalModal({ initialDoc = 'terms', onClose }: { initialDoc?: LegalDoc; onClose: () => void }): JSX.Element {
-  const overlayRef = useRef<HTMLDivElement>(null)
   const [doc, setDoc] = useState<LegalDoc>(initialDoc)
 
   const Tab = ({ id, icon: Icon, label }: { id: LegalDoc; icon: typeof ScrollText; label: string }): JSX.Element => (
@@ -294,33 +294,42 @@ export default function LegalModal({ initialDoc = 'terms', onClose }: { initialD
   )
 
   return (
-    <div
-      ref={overlayRef}
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
-      onClick={(e) => { if (e.target === overlayRef.current) onClose() }}
+    <ModalOverlay
+      onClose={onClose}
+      zIndexClassName="z-[70]"
+      panelClassName="bg-surface border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-[520px] h-[640px] max-h-[85vh]"
+      minWidth={420} minHeight={420}
     >
-      <div className="bg-surface border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-[520px] h-[640px] max-h-[85vh] flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] shrink-0">
-          <div className="flex items-center gap-2">
-            {doc === 'terms' ? <ScrollText size={16} className="text-accent" /> : <ShieldCheck size={16} className="text-accent" />}
-            <h2 className="text-text-primary font-black text-lg tracking-tight">
-              {doc === 'terms' ? 'Terms of Service' : 'Privacy Policy'}
-            </h2>
+      {({ onHandleMouseDown, locked, toggleLock }) => (
+        <div className="w-full h-full flex flex-col overflow-hidden">
+          <div
+            className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] shrink-0 cursor-grab active:cursor-grabbing"
+            onMouseDown={onHandleMouseDown}
+          >
+            <div className="flex items-center gap-2">
+              {doc === 'terms' ? <ScrollText size={16} className="text-accent" /> : <ShieldCheck size={16} className="text-accent" />}
+              <h2 className="text-text-primary font-black text-lg tracking-tight">
+                {doc === 'terms' ? 'Terms of Service' : 'Privacy Policy'}
+              </h2>
+            </div>
+            <div className="flex items-center gap-1">
+              <LockToggle locked={locked} onClick={toggleLock} />
+              <button onClick={onClose} className="text-text-muted hover:text-text-primary transition-colors">
+                <X size={20} />
+              </button>
+            </div>
           </div>
-          <button onClick={onClose} className="text-text-muted hover:text-text-primary transition-colors">
-            <X size={20} />
-          </button>
-        </div>
 
-        <div className="flex items-center gap-2 px-6 py-3 border-b border-[var(--border)] shrink-0">
-          <Tab id="terms" icon={ScrollText} label="Terms of Service" />
-          <Tab id="privacy" icon={ShieldCheck} label="Privacy Policy" />
-        </div>
+          <div className="flex items-center gap-2 px-6 py-3 border-b border-[var(--border)] shrink-0">
+            <Tab id="terms" icon={ScrollText} label="Terms of Service" />
+            <Tab id="privacy" icon={ShieldCheck} label="Privacy Policy" />
+          </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          {doc === 'terms' ? <TermsContent /> : <PrivacyContent />}
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            {doc === 'terms' ? <TermsContent /> : <PrivacyContent />}
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+    </ModalOverlay>
   )
 }

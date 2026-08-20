@@ -3,6 +3,7 @@
 // throw a clear "not available" error) rather than removed outright.
 import { JWAPI_BASE } from './juicewrldApi'
 import { apiRequest } from './apiClient'
+import { cacheGet } from './apiCache'
 import { getToken } from './userApi'
 import { getMediaType } from './fileTypes'
 
@@ -175,7 +176,7 @@ export interface NewsItem {
 
 export interface NewsItemInput {
   title: string
-  summary: string
+  summary?: string
   body: string
   channel: string
   category?: string | null
@@ -206,23 +207,36 @@ export interface FetchNewsParams {
   pageSize?: number
 }
 
-// Paginated news list. Returns an empty page while the feature is disabled so
-// callers can render unconditionally without special-casing the pre-launch
-// state themselves.
-export async function fetchNews(params: FetchNewsParams = {}): Promise<NewsListResponse> {
-  if (!NEWS_ENABLED) return { results: [], count: 0, next: null }
-
+function newsListQuery(params: FetchNewsParams): string {
   const qs = new URLSearchParams()
   if (params.channel && params.channel !== ALL_CHANNEL) qs.set('channel', params.channel)
   // DRF-style ordering: '-published_at' newest first, 'published_at' oldest.
   if (params.sort) qs.set('ordering', params.sort === 'oldest' ? 'published_at' : '-published_at')
   if (params.page) qs.set('page', String(params.page))
   if (params.pageSize) qs.set('page_size', String(params.pageSize))
-  const query = qs.toString()
+  return qs.toString()
+}
 
+// Paginated news list. Returns an empty page while the feature is disabled so
+// callers can render unconditionally without special-casing the pre-launch
+// state themselves.
+export async function fetchNews(params: FetchNewsParams = {}): Promise<NewsListResponse> {
+  if (!NEWS_ENABLED) return { results: [], count: 0, next: null }
+
+  const query = newsListQuery(params)
   return apiRequest<NewsListResponse>(`${NEWS_BASE}/${query ? `?${query}` : ''}`, {
     cacheKey: `news:list:${query}`,
   })
+}
+
+// Synchronous read of the last cached fetchNews response for the same
+// params, or undefined. Lets NewsView render instantly on mount/channel
+// switch instead of flashing a spinner while the network round-trip that
+// fetchNews will do anyway is still in flight — stale-while-revalidate, same
+// pattern as apiPeek in juicewrldApi.ts.
+export function peekNews(params: FetchNewsParams = {}): NewsListResponse | undefined {
+  if (!NEWS_ENABLED) return undefined
+  return cacheGet<NewsListResponse>(`news:list:${newsListQuery(params)}`)
 }
 
 // Single article by id. Kept alongside the list for when a detail route lands.

@@ -23,6 +23,7 @@ import { formatBytes } from '../lib/format'
 import type { ViewType } from '../types'
 import ReportForm from './ReportForm'
 import LegalModal, { type LegalDoc } from './LegalModal'
+import { ModalOverlay, LockToggle, useSandboxStore } from './Modal'
 import EraCoversSection from './EraCoversSection'
 
 const ACCENT_PRESETS = [
@@ -223,6 +224,9 @@ export default function Settings(): JSX.Element {
   const [tokenCopied, setTokenCopied] = useState(false)
   const [openAbout, setOpenAbout] = useState<string | null>(null)
   const [legalDoc, setLegalDoc] = useState<LegalDoc | null>(null)
+  // Re-opening while already docked (sandbox notch collapsed) wouldn't
+  // otherwise re-expand it — see the matching comment on setShowSettings.
+  const openLegal = (doc: LegalDoc): void => { useSandboxStore.getState().expand(); setLegalDoc(doc) }
   const {
     setShowSettings, setActiveView,
     account,
@@ -272,7 +276,6 @@ export default function Settings(): JSX.Element {
   const [ctrlOverIdx, setCtrlOverIdx] = useState<number | null>(null)
   const [sleepMinutes, setSleepMinutes] = useState(30)
   const accentDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const overlayRef = useRef<HTMLDivElement>(null)
   // Custom skins — which one the editor modal is open on (null = closed), the
   // hidden file input for Import, and a transient "that file wasn't a skin"
   // message shown under the section.
@@ -486,11 +489,14 @@ export default function Settings(): JSX.Element {
   }
 
   return (
-    <div
-      ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === overlayRef.current) closeSettings() }}
+    <ModalOverlay
+      onClose={closeSettings}
+      zIndexClassName="z-50"
+      panelClassName="bg-surface border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-[760px] h-[600px] max-h-[85vh]"
+      minWidth={520} minHeight={420}
     >
+      {({ onHandleMouseDown, locked, toggleLock }) => (
+      <>
       {/* Custom-skin editor (portals to <body>, so placement here is fine) */}
       {editingSkinId && (
         <SkinEditorModal
@@ -499,12 +505,16 @@ export default function Settings(): JSX.Element {
           onEditSkin={setEditingSkinId}
         />
       )}
-      <div className="bg-surface flex flex-col overflow-hidden border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-[760px] mx-3 h-[600px] max-h-[85vh]">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] shrink-0 select-none">
+      <div className="bg-surface w-full h-full flex flex-col overflow-hidden">
+        <div
+          className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] shrink-0 select-none cursor-grab active:cursor-grabbing"
+          onMouseDown={onHandleMouseDown}
+        >
           <div className="flex items-center gap-2" >
             <h2 className="text-text-primary font-black text-xl tracking-tight">Settings</h2>
           </div>
           <div className="flex items-center gap-3" >
+            <LockToggle locked={locked} onClick={toggleLock} />
             <button onClick={closeSettings} className="text-text-muted hover:text-text-primary transition-colors">
               <X size={20} />
             </button>
@@ -1537,14 +1547,14 @@ export default function Settings(): JSX.Element {
 
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   <button
-                    onClick={() => setLegalDoc('terms')}
+                    onClick={() => openLegal('terms')}
                     className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-[var(--surface-raised)] hover:bg-[var(--surface-overlay)] border border-[var(--border)] text-text-secondary text-sm font-medium transition-colors"
                   >
                     <ScrollText size={15} />
                     Terms of Service
                   </button>
                   <button
-                    onClick={() => setLegalDoc('privacy')}
+                    onClick={() => openLegal('privacy')}
                     className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-[var(--surface-raised)] hover:bg-[var(--surface-overlay)] border border-[var(--border)] text-text-secondary text-sm font-medium transition-colors"
                   >
                     <ShieldCheck size={15} />
@@ -1602,6 +1612,8 @@ export default function Settings(): JSX.Element {
       </div>
 
       {legalDoc && <LegalModal initialDoc={legalDoc} onClose={() => setLegalDoc(null)} />}
-    </div>
+      </>
+      )}
+    </ModalOverlay>
   )
 }

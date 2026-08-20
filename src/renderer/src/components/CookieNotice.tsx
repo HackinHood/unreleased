@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Cookie } from 'lucide-react'
 import LegalModal from './LegalModal'
+import { useSandboxStore } from './Modal'
 
 const STORAGE_KEY = 'cookie-notice-ack'
 
@@ -41,7 +42,7 @@ export default function CookieNotice(): JSX.Element | null {
               This app stores data locally on your device — settings, your session if you sign in, and cached content —
               so it can work. It doesn&apos;t use third-party advertising or tracking cookies.{' '}
               <button
-                onClick={() => setShowPrivacy(true)}
+                onClick={() => { useSandboxStore.getState().expand(); setShowPrivacy(true) }}
                 className="text-accent hover:underline font-medium"
               >
                 Privacy Policy

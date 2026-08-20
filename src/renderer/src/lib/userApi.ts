@@ -301,9 +301,26 @@ export function peekPlaylistCover(id: number): PlaylistCoverEntry | undefined {
 export async function getPlaylistCover(id: number): Promise<PlaylistCoverEntry> {
   const cached = playlistCoverCache.get(id)
   if (cached) return cached
-  const d = await request<PlaylistDetail>(`${LIBRARY_BASE}/playlists/${id}/`)
+  // getPlaylist's cached detail carries the same cover fields this needs —
+  // reuse it instead of firing a second near-duplicate /playlists/{id}/
+  // request for the same playlist (prefetchPlaylistDetails calls both back
+  // to back for every playlist on startup, which used to double the network
+  // traffic for no benefit). Only skipped if that cache entry came back from
+  // the omit_cover_image=true fetch and genuinely lacks the fields.
+  const peeked = peekPlaylistDetail(id)
+  const d = peeked && ('cover_image_url' in peeked || 'cover_image' in peeked)
+    ? peeked
+    : await request<PlaylistDetail>(`${LIBRARY_BASE}/playlists/${id}/`)
   const trackImages = (d.items ?? []).slice(0, 4).map(it => buildImageUrl(it.song.image_url)).filter(Boolean) as string[]
-  const entry: PlaylistCoverEntry = { cover_image_url: d.cover_image_url, cover_image: d.cover_image, trackImages }
+  // cover_image_url/cover_image can be a site-relative pointer (the same
+  // "/assets/x.jpg" shape a song's image_url uses, e.g. for era-linked
+  // covers) rather than an absolute URL — resolve it here so every caller
+  // gets a directly loadable src instead of each having to know the shape.
+  const entry: PlaylistCoverEntry = {
+    cover_image_url: buildImageUrl(d.cover_image_url) ?? null,
+    cover_image: buildImageUrl(d.cover_image) ?? null,
+    trackImages,
+  }
   playlistCoverCache.set(id, entry)
   return entry
 }
