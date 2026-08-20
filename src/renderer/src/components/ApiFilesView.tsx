@@ -888,7 +888,7 @@ export default function ApiFilesView(): JSX.Element {
             </div>
 
             {/* Search — recursive across the whole tree, not the current folder. */}
-            <div className="px-4 pt-2">
+            <div className="px-4 pt-2 pb-2">
               <div className="relative flex items-center">
                 <Search size={16} className="absolute left-3.5 text-text-muted pointer-events-none" />
                 <input

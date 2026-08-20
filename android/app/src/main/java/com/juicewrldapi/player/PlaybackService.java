@@ -9,9 +9,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.graphics.Bitmap;
-import android.media.AudioAttributes;
-import android.media.AudioFocusRequest;
-import android.media.AudioManager;
 import android.os.Build;
 import android.os.IBinder;
 import android.support.v4.media.MediaMetadataCompat;
@@ -36,21 +33,31 @@ import androidx.media.session.MediaButtonReceiver;
  *  - A MediaSessionCompat, so the notification/lock-screen/Bluetooth/wear
  *    transport controls exist at all and hardware media buttons have
  *    somewhere to go.
- *  - AudioManager focus, so another app's audio doesn't play on top of this
- *    one — requested while playing, abandoned while paused, exactly like any
- *    other well-behaved media app.
+ *
+ * Deliberately does NOT request its own AudioManager focus. Chromium already
+ * requests audio focus automatically the moment the WebView's <audio>
+ * element starts playing (org.chromium.content.browser.AudioFocusDelegate) —
+ * a second AUDIOFOCUS_GAIN request from this Service, in the same process,
+ * makes Android immediately hand that first holder an AUDIOFOCUS_LOSS, and
+ * Chromium's delegate responds to that by pausing the <audio> element. Found
+ * 2026-08-21: every play attempt request-stole focus from itself and got
+ * paused ~100-300ms later, in an endless loop — "can't even play songs, they
+ * just auto pause". Real external focus interruptions (calls, other apps)
+ * are already handled correctly by Chromium's own delegate via the normal
+ * <audio> pause/play events Player.tsx listens to; this class only needs to
+ * keep the process foreground and drive the notification/lock-screen UI.
  *
  * JS (see lib/mediaControl.ts) drives all of this through MediaSessionPlugin
  * — it reports metadata/playback state and reacts to the Listener callbacks
- * below (play/pause/seek/focus changes); this class makes no playback
- * decisions of its own; see MediaSessionPlugin for that split.
+ * below (play/pause/seek); this class makes no playback decisions of its
+ * own; see MediaSessionPlugin for that split.
  */
 public class PlaybackService extends Service {
 
     private static final String CHANNEL_ID = "playback";
     private static final int NOTIFICATION_ID = 1;
 
-    /** Routes MediaSession/AudioFocus callbacks back to JS. Set once by
+    /** Routes MediaSession callbacks back to JS. Set once by
      *  MediaSessionPlugin.load() — this app never runs more than one plugin
      *  instance, so a static slot (rather than a bind/messenger dance) is
      *  the simplest thing that works. */
@@ -60,13 +67,20 @@ public class PlaybackService extends Service {
         void onNext();
         void onPrevious();
         void onSeekTo(long positionMs);
-        void onAudioFocusChange(String type);
     }
 
     private static Listener listener;
     public static void setListener(Listener l) { listener = l; }
 
-    private static PlaybackService instance;
+    // volatile: getInstance() is read from the "CapacitorPlugins" HandlerThread
+    // while onCreate() runs on the main thread, with no other synchronization
+    // between them — without this, a reader can observe `instance` non-null
+    // before this object's own field writes (mediaSession, notably) have
+    // become visible, and NPE on a half-constructed service. Publishing
+    // `instance` only at the end of onCreate() (below), after everything else
+    // is set up, is the other half of the fix — a reader should never be able
+    // to see this object before it's actually ready.
+    private static volatile PlaybackService instance;
     @Nullable
     public static PlaybackService getInstance() { return instance; }
 
@@ -84,10 +98,6 @@ public class PlaybackService extends Service {
     public static float pendingSpeed = 1f;
 
     private MediaSessionCompat mediaSession;
-    private AudioManager audioManager;
-    private AudioManager.OnAudioFocusChangeListener focusChangeListener;
-    private AudioFocusRequest focusRequest;
-    private boolean hasFocus = false;
 
     private String title = "";
     private String artist = "";
@@ -101,8 +111,6 @@ public class PlaybackService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        instance = this;
-        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
 
         mediaSession = new MediaSessionCompat(this, "UnreleasedPlayback");
         mediaSession.setFlags(
@@ -118,29 +126,6 @@ public class PlaybackService extends Service {
         });
         mediaSession.setActive(true);
 
-        focusChangeListener = change -> {
-            String type;
-            switch (change) {
-                case AudioManager.AUDIOFOCUS_LOSS:
-                    hasFocus = false;
-                    type = "loss";
-                    break;
-                case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
-                    type = "transientLoss";
-                    break;
-                case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
-                    type = "duck";
-                    break;
-                case AudioManager.AUDIOFOCUS_GAIN:
-                    hasFocus = true;
-                    type = "gain";
-                    break;
-                default:
-                    return;
-            }
-            if (listener != null) listener.onAudioFocusChange(type);
-        };
-
         // Pick up whatever JS already reported before this onCreate() ran.
         title = pendingTitle; artist = pendingArtist; album = pendingAlbum;
         artwork = pendingArtwork; durationMs = pendingDurationMs;
@@ -150,7 +135,10 @@ public class PlaybackService extends Service {
 
         createChannel();
         startForegroundCompat(buildNotification());
-        if (isPlaying) requestAudioFocus();
+
+        // Published last, and deliberately not until everything above is
+        // ready — see the field's comment.
+        instance = this;
     }
 
     @Override
@@ -167,7 +155,6 @@ public class PlaybackService extends Service {
 
     @Override
     public void onDestroy() {
-        abandonAudioFocusIfHeld();
         if (mediaSession != null) { mediaSession.setActive(false); mediaSession.release(); }
         if (instance == this) instance = null;
         super.onDestroy();
@@ -191,10 +178,6 @@ public class PlaybackService extends Service {
         this.speed = speed;
         applyStateToSession();
         refreshNotification();
-        // Focus is requested while actually playing and released the moment
-        // playback pauses, so another app is free to take it — same convention
-        // most media apps follow rather than holding focus indefinitely.
-        if (playing) requestAudioFocus(); else abandonAudioFocusIfHeld();
     }
 
     private void applyMetadataToSession() {
@@ -217,37 +200,6 @@ public class PlaybackService extends Service {
             .setActions(actions)
             .setState(state, positionMs, speed)
             .build());
-    }
-
-    private void requestAudioFocus() {
-        if (hasFocus) return;
-        AudioAttributes attrs = new AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_MEDIA)
-            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-            .build();
-        int result;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                .setAudioAttributes(attrs)
-                .setOnAudioFocusChangeListener(focusChangeListener)
-                .build();
-            result = audioManager.requestAudioFocus(focusRequest);
-        } else {
-            result = audioManager.requestAudioFocus(
-                focusChangeListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN
-            );
-        }
-        hasFocus = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
-    }
-
-    private void abandonAudioFocusIfHeld() {
-        if (!hasFocus) return;
-        hasFocus = false;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && focusRequest != null) {
-            audioManager.abandonAudioFocusRequest(focusRequest);
-        } else {
-            audioManager.abandonAudioFocus(focusChangeListener);
-        }
     }
 
     private void startForegroundCompat(Notification notification) {

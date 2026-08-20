@@ -3,21 +3,29 @@
 //
 // The Web MediaSession API (wired separately in Player.tsx, for desktop/web
 // and as a harmless no-op fallback here) doesn't reliably survive
-// backgrounding in this WebView, doesn't show a real system notification,
-// doesn't request audio focus, and does nothing to stop Android killing the
-// app as an idle background process — this drives a real foreground Service
-// + MediaSessionCompat + AudioManager focus request instead.
+// backgrounding in this WebView, shows no real system notification, and does
+// nothing to stop Android killing the app as an idle background process —
+// this drives a real foreground Service + MediaSessionCompat on top of it.
+// Deliberately doesn't also request its own AudioManager focus — see
+// PlaybackService's doc comment for why.
 //
 // Every playback *decision* stays in JS (this module and PlaybackService only
 // report state one way and forward OS events the other); see Player.tsx for
-// where those events turn into setIsPlaying/nextTrack/prevTrack/duck calls.
+// where those events turn into setIsPlaying/nextTrack/prevTrack calls.
 
 import { isAndroidApp } from './androidUpdate'
 
 interface MediaControlPlugin {
   start(): Promise<void>
   stop(): Promise<void>
-  updateMetadata(opts: { title: string; artist: string; album: string; artworkBase64: string | null; duration: number }): Promise<void>
+  updateMetadata(opts: {
+    title: string
+    artist: string
+    album: string
+    artworkUrl: string | null
+    artworkBase64: string | null
+    duration: number
+  }): Promise<void>
   updatePlaybackState(opts: { playing: boolean; position: number; speed: number }): Promise<void>
   addListener(eventName: string, cb: (data: unknown) => void): { remove: () => void }
 }
@@ -37,7 +45,14 @@ export function startMediaSession(): void {
   plugin()?.start().catch(() => {})
 }
 
-export function updateMediaMetadata(opts: { title: string; artist: string; album: string; artworkBase64: string | null; duration: number }): void {
+export function updateMediaMetadata(opts: {
+  title: string
+  artist: string
+  album: string
+  artworkUrl: string | null
+  artworkBase64: string | null
+  duration: number
+}): void {
   if (!isAndroidApp()) return
   plugin()?.updateMetadata(opts).catch(() => {})
 }
@@ -56,17 +71,21 @@ export function onMediaControlEvent<T = unknown>(eventName: string, cb: (data: T
   return () => handle.remove()
 }
 
-// ── Artwork ──────────────────────────────────────────────────────────────
-// The notification's large icon needs raw bytes over the bridge — fetch and
-// downscale through a canvas (same technique as lib/coverImage.ts) so a full-
-// resolution cover doesn't get base64-encoded and shipped across the bridge
-// on every track change. Memoized by URL since Player.tsx's metadata effect
-// re-fires on unrelated track-object churn, not just on the art actually
-// changing.
+// ── Local-track artwork ─────────────────────────────────────────────────────
+// Embedded-cover reads (lib/localLibrary.ts's readArt) come back as a `data:`
+// URI straight from the native plugin bridge — never a network fetch, so
+// there's no CORS concern here at all (that's specifically an http(s) CDN
+// problem, handled instead by MediaSessionPlugin's own native download via
+// `artworkUrl`). fetch() still resolves data:/blob: URIs directly with no
+// origin restriction, so this stays a JS-side decode: read it back through
+// canvas to downscale before it goes over the bridge as base64, so a full-
+// resolution embedded cover doesn't get shipped on every track change.
+// Memoized by URL since Player.tsx's metadata effect re-fires on unrelated
+// track-object churn, not just on the art actually changing.
 let lastArtUrl: string | null = null
 let lastArtBase64: string | null = null
 
-export async function fetchArtworkBase64(url: string): Promise<string | null> {
+export async function readLocalArtworkBase64(url: string): Promise<string | null> {
   if (url === lastArtUrl) return lastArtBase64
   try {
     const res = await fetch(url)

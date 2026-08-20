@@ -335,19 +335,30 @@ export default function WrldView(): JSX.Element {
           className="shrink-0 flex items-center gap-1 px-2"
           style={{ paddingTop: ownsTopInset ? 'max(0.25rem, env(safe-area-inset-top, 0px))' : '0.25rem' }}
         >
-          <button
-            onClick={collapse}
-            aria-label="Collapse player"
-            className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full active:bg-white/10"
-            style={{ color: txtPri }}
-          ><ChevronDown size={22} /></button>
+          {/* Three equal flex-1 columns, not a fixed-width button flanking a
+              flex-1 middle — the right side can hold one or two 44px icon
+              buttons (FmLikeButton self-hides sometimes) while the left only
+              ever has one, so a fixed-width left button made the "centered"
+              middle actually sit off-center by half that imbalance. Equal
+              columns keep the pill centered regardless of how many icons the
+              other two hold. */}
+          <div className="flex-1 flex justify-start">
+            <button
+              onClick={collapse}
+              aria-label="Collapse player"
+              className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full active:bg-white/10"
+              style={{ color: txtPri }}
+            ><ChevronDown size={22} /></button>
+          </div>
 
           <div className="flex-1 flex justify-center min-w-0">
             <FmPill active={radioFmActive} live={radioFmIsLive} disabled={fmDisabled} onClick={toggleFm} light={textIsDark} />
           </div>
 
-          <FmLikeButton light={textIsDark} />
-          <SongMenu light={textIsDark} />
+          <div className="flex-1 flex justify-end items-center gap-1">
+            <FmLikeButton light={textIsDark} />
+            <SongMenu light={textIsDark} />
+          </div>
         </div>
 
         {/* ── Cover ──────────────────────────────────────────────────────── */}

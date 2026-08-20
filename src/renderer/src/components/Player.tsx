@@ -31,7 +31,7 @@ import { trackIdToSongId } from '../lib/userApi'
 import { useCanEdit } from '../hooks/useChannelRoles'
 import { toFileUrl } from '../lib/fileTypes'
 import { isAndroidApp } from '../lib/androidUpdate'
-import { startMediaSession, updateMediaMetadata, updateMediaPlaybackState, onMediaControlEvent, fetchArtworkBase64 } from '../lib/mediaControl'
+import { startMediaSession, updateMediaMetadata, updateMediaPlaybackState, onMediaControlEvent, readLocalArtworkBase64 } from '../lib/mediaControl'
 import { FullTrack } from '../types'
 import SongInfoModal from './SongInfoModal'
 import SongContextMenu from './SongContextMenu'
@@ -935,14 +935,14 @@ export default function Player(): JSX.Element {
 
   // ── Native Android media session (see lib/mediaControl.ts) ────────────────
   // The Web MediaSession API above doesn't reliably survive backgrounding in
-  // this WebView, shows no real system notification, and holds no audio
-  // focus at all — this drives an actual foreground Service + MediaSession +
-  // AudioManager focus request on top of it. `wasAutoPausedByFocus` tracks
-  // whether *we* paused for a transient interruption (another app's alarm,
-  // a nav prompt, etc.) so playback resumes only in that case on focus
-  // regain — not after the user paused on their own, and not after a
-  // permanent loss (another app taking over music playback for good).
-  const wasAutoPausedByFocus = useRef(false)
+  // this WebView and shows no real system notification — this drives an
+  // actual foreground Service + MediaSession on top of it. Deliberately does
+  // NOT request its own audio focus (see PlaybackService's doc comment) —
+  // Chromium already manages focus for the <audio> element on its own, and a
+  // second competing request from this app caused an instant-pause-on-play
+  // bug (found 2026-08-21). Real external focus interruptions still surface
+  // through the <audio> element's own pause/play events, handled by
+  // handleAudioPause/the watchdog above.
   const lastNativePositionPush = useRef(0)
 
   useEffect(() => {
@@ -954,13 +954,20 @@ export default function Player(): JSX.Element {
       ? radioFmMatchedSong?.imageUrl
       : (currentTrackFull?.albumArt ?? currentTrack.imageUrl)
     const duration = currentTrackFull?.duration ?? currentTrack.duration ?? 0
-    let cancelled = false
-    ;(async () => {
-      const artworkBase64 = rawArt ? await fetchArtworkBase64(rawArt) : null
-      if (cancelled) return
-      updateMediaMetadata({ title, artist, album: '', artworkBase64, duration })
-    })()
-    return () => { cancelled = true }
+    // http(s) covers (API/CDN art) are downloaded natively — see
+    // MediaSessionPlugin's doc comment on updateMetadata for why (CORS).
+    // data:/blob: covers (local library embedded art) never touch the
+    // network, so they're still decoded here in JS.
+    if (rawArt && !rawArt.startsWith('http')) {
+      let cancelled = false
+      ;(async () => {
+        const artworkBase64 = await readLocalArtworkBase64(rawArt)
+        if (cancelled) return
+        updateMediaMetadata({ title, artist, album: '', artworkUrl: null, artworkBase64, duration })
+      })()
+      return () => { cancelled = true }
+    }
+    updateMediaMetadata({ title, artist, album: '', artworkUrl: rawArt ?? null, artworkBase64: null, duration })
   }, [
     currentTrack?.id,
     currentTrack?.title,
@@ -1004,27 +1011,7 @@ export default function Player(): JSX.Element {
       const audio = getActive()
       if (audio && typeof d?.position === 'number') audio.currentTime = d.position
     })
-    const offFocus = onMediaControlEvent<{ type: string }>('focus', (d) => {
-      const audio = getActive()
-      switch (d?.type) {
-        case 'loss':
-          wasAutoPausedByFocus.current = false
-          setIsPlaying(false)
-          break
-        case 'transientLoss':
-          if (audio && !audio.paused) wasAutoPausedByFocus.current = true
-          setIsPlaying(false)
-          break
-        case 'duck':
-          if (audio) audio.volume = volumeRef.current * 0.35
-          break
-        case 'gain':
-          if (audio) audio.volume = volumeRef.current
-          if (wasAutoPausedByFocus.current) { wasAutoPausedByFocus.current = false; setIsPlaying(true) }
-          break
-      }
-    })
-    return () => { offPlay(); offPause(); offNext(); offPrev(); offSeek(); offFocus() }
+    return () => { offPlay(); offPause(); offNext(); offPrev(); offSeek() }
   }, [setIsPlaying, nextTrack, prevTrack])
 
   // Audio output device
