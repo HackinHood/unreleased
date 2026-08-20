@@ -1,6 +1,6 @@
 {
   "name": "unreleased",
-  "version": "2.0.7",
+  "version": "2.0.8",
   "description": "A music player for Juice WRLD",
   "main": "electron/main.js",
   "scripts": {

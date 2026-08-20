@@ -4,7 +4,7 @@ A music player for Juice WRLD — stream the full catalog of released and unrele
 
 > This is the deployed web build — see the [`app` branch](https://github.com/leanwrldd/unreleased/tree/app) for the full project (web + desktop), Stack, Development, and Branches docs. This README only covers what's actually usable at [player.juicewrldapi.com](https://player.juicewrldapi.com).
 
-![Version](https://img.shields.io/github/v/release/leanwrldd/unreleased?label=version&color=blue)
+![Version](https://img.shields.io/github/package-json/v/leanwrldd/unreleased/web?label=version&color=blue)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)
