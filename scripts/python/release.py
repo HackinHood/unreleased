@@ -37,6 +37,12 @@ REPO_OWNER = "leanwrldd"
 REPO_NAME  = "unreleased"
 API_BASE   = "https://api.github.com"
 
+# Best-effort mirror (same GH_TOKEN, same pattern as app's release.py) — origin
+# is the source of truth, the mirror is a nice-to-have that never blocks or
+# rolls back the real push.
+MIRROR_OWNER = "Juice-WRLD-API"
+MIRROR_NAME  = "Unreleased"
+
 # ── ANSI helpers ──────────────────────────────────────────────────────────────
 RST, BOLD, DIM = "\033[0m", "\033[1m", "\033[2m"
 RED, GRN, YLW, CYN, WHT = "\033[91m", "\033[92m", "\033[93m", "\033[96m", "\033[97m"
@@ -106,6 +112,24 @@ def is_dirty():
 
 def git_branch():
     return capture("git rev-parse --abbrev-ref HEAD")
+
+def push_mirror_branch(branch, token):
+    """Force-push a branch to the mirror repo, authenticating via the token
+    embedded in the URL (no persistent remote, nothing written to
+    .git/config). Always --force: the mirror isn't collaborative, it just
+    has to match origin's branch exactly, and on a brand-new/empty mirror
+    repo a plain push has nothing to fast-forward from.
+
+    The token never reaches the console or an exception message — it's
+    redacted from both the printed command and any captured stderr.
+    """
+    url = f"https://{token}@github.com/{MIRROR_OWNER}/{MIRROR_NAME}.git"
+    detail(f"> git push https://***@github.com/{MIRROR_OWNER}/{MIRROR_NAME}.git {branch}:{branch} --force")
+    r = subprocess.run(f'git push "{url}" {branch}:{branch} --force',
+                        shell=True, cwd=ROOT, capture_output=True, text=True)
+    if r.returncode != 0:
+        err = (r.stderr or r.stdout or "").replace(token, "***")
+        raise RuntimeError(err.strip()[:500])
 
 # ── package.json ──────────────────────────────────────────────────────────────
 
@@ -261,6 +285,17 @@ def step_push(branch, state):
     run(f"git push origin {branch}")
     state["pushed"] = True
     ok(f"Pushed to origin/{branch}")
+
+    token = get_token()
+    if not token:
+        warn("GH_TOKEN not found (env var or .env.local) — skipping mirror push.")
+        return
+    try:
+        info(f"Mirroring {branch} → {MIRROR_OWNER}/{MIRROR_NAME}")
+        push_mirror_branch(branch, token)
+        ok(f"Mirrored to {MIRROR_OWNER}/{MIRROR_NAME}")
+    except Exception as e:
+        warn(f"Mirror push failed (origin unaffected): {e}")
 
 
 def step_release(branch, version, notes, state):
