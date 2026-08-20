@@ -1,11 +1,13 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useIsMobile } from '../hooks/useIsMobile'
 import {
   ChevronLeft, Newspaper, RefreshCw, AlertCircle, Plus, Settings2,
   Pencil, Trash2, Star, Paperclip, Download, Bell, BellOff, ArrowDownWideNarrow, ArrowUpWideNarrow,
 } from 'lucide-react'
 import { useStorePick } from '../store/useStore'
 import {
-  fetchNews, fetchChannels, fetchNewsItem, deleteNewsItem, isImageAttachment,
+  fetchNews, fetchChannels, fetchNewsItem, deleteNewsItem, isImageAttachment, isAudioAttachment,
+  buildNewsAttachmentStreamUrl, ensureHttpsMediaUrl,
   ALL_CHANNEL, DEFAULT_NEWS_CHANNEL, NEWS_CHANNELS,
   type NewsItem, type NewsChannel, type NewsAttachment, type NewsSort,
 } from '../lib/newsApi'
@@ -39,13 +41,15 @@ function CategoryTag({ label }: { label: string }) {
   )
 }
 
-// Edit/delete cluster, shown on hover for editors. Rendered as a sibling of the
-// card's clickable button (never nested — a button can't contain buttons).
+// Edit/delete cluster, shown on hover for editors on desktop; always visible on
+// mobile since touch has no hover state. Rendered as a sibling of the card's
+// clickable button (never nested — a button can't contain buttons).
 function ManageActions({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+  const isMobile = useIsMobile()
   return (
-    <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-      <button onClick={onEdit} title="Edit" className="p-1.5 rounded-lg bg-black/60 text-white hover:bg-black/80 transition-colors"><Pencil size={13} /></button>
-      <button onClick={onDelete} title="Delete" className="p-1.5 rounded-lg bg-black/60 text-white hover:bg-red-600 transition-colors"><Trash2 size={13} /></button>
+    <div className={`absolute top-2 right-2 flex items-center gap-1 transition-opacity ${isMobile ? '' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'}`}>
+      <button onClick={onEdit} title="Edit" aria-label="Edit post" className="p-1.5 rounded-lg bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"><Pencil size={13} /></button>
+      <button onClick={onDelete} title="Delete" aria-label="Delete post" className="p-1.5 rounded-lg bg-black/60 text-white hover:bg-red-600 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"><Trash2 size={13} /></button>
     </div>
   )
 }
@@ -63,22 +67,38 @@ function FeaturedCard({ item, onOpen, canManage, onEdit, onDelete }: CardProps) 
     <div className="relative group">
       <button
         onClick={() => onOpen(item)}
-        className="w-full text-left rounded-2xl overflow-hidden border border-[var(--border)] bg-[var(--surface-raised)] hover:border-accent/40 transition-colors block"
+        className="w-full text-left rounded-2xl overflow-hidden border border-[var(--border)] bg-[var(--surface-raised)] hover:border-accent/40 hover:shadow-lg hover:shadow-black/5 transition-all duration-200 block cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
       >
-        {item.image_url && (
-          <div className="aspect-[16/7] w-full overflow-hidden bg-[var(--surface-overlay)]">
-            <img src={item.image_url} alt="" className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300" />
+        {item.image_url ? (
+          <div className="relative aspect-[16/7] w-full overflow-hidden bg-[var(--surface-overlay)]">
+            <img
+              src={ensureHttpsMediaUrl(item.image_url) ?? undefined}
+              alt=""
+              loading="lazy"
+              className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+            <div className="absolute inset-x-0 bottom-0 p-5">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-white drop-shadow"><Star size={11} className="fill-current text-accent" /> Featured</span>
+                {item.category && <CategoryTag label={item.category} />}
+                <span className="text-xs text-white/80 drop-shadow">{formatDate(item.published_at)}</span>
+              </div>
+              <h2 className="text-white text-xl font-bold leading-snug mb-1.5 drop-shadow-sm">{item.title}</h2>
+              <p className="text-sm text-white/85 leading-relaxed line-clamp-2 drop-shadow-sm">{item.summary}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="p-5">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-accent"><Star size={11} className="fill-current" /> Featured</span>
+              {item.category && <CategoryTag label={item.category} />}
+              <span className="text-xs text-text-muted">{formatDate(item.published_at)}</span>
+            </div>
+            <h2 className="text-text-primary text-lg font-bold leading-snug mb-1.5">{item.title}</h2>
+            <p className="text-sm text-text-secondary leading-relaxed line-clamp-3">{item.summary}</p>
           </div>
         )}
-        <div className="p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-accent"><Star size={11} className="fill-current" /> Featured</span>
-            {item.category && <CategoryTag label={item.category} />}
-            <span className="text-xs text-text-muted">{formatDate(item.published_at)}</span>
-          </div>
-          <h2 className="text-text-primary text-lg font-bold leading-snug mb-1.5">{item.title}</h2>
-          <p className="text-sm text-text-secondary leading-relaxed line-clamp-3">{item.summary}</p>
-        </div>
       </button>
       {canManage && <ManageActions onEdit={() => onEdit(item)} onDelete={() => onDelete(item)} />}
     </div>
@@ -87,18 +107,23 @@ function FeaturedCard({ item, onOpen, canManage, onEdit, onDelete }: CardProps) 
 
 function NewsCard({ item, onOpen, canManage, onEdit, onDelete }: CardProps) {
   return (
-    <div className="relative group">
+    <div className="relative group h-full">
       <button
         onClick={() => onOpen(item)}
-        className="w-full text-left flex gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] hover:border-accent/40 transition-colors p-3"
+        className="w-full h-full text-left flex flex-col rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--surface-raised)] hover:border-accent/40 hover:shadow-lg hover:shadow-black/5 hover:-translate-y-0.5 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
       >
         {item.image_url && (
-          <div className="w-24 h-24 shrink-0 rounded-lg overflow-hidden bg-[var(--surface-overlay)]">
-            <img src={item.image_url} alt="" className="w-full h-full object-cover" />
+          <div className="w-full aspect-[16/9] shrink-0 overflow-hidden bg-[var(--surface-overlay)]">
+            <img
+              src={ensureHttpsMediaUrl(item.image_url) ?? undefined}
+              alt=""
+              loading="lazy"
+              className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
+            />
           </div>
         )}
-        <div className="min-w-0 flex-1 pr-12">
-          <div className="flex items-center gap-2 mb-1">
+        <div className="min-w-0 flex-1 p-3.5 pr-12">
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             {item.category && <CategoryTag label={item.category} />}
             <span className="text-xs text-text-muted">{formatDate(item.published_at)}</span>
             {item.attachments.length > 0 && (
@@ -118,9 +143,9 @@ function NewsCard({ item, onOpen, canManage, onEdit, onDelete }: CardProps) {
 
 function SkeletonCard() {
   return (
-    <div className="flex gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-3 animate-pulse">
-      <div className="w-24 h-24 shrink-0 rounded-lg bg-[var(--surface-overlay)]" />
-      <div className="flex-1 space-y-2 py-1">
+    <div className="rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--surface-raised)] animate-pulse">
+      <div className="w-full aspect-[16/9] bg-[var(--surface-overlay)]" />
+      <div className="space-y-2 p-3.5">
         <div className="h-3 w-20 rounded bg-[var(--surface-overlay)]" />
         <div className="h-4 w-3/4 rounded bg-[var(--surface-overlay)]" />
         <div className="h-3 w-full rounded bg-[var(--surface-overlay)]" />
@@ -143,7 +168,7 @@ function EmptyState({ canManage, onCompose }: { canManage: boolean; onCompose: (
       {canManage && (
         <button
           onClick={onCompose}
-          className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-accent text-white hover:opacity-90 transition-opacity"
+          className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-accent text-white hover:opacity-90 transition-opacity cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
         >
           <Plus size={15} /> Write the first post
         </button>
@@ -154,17 +179,61 @@ function EmptyState({ canManage, onCompose }: { canManage: boolean; onCompose: (
 
 // ─── Attachments ──────────────────────────────────────────────────────────────
 
+function AudioAttachment({ attachment }: { attachment: NewsAttachment }) {
+  const [broken, setBroken] = useState(false)
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] overflow-hidden">
+      <div className="flex items-center gap-3 px-3 py-2.5">
+        <Paperclip size={15} className="text-text-muted shrink-0" />
+        <span className="text-sm text-text-primary truncate flex-1">{attachment.name}</span>
+        <span className="text-xs text-text-muted shrink-0">{humanSize(attachment.size)}</span>
+        <a
+          href={buildNewsAttachmentStreamUrl(attachment, true)}
+          download={attachment.name}
+          className="text-text-muted hover:text-accent transition-colors shrink-0"
+          aria-label={`Download ${attachment.name}`}
+        >
+          <Download size={15} />
+        </a>
+      </div>
+      <div className="px-3 pb-3">
+        {broken ? (
+          <div className="h-9 rounded-md bg-surface-overlay flex items-center justify-center text-[11px] text-text-muted">
+            Preview unavailable
+          </div>
+        ) : (
+          <audio
+            controls
+            src={buildNewsAttachmentStreamUrl(attachment)}
+            preload="metadata"
+            onError={() => setBroken(true)}
+            className="w-full h-9"
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
 function AttachmentList({ attachments }: { attachments: NewsAttachment[] }) {
   const images = attachments.filter(isImageAttachment)
-  const files = attachments.filter((a) => !isImageAttachment(a))
+  const audio = attachments.filter((a) => !isImageAttachment(a) && isAudioAttachment(a))
+  const files = attachments.filter((a) => !isImageAttachment(a) && !isAudioAttachment(a))
   return (
     <div className="mt-6 space-y-4">
       {images.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {images.map((a, i) => (
-            <a key={i} href={a.url} target="_blank" rel="noopener noreferrer" className="block rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--surface-overlay)] hover:border-accent/40 transition-colors">
-              <img src={a.url} alt={a.name} className="w-full aspect-square object-cover" />
+            <a key={i} href={ensureHttpsMediaUrl(a.url) ?? a.url} target="_blank" rel="noopener noreferrer" className="block rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--surface-overlay)] hover:border-accent/40 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
+              <img src={ensureHttpsMediaUrl(a.url) ?? undefined} alt={a.name} loading="lazy" className="w-full aspect-square object-cover" />
             </a>
+          ))}
+        </div>
+      )}
+      {audio.length > 0 && (
+        <div className="space-y-2">
+          {audio.map((a, i) => (
+            <AudioAttachment key={i} attachment={a} />
           ))}
         </div>
       )}
@@ -173,11 +242,11 @@ function AttachmentList({ attachments }: { attachments: NewsAttachment[] }) {
           {files.map((a, i) => (
             <a
               key={i}
-              href={a.url}
+              href={buildNewsAttachmentStreamUrl(a, true)}
               download={a.name}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2.5 hover:border-accent/40 transition-colors group"
+              className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2.5 hover:border-accent/40 transition-colors group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
             >
               <Paperclip size={15} className="text-text-muted shrink-0" />
               <span className="text-sm text-text-primary truncate flex-1">{a.name}</span>
@@ -206,20 +275,20 @@ function ArticleDetail({ item, channelLabel, onBack, canManage, onEdit, onDelete
       <div className="flex items-center gap-2 mb-4">
         <button
           onClick={onBack}
-          className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-text-primary transition-colors"
+          className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-text-primary transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 rounded-lg"
         >
           <ChevronLeft size={16} /> Back to news
         </button>
         {canManage && (
           <div className="ml-auto flex items-center gap-1">
-            <button onClick={() => onEdit(item)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors"><Pencil size={13} /> Edit</button>
-            <button onClick={() => onDelete(item)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-text-secondary hover:text-red-400 hover:bg-surface-raised transition-colors"><Trash2 size={13} /> Delete</button>
+            <button onClick={() => onEdit(item)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"><Pencil size={13} /> Edit</button>
+            <button onClick={() => onDelete(item)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-text-secondary hover:text-red-400 hover:bg-surface-raised transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"><Trash2 size={13} /> Delete</button>
           </div>
         )}
       </div>
       {item.image_url && (
         <div className="aspect-[16/7] w-full overflow-hidden rounded-2xl bg-[var(--surface-overlay)] mb-5">
-          <img src={item.image_url} alt="" className="w-full h-full object-cover" />
+          <img src={ensureHttpsMediaUrl(item.image_url) ?? undefined} alt="" className="w-full h-full object-cover" />
         </div>
       )}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -240,14 +309,15 @@ function ArticleDetail({ item, channelLabel, onBack, canManage, onEdit, onDelete
 
 export default function NewsView(): JSX.Element {
   const { setActiveView, account } = useStorePick('setActiveView', 'account')
-  // Editors and admins can post; only admins manage channels.
-  const canPost = !!(account?.is_editor || account?.is_administrator)
+  // News write access is its own role (is_news), separate from is_editor —
+  // admins can post regardless. Only admins manage channels.
+  const canPost = !!(account?.is_news || account?.is_administrator)
   const canManageChannels = !!account?.is_administrator
-  // Who can edit/delete a given post: admins can touch anything; editors only
-  // their own. Matches the backend's authorization, so the buttons don't offer
-  // an action the API would reject.
+  // Who can edit/delete a given post: admins can touch anything; is_news
+  // holders only their own. Matches the backend's authorization, so the
+  // buttons don't offer an action the API would reject.
   const canManageItem = (item: NewsItem): boolean =>
-    !!account && (account.is_administrator || (account.is_editor && item.author_id != null && item.author_id === account.id))
+    !!account && (account.is_administrator || (!!account.is_news && item.author_id != null && item.author_id === account.id))
 
   const [mode, setMode] = useState<NewsMode>('news')
   const [channel, setChannel] = useState<string>(DEFAULT_NEWS_CHANNEL)
@@ -364,7 +434,8 @@ export default function NewsView(): JSX.Element {
           <button
             onClick={() => setActiveView('wrld')}
             title="Back"
-            className="p-1 -ml-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-overlay transition-colors shrink-0"
+            aria-label="Back"
+            className="p-1 -ml-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-overlay transition-colors shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
           >
             <ChevronLeft size={18} />
           </button>
@@ -375,7 +446,9 @@ export default function NewsView(): JSX.Element {
               <button
                 onClick={toggleSubscribe}
                 title={subscribed ? `Following — notify me of new ${channelLabel(channel) ?? ''} posts` : 'Follow for notifications'}
-                className={`p-1.5 rounded-lg transition-colors ${subscribed ? 'text-accent hover:bg-surface-overlay' : 'text-text-muted hover:text-text-primary hover:bg-surface-overlay'}`}
+                aria-label={subscribed ? 'Unfollow channel' : 'Follow channel for notifications'}
+                aria-pressed={subscribed}
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${subscribed ? 'text-accent hover:bg-surface-overlay' : 'text-text-muted hover:text-text-primary hover:bg-surface-overlay'}`}
               >
                 {subscribed ? <Bell size={16} /> : <BellOff size={16} />}
               </button>
@@ -384,7 +457,8 @@ export default function NewsView(): JSX.Element {
               <button
                 onClick={() => setChannelsOpen(true)}
                 title="Manage channels"
-                className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-overlay transition-colors"
+                aria-label="Manage channels"
+                className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-overlay transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
               >
                 <Settings2 size={16} />
               </button>
@@ -392,7 +466,8 @@ export default function NewsView(): JSX.Element {
             <button
               onClick={() => setSort((s) => (s === 'newest' ? 'oldest' : 'newest'))}
               title={sort === 'newest' ? 'Newest first — switch to oldest' : 'Oldest first — switch to newest'}
-              className="flex items-center gap-1 p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-overlay transition-colors"
+              aria-label={sort === 'newest' ? 'Sort: newest first, switch to oldest' : 'Sort: oldest first, switch to newest'}
+              className="flex items-center gap-1 p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-overlay transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
             >
               {sort === 'newest' ? <ArrowDownWideNarrow size={15} /> : <ArrowUpWideNarrow size={15} />}
               <span className="text-xs hidden sm:inline">{sort === 'newest' ? 'Newest' : 'Oldest'}</span>
@@ -401,14 +476,15 @@ export default function NewsView(): JSX.Element {
               onClick={load}
               disabled={loading}
               title="Refresh"
-              className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-overlay transition-colors disabled:opacity-50"
+              aria-label="Refresh news"
+              className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-overlay transition-colors disabled:opacity-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
             >
               <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
             </button>
             {canPost && (
               <button
                 onClick={openNew}
-                className="ml-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold bg-accent text-white hover:opacity-90 transition-opacity"
+                className="ml-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold bg-accent text-white hover:opacity-90 transition-opacity cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
               >
                 <Plus size={15} /> New post
               </button>
@@ -422,10 +498,11 @@ export default function NewsView(): JSX.Element {
             <button
               key={m}
               onClick={() => setMode(m)}
-              className={`px-3 py-1.5 text-sm font-semibold rounded-lg transition-colors ${
+              aria-pressed={mode === m}
+              className={`px-3 py-1.5 text-sm font-semibold rounded-lg border transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
                 mode === m
-                  ? 'bg-[var(--surface-raised)] text-accent border border-[var(--border)]'
-                  : 'text-text-muted hover:text-text-primary'
+                  ? 'bg-[var(--surface-raised)] text-accent border-[var(--border)]'
+                  : 'border-transparent text-text-muted hover:text-text-primary'
               }`}
             >
               {m === 'news' ? 'News' : 'Feed'}
@@ -439,7 +516,8 @@ export default function NewsView(): JSX.Element {
             <button
               key={ch.id}
               onClick={() => setChannel(ch.id)}
-              className={`flex-shrink-0 px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+              aria-pressed={channel === ch.id}
+              className={`flex-shrink-0 px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
                 channel === ch.id
                   ? 'text-accent border-accent'
                   : 'text-text-muted border-transparent hover:text-text-primary'
@@ -466,10 +544,13 @@ export default function NewsView(): JSX.Element {
             onDelete={handleDelete}
           />
         ) : (
-          <div className="max-w-4xl mx-auto">
+          <div className="max-w-6xl mx-auto">
             {loading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
+              <div className="space-y-4">
+                <div className="rounded-2xl aspect-[16/7] w-full bg-[var(--surface-raised)] border border-[var(--border)] animate-pulse" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+                </div>
               </div>
             ) : error ? (
               <div className="flex flex-col items-center justify-center text-center py-24 px-6">
@@ -477,7 +558,7 @@ export default function NewsView(): JSX.Element {
                 <p className="text-sm text-text-secondary mb-4">{error}</p>
                 <button
                   onClick={load}
-                  className="px-4 py-2 rounded-lg text-sm font-medium bg-[var(--surface-raised)] border border-[var(--border)] text-text-primary hover:border-accent/40 transition-colors"
+                  className="px-4 py-2 rounded-lg text-sm font-medium bg-[var(--surface-raised)] border border-[var(--border)] text-text-primary hover:border-accent/40 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
                 >
                   Try again
                 </button>
@@ -485,9 +566,9 @@ export default function NewsView(): JSX.Element {
             ) : items.length === 0 ? (
               <EmptyState canManage={canPost} onCompose={openNew} />
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-5">
                 {featured && <FeaturedCard item={featured} onOpen={setSelected} canManage={canManageItem(featured)} onEdit={openEdit} onDelete={handleDelete} />}
-                <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                   {rest.map((item) => (
                     <NewsCard key={item.id} item={item} onOpen={setSelected} canManage={canManageItem(item)} onEdit={openEdit} onDelete={handleDelete} />
                   ))}

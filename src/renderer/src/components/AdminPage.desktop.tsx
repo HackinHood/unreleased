@@ -4,22 +4,24 @@ import {
   Loader2, RefreshCw, FileEdit, KeyRound, Check, AlertCircle, RotateCcw,
   ChevronDown, ChevronUp, Shield, TrendingUp, MessageSquare, Calendar,
   Hash, Minus, Plus, UserCheck, FileCheck, Activity, Pencil, X as XIcon, ChevronDown as ChevronDownIcon,
-  Flag, History, Play,
+  Flag, History, Play, Radio,
 } from 'lucide-react'
 import { apiFetch, songToTrack } from '../lib/juicewrldApi'
 import type { JWApiSong } from '../lib/juicewrldApi'
 import { useStore, useStorePick } from '../store/useStore'
 import * as userApi from '../lib/userApi'
+import { isPrimaryChannelSlug } from '../hooks/useChannelRoles'
 import type { EditorApplication, SongEditProposal, AdminUser, ProposalStatus } from '../lib/userApi'
 import * as reportsApi from '../lib/reportsApi'
 import type { SongReportRow, SongReportStatus } from '../lib/reportsApi'
 import { invalidateLyricsCache } from './Player'
-import { relativeTime, shortDate, STATUS_STYLE, StatusChip, Avatar, Empty, AppSection, QueueSearch, buildHaystack, matchesHaystack } from './adminShared'
+import { relativeTime, shortDate, STATUS_STYLE, StatusChip, Avatar, Empty, AppSection, QueueSearch, buildHaystack, matchesHaystack, CopyButton } from './adminShared'
 import ReportsTab from './ReportsTab'
 import CompProposalsTab from './CompProposalsTab'
+import ChannelsTab from './ChannelsTab'
 import { CONTRIBUTOR_ENABLED } from '../lib/userApi'
 
-type Tab = 'proposals' | 'comp-proposals' | 'applications' | 'reports' | 'users' | 'stats' | 'security'
+type Tab = 'proposals' | 'comp-proposals' | 'applications' | 'reports' | 'users' | 'stats' | 'security' | 'channels'
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -62,7 +64,12 @@ function FieldDiff({ fieldKey, before, after }: { fieldKey: string; before: unkn
       <div className="flex items-center justify-between px-3 py-1.5 bg-surface-raised border-b border-[var(--border)]">
         <span className="font-mono text-[10px] text-text-muted tracking-tight">{fieldKey.replace(/_/g, ' ')}</span>
         <div className="flex items-center gap-2">
-          {unchanged && <span className="text-[9px] italic text-text-muted">unchanged</span>}
+          {unchanged && (
+            <>
+              <span className="text-[9px] italic text-text-muted">unchanged</span>
+              <CopyButton text={afterStr} label={fieldKey} />
+            </>
+          )}
           {isLong && (
             <button onClick={() => setExp(e => !e)} className="text-[10px] text-accent/70 hover:text-accent">
               {exp ? 'collapse' : 'expand'}
@@ -78,7 +85,8 @@ function FieldDiff({ fieldKey, before, after }: { fieldKey: string; before: unkn
           <div className="bg-red-500/8 min-w-0">
             <div className="flex items-center gap-1.5 px-3 py-1 border-b border-red-500/15">
               <Minus size={9} className="text-red-500 shrink-0" />
-              <span className="text-[9px] font-bold uppercase tracking-wide text-red-500">Before</span>
+              <span className="text-[9px] font-bold uppercase tracking-wide text-red-500 flex-1">Before</span>
+              <CopyButton text={beforeStr} label={`${fieldKey} (before)`} />
             </div>
             <div className="px-3 py-2">
               {b.lines.map((line, i) => (
@@ -94,7 +102,8 @@ function FieldDiff({ fieldKey, before, after }: { fieldKey: string; before: unkn
           <div className="bg-emerald-500/8 min-w-0">
             <div className="flex items-center gap-1.5 px-3 py-1 border-b border-emerald-500/15">
               <Plus size={9} className="text-emerald-600 shrink-0" />
-              <span className="text-[9px] font-bold uppercase tracking-wide text-emerald-600">After</span>
+              <span className="text-[9px] font-bold uppercase tracking-wide text-emerald-600 flex-1">After</span>
+              <CopyButton text={afterStr} label={`${fieldKey} (after)`} />
             </div>
             <div className="px-3 py-2">
               {a.lines.map((line, i) => (
@@ -113,7 +122,8 @@ function FieldDiff({ fieldKey, before, after }: { fieldKey: string; before: unkn
         <div className="bg-emerald-500/8">
           <div className="flex items-center gap-1.5 px-3 py-1 border-b border-emerald-500/15">
             <Plus size={9} className="text-emerald-600 shrink-0" />
-            <span className="text-[9px] font-bold uppercase tracking-wide text-emerald-600">Value</span>
+            <span className="text-[9px] font-bold uppercase tracking-wide text-emerald-600 flex-1">Value</span>
+            <CopyButton text={afterStr} label={fieldKey} />
           </div>
           <div className="px-3 py-2">
             {a.lines.map((line, i) => (
@@ -158,10 +168,14 @@ const ProposalDiff = memo(function ProposalDiff({ proposal }: { proposal: SongEd
 // profile's Admin tab) — no back button, page title, or window-control
 // clearance, since the host view owns that chrome.
 export default function AdminPage({ embedded = false }: { embedded?: boolean }): JSX.Element {
-  const { account, loadAccount, setActiveView } = useStorePick('account', 'loadAccount', 'setActiveView')
+  const { account, loadAccount, setActiveView, activeChannel, channels } = useStorePick('account', 'loadAccount', 'setActiveView', 'activeChannel', 'channels')
   const go = setActiveView
   const isFullAdmin = !!account?.is_administrator
-  const isManager = !!account?.is_manager
+  // Scoped to the active channel, not "any channel" — a manager grant on one
+  // channel shouldn't leave this nav/content visible (and then erroring) on
+  // a channel they don't actually manage. See useChannelRoles for the same
+  // pattern used elsewhere.
+  const isManager = userApi.isChannelManager(account, activeChannel, isPrimaryChannelSlug(channels, activeChannel))
   const canAccessStaff = isFullAdmin || isManager
   const otpEnabled = !!account?.otp_enabled
 
@@ -181,7 +195,7 @@ export default function AdminPage({ embedded = false }: { embedded?: boolean }):
     setLoading(true); setError(null)
     try {
       if (tab === 'proposals') {
-        setProposals(await userApi.adminListProposals(propStatus || undefined))
+        setProposals(await userApi.adminListProposals(propStatus || undefined, activeChannel))
       } else if (isFullAdmin && tab === 'applications') {
         setApplications(await userApi.adminListApplications())
       } else if (isFullAdmin && tab === 'reports') {
@@ -190,12 +204,21 @@ export default function AdminPage({ embedded = false }: { embedded?: boolean }):
         setUsers(await userApi.adminListUsers())
         if (tab === 'stats') {
           setApplications(await userApi.adminListApplications())
-          setProposals(await userApi.adminListProposals())
+          setProposals(await userApi.adminListProposals(undefined, activeChannel))
         }
       }
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load') }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load')
+      // Don't leave the previous channel's/tab's data on screen underneath the
+      // error — it's stale and its action buttons (approve/reject etc.) would
+      // still be live against the wrong channel context.
+      if (tab === 'proposals') setProposals([])
+      else if (tab === 'applications') setApplications([])
+      else if (tab === 'reports') setReports([])
+      else if (tab === 'users' || tab === 'stats') setUsers([])
+    }
     finally { setLoading(false) }
-  }, [tab, canAccessStaff, isFullAdmin, propStatus, reportStatus])
+  }, [tab, canAccessStaff, isFullAdmin, propStatus, reportStatus, activeChannel])
 
   useEffect(() => { load() }, [load, refreshKey])
 
@@ -234,6 +257,7 @@ export default function AdminPage({ embedded = false }: { embedded?: boolean }):
     { id: 'reports',      label: 'Reports',      icon: <Flag size={13} />,       badge: pendingReports || undefined },
     { id: 'users',        label: 'Users',        icon: <Users size={13} /> },
     { id: 'stats',        label: 'Stats',        icon: <TrendingUp size={13} /> },
+    { id: 'channels',     label: 'Channels',     icon: <Radio size={13} /> },
     { id: 'security',     label: 'Security',     icon: <Shield size={13} /> },
   ]
   // No Security tab for managers: it renders a flat "2FA is enabled", which the
@@ -306,12 +330,13 @@ export default function AdminPage({ embedded = false }: { embedded?: boolean }):
             <Loader2 size={20} className="animate-spin text-text-muted" />
           </div>
         )}
-        {tab === 'proposals'    && <ProposalsTab proposals={proposals} status={propStatus} setStatus={setPropStatus} onChanged={() => setRefreshKey(k => k + 1)} />}
+        {tab === 'proposals'    && <ProposalsTab proposals={proposals} status={propStatus} setStatus={setPropStatus} onChanged={() => setRefreshKey(k => k + 1)} channel={activeChannel} />}
         {tab === 'comp-proposals' && <CompProposalsTab embedded onChanged={() => setRefreshKey(k => k + 1)} />}
         {tab === 'applications' && <ApplicationsTab applications={applications} onChanged={() => setRefreshKey(k => k + 1)} />}
         {tab === 'reports'      && <ReportsTab reports={reports} status={reportStatus} setStatus={setReportStatus} onChanged={() => setRefreshKey(k => k + 1)} />}
         {tab === 'users'        && <UsersTab users={users} onChanged={() => setRefreshKey(k => k + 1)} currentUserId={account?.id} />}
         {tab === 'stats'        && <StatsTab applications={applications} proposals={proposals} users={users} />}
+        {tab === 'channels'     && <ChannelsTab />}
         {tab === 'security'     && <SecurityTab />}
       </div>
     </div>
@@ -330,10 +355,11 @@ const ALL_SONG_FIELDS = [
   'album','date_leaked','leak_type',
 ]
 
-function RevisePanel({ proposal, onClose, onDone }: {
+function RevisePanel({ proposal, onClose, onDone, channel }: {
   proposal: SongEditProposal
   onClose: () => void
   onDone:  () => void
+  channel?: string
 }): JSX.Element {
   const [fields,  setFields]  = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {}
@@ -380,6 +406,7 @@ function RevisePanel({ proposal, onClose, onDone }: {
         action: 'revise',
         review_notes: reviewNote,
         revised_data,
+        channel,
       })
       onDone()
     } catch (e) {
@@ -560,11 +587,12 @@ const ProposalRow = memo(function ProposalRow({ item, active, showUserHeader, on
   )
 })
 
-function ProposalsTab({ proposals, status, setStatus, onChanged }: {
+function ProposalsTab({ proposals, status, setStatus, onChanged, channel }: {
   proposals: SongEditProposal[]
   status: ProposalStatus | ''
   setStatus: (s: ProposalStatus | '') => void
   onChanged: () => void
+  channel?: string
 }): JSX.Element {
   const [actionId,    setActionId]    = useState<number | null>(null)
   const [notes,       setNotes]       = useState<Record<number, string>>({})
@@ -636,14 +664,14 @@ function ProposalsTab({ proposals, status, setStatus, onChanged }: {
 
   const doReview = async (id: number, action: 'approve' | 'reject') => {
     setActionId(id)
-    try { await userApi.adminReviewProposal(id, { action, review_notes: notes[id] || '' }); dropCache(id); setArchive(null); onChanged() }
+    try { await userApi.adminReviewProposal(id, { action, review_notes: notes[id] || '', channel }); dropCache(id); setArchive(null); onChanged() }
     catch {} finally { setActionId(null) }
   }
 
   const doReverse = async (id: number) => {
     if (!confirm('Reverse this approval?')) return
     setActionId(id)
-    try { await userApi.adminReverseProposal(id); dropCache(id); setArchive(null); onChanged() }
+    try { await userApi.adminReverseProposal(id, channel); dropCache(id); setArchive(null); onChanged() }
     catch {} finally { setActionId(null) }
   }
 
@@ -653,7 +681,7 @@ function ProposalsTab({ proposals, status, setStatus, onChanged }: {
     if (!next || archive || archiveLoading) return
     setArchiveLoading(true)
     setArchiveError(false)
-    userApi.adminListProposals()
+    userApi.adminListProposals(undefined, channel)
       .then(setArchive)
       .catch(() => setArchiveError(true))
       .finally(() => setArchiveLoading(false))
@@ -783,6 +811,7 @@ function ProposalsTab({ proposals, status, setStatus, onChanged }: {
             proposal={p}
             onClose={() => setRevising(false)}
             onDone={() => { setRevising(false); onChanged() }}
+            channel={channel}
           />
         ) : (
           <div className="flex-1 flex flex-col overflow-hidden">
@@ -1098,7 +1127,7 @@ function ApplicationsTab({ applications, onChanged }: { applications: EditorAppl
 
 function UsersTab({ users, onChanged, currentUserId }: { users: AdminUser[]; onChanged: () => void; currentUserId?: number }): JSX.Element {
   const [actionId, setActionId] = useState<number | null>(null)
-  const [filter,   setFilter]   = useState<'all' | 'admins' | 'editors' | 'contributors' | 'applicants'>('all')
+  const [filter,   setFilter]   = useState<'all' | 'admins' | 'editors' | 'contributors' | 'managers' | 'applicants'>('all')
   const [search,   setSearch]   = useState('')
 
   const doUpdate = async (uid: number, payload: Parameters<typeof userApi.adminUpdateUser>[1]) => {
@@ -1115,6 +1144,7 @@ function UsersTab({ users, onChanged, currentUserId }: { users: AdminUser[]; onC
     // — contributor_enabled is a flag on top of a role, so a contributor is
     // still counted under whichever of Admins/Editors/Applicants they are.
     { id: 'contributors' as const, label: 'Contributors', count: users.filter(u => u.contributor_enabled).length },
+    { id: 'managers' as const, label: 'Managers', count: users.filter(u => !!u.manager_enabled).length },
     { id: 'applicants' as const, label: 'Applicants', count: users.filter(u => u.role === 'applicant').length },
   ]
 
@@ -1124,6 +1154,7 @@ function UsersTab({ users, onChanged, currentUserId }: { users: AdminUser[]; onC
     applicant:     'text-text-muted bg-surface-raised border-[var(--border)]',
   } as Record<string, string>
   const CONTRIBUTOR_BADGE = 'text-sky-400 bg-sky-500/15 border-sky-500/20'
+  const MANAGER_BADGE = 'text-amber-400 bg-amber-500/15 border-amber-500/20'
 
   const visible = useMemo(() => users.filter(u => {
     const ok = filter === 'all'
@@ -1134,7 +1165,9 @@ function UsersTab({ users, onChanged, currentUserId }: { users: AdminUser[]; onC
           ? u.role === 'editor'
           : filter === 'contributors'
             ? u.contributor_enabled
-            : u.role === 'applicant'
+            : filter === 'managers'
+              ? !!u.manager_enabled
+              : u.role === 'applicant'
     const q = search.toLowerCase()
     return ok && (!q || (u.discord_username || u.username || '').toLowerCase().includes(q))
   }), [users, filter, search])
@@ -1159,7 +1192,7 @@ function UsersTab({ users, onChanged, currentUserId }: { users: AdminUser[]; onC
       </div>
 
       {/* Table header */}
-      <div className="shrink-0 grid grid-cols-[auto_1fr_120px_100px_80px_160px] items-center gap-3 px-6 py-2 border-b border-[var(--border)] bg-surface-raised">
+      <div className="shrink-0 grid grid-cols-[auto_1fr_120px_100px_80px_minmax(220px,1fr)] items-center gap-3 px-6 py-2 border-b border-[var(--border)] bg-surface-raised">
         {['', 'User', 'Role', 'Approved', 'Props', 'Actions'].map(h => (
           <p key={h} className="text-[9px] font-bold uppercase tracking-widest text-text-muted">{h}</p>
         ))}
@@ -1169,7 +1202,7 @@ function UsersTab({ users, onChanged, currentUserId }: { users: AdminUser[]; onC
       <div className="flex-1 overflow-y-auto">
         {visible.length === 0 && <Empty label="No users" />}
         {visible.map(u => (
-          <div key={u.user_id} className="grid grid-cols-[auto_1fr_120px_100px_80px_160px] items-center gap-3 px-6 py-3 border-b border-[var(--border)] hover:bg-surface-raised transition-colors">
+          <div key={u.user_id} className="grid grid-cols-[auto_1fr_120px_100px_80px_minmax(220px,1fr)] items-center gap-3 px-6 py-3 border-b border-[var(--border)] hover:bg-surface-raised transition-colors">
             <Avatar src={u.discord_avatar} name={u.discord_username || u.username} size={8} />
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -1195,10 +1228,15 @@ function UsersTab({ users, onChanged, currentUserId }: { users: AdminUser[]; onC
                   contributor
                 </span>
               )}
+              {!!u.manager_enabled && (
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border ${MANAGER_BADGE}`}>
+                  manager
+                </span>
+              )}
             </div>
             <p className="text-text-primary text-sm font-semibold">{u.approved_count}</p>
             <p className="text-text-muted text-sm">{u.proposal_count}</p>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 flex-wrap justify-end">
               {actionId === u.user_id ? (
                 <Loader2 size={13} className="animate-spin text-text-muted" />
               ) : u.user_id !== currentUserId && u.role !== 'administrator' ? (
@@ -1233,6 +1271,13 @@ function UsersTab({ users, onChanged, currentUserId }: { users: AdminUser[]; onC
                     <button onClick={() => doUpdate(u.user_id, { contributor_enabled: true })}
                       className="px-2 py-1 rounded text-[10px] text-emerald-400 hover:bg-emerald-500/10 transition-colors font-medium">+Contrib</button>
                   )}
+                  {u.manager_enabled ? (
+                    <button onClick={() => doUpdate(u.user_id, { manager_enabled: false })}
+                      className="px-2 py-1 rounded text-[10px] text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors font-medium">−Manager</button>
+                  ) : (
+                    <button onClick={() => doUpdate(u.user_id, { manager_enabled: true })}
+                      className="px-2 py-1 rounded text-[10px] text-emerald-400 hover:bg-emerald-500/10 transition-colors font-medium">+Manager</button>
+                  )}
                   <button onClick={() => doUpdate(u.user_id, { is_active: !u.is_active })}
                     className="px-2 py-1 rounded text-[10px] text-text-muted hover:text-text-muted hover:bg-surface-raised transition-colors font-medium">
                     {u.is_active ? 'Disable' : 'Enable'}
@@ -1256,11 +1301,13 @@ function StatsTab({ applications, proposals, users }: {
   const reviewed    = proposals.filter(p => p.status !== 'pending').length
   const approvalPct = reviewed > 0 ? Math.round(approved / reviewed * 100) : 0
   const editors     = users.filter(u => u.role === 'editor')
+  const managers    = users.filter(u => !!u.manager_enabled)
   const topEditors  = [...editors].sort((a, b) => b.approved_count - a.approved_count).slice(0, 8)
 
   const metrics = [
     { label: 'Total users',       value: users.length,                                             color: 'text-accent',        icon: <Users size={16} /> },
     { label: 'Editors',           value: editors.length,                                           color: 'text-emerald-400',   icon: <UserCheck size={16} /> },
+    { label: 'Managers',          value: managers.length,                                          color: 'text-amber-400',     icon: <Shield size={16} /> },
     { label: 'Total proposals',   value: proposals.length,                                         color: 'text-blue-400',      icon: <FileEdit size={16} /> },
     { label: 'Approved',          value: approved,                                                  color: 'text-emerald-400',   icon: <FileCheck size={16} /> },
     { label: 'Pending proposals', value: proposals.filter(p => p.status === 'pending').length,     color: 'text-amber-400',     icon: <Clock size={16} /> },

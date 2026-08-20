@@ -8,6 +8,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { apiFetch, CATEGORY_LABELS } from '../lib/juicewrldApi'
 import type { JWApiSong, JWApiEra } from '../lib/juicewrldApi'
 import * as userApi from '../lib/userApi'
+import { useCanEdit } from '../hooks/useChannelRoles'
 import { getVersionMetaForSongs, getOwnVersionMeta, setOwnVersionTitle, linkSongVersion, setGroupVersionTitle } from '../lib/versionsApi'
 import type { SongVersionMeta } from '../lib/versionsApi'
 import { invalidateCompactGroupsCache } from '../lib/compactGroups'
@@ -285,11 +286,12 @@ function apiFields(
 /* ── Component ─────────────────────────────────────────────────────────────── */
 
 export default function BulkEditModal(): JSX.Element | null {
-  const { target, close, account } = useStore(
+  const { target, close } = useStore(
     useShallow(s => ({
-      target: s.bulkEdit, close: s.closeBulkEditor, account: s.account,
+      target: s.bulkEdit, close: s.closeBulkEditor,
     }))
   )
+  const canEdit = useCanEdit()
 
   const [eras, setEras] = useState<JWApiEra[]>([])
   // Which version group each selected song sits in, and that group's shared
@@ -329,7 +331,6 @@ export default function BulkEditModal(): JSX.Element | null {
 
   const apiSpec = useMemo<BulkSpec<JWApiSong> | null>(() => {
     if (target?.kind !== 'api') return null
-    const canEdit = !!(account?.is_editor || account?.is_administrator)
 
     return {
       items: target.songs,
@@ -370,7 +371,7 @@ export default function BulkEditModal(): JSX.Element | null {
         })
       },
     }
-  }, [target, account, eras, versionMeta, fetchVersionMeta])
+  }, [target, canEdit, eras, versionMeta, fetchVersionMeta])
 
   if (!target) return null
   if (apiSpec) return <BulkEditor key="api" spec={apiSpec} onClose={close} />

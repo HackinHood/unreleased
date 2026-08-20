@@ -2,7 +2,8 @@ import { useEffect, useState, useMemo, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { Loader2, Trophy, FileEdit, ChevronLeft, Pencil, Trash2, RefreshCw, Plus, X, Check, AlertCircle, ChevronDown, ChevronUp, Search, Flag, ShieldCheck, FolderOpen, Copy } from 'lucide-react'
 import { useStore } from '../store/useStore'
-import { getMyProposals, getLeaderboard, withdrawProposal, createProposal, resubmitProposal, SongEditProposal, ProposalStatus, getMyCompProposals, withdrawCompProposal, CompFileProposal } from '../lib/userApi'
+import { getMyProposals, getLeaderboard, withdrawProposal, createProposal, resubmitProposal, SongEditProposal, ProposalStatus, getMyCompProposals, withdrawCompProposal, CompFileProposal, isChannelContributor, isChannelManager } from '../lib/userApi'
+import { isPrimaryChannelSlug } from '../hooks/useChannelRoles'
 import { apiFetch, JWApiEra, JWApiSong } from '../lib/juicewrldApi'
 import * as reportsApi from '../lib/reportsApi'
 import type { SongReportRow, SongReportStatus } from '../lib/reportsApi'
@@ -11,7 +12,6 @@ import FilePickerModal from './FilePickerModal'
 import { BasicRow, BasicSelect, SyncedLyricsTable, cleanDate } from './EditorPage.desktop'
 import AdminPage from './AdminPage'
 import CompProposalList, { CompFilterBar, filterCompProposals, type CompFilterTab } from './CompProposalList'
-import { CONTRIBUTOR_ENABLED } from '../lib/userApi'
 
 const CATEGORIES = [
   { value: 'released', label: 'Released' },
@@ -95,7 +95,7 @@ function CopyFromSong({ onCopy, copiedFrom, onClear }: {
   )
 }
 
-function AddSongModal({ onClose, onSubmitted }: { onClose: () => void; onSubmitted: () => void }): JSX.Element {
+function AddSongModal({ onClose, onSubmitted, channel }: { onClose: () => void; onSubmitted: () => void; channel?: string }): JSX.Element {
   const [name,    setName]    = useState('')
   const [artists, setArtists] = useState('')
   const [cat,     setCat]     = useState('')
@@ -203,7 +203,7 @@ function AddSongModal({ onClose, onSubmitted }: { onClose: () => void; onSubmitt
     if (!name.trim() || submitState === 'submitting') return
     setSubmitState('submitting'); setSubmitError(null)
     try {
-      await createProposal({ song: null, change_type: 'create', title: name.trim(), proposed_data: proposed, editor_notes: edNotes })
+      await createProposal({ song: null, change_type: 'create', title: name.trim(), proposed_data: proposed, editor_notes: edNotes, channel })
       setSubmitState('submitted')
       setTimeout(() => { onSubmitted(); onClose() }, 1200)
     } catch (e) {
@@ -387,13 +387,23 @@ function changeTypeLabel(type: string): string {
 }
 
 export default function EditorProfileView(): JSX.Element {
-  const { account, setActiveView, setPendingEditorSongId, setPendingEditProposal } = useStore(useShallow(s => ({
+  const { account, setActiveView, setPendingEditorSongId, setPendingEditProposal, activeChannel, channels, setActiveChannel, loadChannels } = useStore(useShallow(s => ({
     account: s.account,
     setActiveView: s.setActiveView,
     setPendingEditorSongId: s.setPendingEditorSongId,
     setPendingEditProposal: s.setPendingEditProposal,
+    activeChannel: s.activeChannel,
+    channels: s.channels,
+    setActiveChannel: s.setActiveChannel,
+    loadChannels: s.loadChannels,
   })))
   const go = setActiveView
+  // Every list on this page — my proposals, my comp proposals, the Admin tab's
+  // review queues — is already scoped to activeChannel (see the effects
+  // below and AdminPage). ApiFilesView is the only other place that lets a
+  // user change it; without a switcher here too, reviewing a second channel
+  // meant leaving the profile to flip it in Files first.
+  useEffect(() => { if (channels.length === 0) loadChannels().catch(() => {}) }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [proposals, setProposals] = useState<SongEditProposal[]>([])
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
@@ -413,12 +423,14 @@ export default function EditorProfileView(): JSX.Element {
   // Not `|| is_administrator`: this tab lists proposals *you* submitted, and
   // an admin who never contributed has none. Their review queue is the Admin
   // tab's "Comp files" — the one place proposals are reviewed.
-  const isContributor = CONTRIBUTOR_ENABLED && !!account?.is_contributor
+  const isPrimary = isPrimaryChannelSlug(channels, activeChannel)
+  const isContributor = isChannelContributor(account, activeChannel, isPrimary)
   const isAdmin = !!account?.is_administrator
   // Managers review the same two queues admins do, so they get the same
-  // embedded panel here. AdminPage decides for itself which tabs each of them
-  // actually sees.
-  const isManager = !!account?.is_manager
+  // embedded panel here. Scoped to the active channel — a manager grant on
+  // one channel shouldn't leave this tab visible (and then erroring) on a
+  // channel they don't actually manage.
+  const isManager = isChannelManager(account, activeChannel, isPrimary)
   const canReviewStaff = isAdmin || isManager
   const [profileTab, setProfileTab] = useState<'proposals' | 'reports' | 'admin' | 'comp'>('proposals')
   const [reportStatus, setReportStatus] = useState<SongReportStatus | ''>('pending')
@@ -432,8 +444,8 @@ export default function EditorProfileView(): JSX.Element {
   useEffect(() => {
     if (profileTab !== 'comp' || !isContributor) return
     setLoadingComp(true)
-    getMyCompProposals().then(setCompProposals).catch(() => {}).finally(() => setLoadingComp(false))
-  }, [profileTab, isContributor, refreshKey])
+    getMyCompProposals(activeChannel).then(setCompProposals).catch(() => {}).finally(() => setLoadingComp(false))
+  }, [profileTab, isContributor, refreshKey, activeChannel])
 
   const handleWithdrawComp = async (id: number): Promise<void> => {
     setWithdrawingCompId(id)
@@ -485,14 +497,14 @@ export default function EditorProfileView(): JSX.Element {
   useEffect(() => {
     setRefreshing(true)
     Promise.all([
-      getMyProposals().then(setProposals).catch(() => {}),
+      getMyProposals(activeChannel).then(setProposals).catch(() => {}),
       getLeaderboard().then((data) => setLeaderboard(data as LeaderboardEntry[])).catch(() => {}),
     ]).finally(() => {
       setLoadingProposals(false)
       setLoadingLeaderboard(false)
       setRefreshing(false)
     })
-  }, [refreshKey])
+  }, [refreshKey, activeChannel])
 
   const myEntry = leaderboard.find((e) => e.discord_username === account?.discord_username)
 
@@ -536,32 +548,18 @@ export default function EditorProfileView(): JSX.Element {
             <ChevronLeft size={14} /> Back
           </button>
           <div className="flex items-center gap-1.5">
-            {(account?.is_editor || account?.is_administrator) && (
-              <>
-                <button
-                  onClick={() => go('albums-admin')}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-raised hover:bg-surface-highest text-text-secondary hover:text-text-primary text-xs font-semibold transition-colors"
-                  title="Edit albums (wrlddata.json)"
-                >
-                  Edit albums
-                </button>
-                <button
-                  onClick={() => setShowAddSong(true)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-accent/15 hover:bg-accent/25 text-accent text-xs font-semibold transition-colors"
-                  title="Propose a new song"
-                >
-                  <Plus size={12} /> New song
-                </button>
-              </>
-            )}
-            {profileTab === 'comp' && isContributor && (
-              <button
-                onClick={() => go('contributor')}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-accent/15 hover:bg-accent/25 text-accent text-xs font-semibold transition-colors"
-                title="Propose a comp file change"
-              >
-                <Plus size={12} /> New comp proposal
-              </button>
+            {channels.length > 0 && (
+              <div className="flex items-center bg-surface-overlay rounded-lg p-1 gap-0.5 mr-1">
+                {channels.map((ch) => (
+                  <button
+                    key={ch.slug}
+                    onClick={() => setActiveChannel(ch.slug)}
+                    disabled={channels.length === 1}
+                    className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${activeChannel === ch.slug ? 'bg-surface-raised text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'} disabled:opacity-70`}
+                    title={ch.description || ch.name}
+                  >{ch.name}</button>
+                ))}
+              </div>
             )}
             <button
               onClick={() => setRefreshKey(k => k + 1)}
@@ -644,20 +642,37 @@ export default function EditorProfileView(): JSX.Element {
           </div>
         </div>
       ) : profileTab === 'comp' && isContributor ? (
-        <div className="flex-1 overflow-y-auto p-5">
-          <div className="max-w-2xl flex items-center gap-3 flex-wrap mb-2">
-            <CompFilterBar filter={compFilter} setFilter={setCompFilter} />
+        <div className="flex-1 overflow-hidden p-4 md:p-5">
+          <div className="h-full flex flex-col min-h-0 overflow-hidden rounded-2xl border border-[var(--border)] bg-surface-raised/40">
+            <div className="px-5 pt-4 pb-3 shrink-0 border-b border-[var(--border)]">
+              <div className="flex items-center gap-2 mb-3">
+                <FolderOpen size={13} className="text-text-muted" />
+                <h2 className="text-text-secondary text-xs font-semibold uppercase tracking-widest">Comp Files</h2>
+                {!loadingComp && (
+                  <span className="text-text-muted text-xs">
+                    {compProposals.length} total · {compProposals.filter(p => p.status === 'approved').length} approved
+                  </span>
+                )}
+                <button
+                  onClick={() => go('contributor')}
+                  className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/15 hover:bg-accent/25 text-accent text-xs font-semibold transition-colors"
+                  title="Propose a comp file change"
+                >
+                  <Plus size={12} /> New comp proposal
+                </button>
+              </div>
+              <CompFilterBar filter={compFilter} setFilter={setCompFilter} />
+            </div>
+            <div className="flex-1 overflow-y-auto min-h-0 p-3">
+              <CompProposalList
+                proposals={filterCompProposals(compProposals, compFilter)}
+                loading={loadingComp}
+                onSelect={() => go('contributor')}
+                onWithdraw={handleWithdrawComp}
+                withdrawingId={withdrawingCompId}
+              />
+            </div>
           </div>
-          <p className="max-w-2xl text-xs text-text-muted mb-4">
-            {compProposals.filter(p => p.status === 'approved').length} approved comp proposals
-          </p>
-          <CompProposalList
-            proposals={filterCompProposals(compProposals, compFilter)}
-            loading={loadingComp}
-            onSelect={() => go('contributor')}
-            onWithdraw={handleWithdrawComp}
-            withdrawingId={withdrawingCompId}
-          />
         </div>
       ) : profileTab === 'reports' && canReviewReports ? (
         <div className="flex-1 overflow-hidden p-5">
@@ -688,7 +703,25 @@ export default function EditorProfileView(): JSX.Element {
               <FileEdit size={13} className="text-text-muted" />
               <h2 className="text-text-secondary text-xs font-semibold uppercase tracking-widest">My Proposals</h2>
               {!loadingProposals && (
-                <span className="ml-auto text-text-muted text-xs">{proposals.length} total</span>
+                <span className="text-text-muted text-xs">{proposals.length} total</span>
+              )}
+              {(account?.is_editor || account?.is_administrator) && (
+                <div className="ml-auto flex items-center gap-1.5">
+                  <button
+                    onClick={() => go('albums-admin')}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-raised hover:bg-surface-highest text-text-secondary hover:text-text-primary text-xs font-semibold transition-colors"
+                    title="Edit albums (wrlddata.json)"
+                  >
+                    Edit albums
+                  </button>
+                  <button
+                    onClick={() => setShowAddSong(true)}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/15 hover:bg-accent/25 text-accent text-xs font-semibold transition-colors"
+                    title="Propose a new song"
+                  >
+                    <Plus size={12} /> New song
+                  </button>
+                </div>
               )}
             </div>
 
@@ -881,6 +914,7 @@ export default function EditorProfileView(): JSX.Element {
         <AddSongModal
           onClose={() => setShowAddSong(false)}
           onSubmitted={() => setRefreshKey(k => k + 1)}
+          channel={activeChannel}
         />
       )}
     </div>

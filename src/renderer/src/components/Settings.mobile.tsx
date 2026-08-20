@@ -5,7 +5,7 @@ import {
   FolderOpen, FolderPlus, Minus, Loader2, Plus, AlignLeft, FileText, Trash2, Music2,
   PanelLeft, PanelTop, PanelBottom, Waves, RotateCcw, ExternalLink,
   ListOrdered, CloudUpload, Type, AlignCenter, Menu, Pencil, Upload,
-  ScrollText, ShieldCheck, User, LogOut, LogIn, AlertCircle, GripVertical, Images,
+  ScrollText, ShieldCheck, User, LogOut, LogIn, AlertCircle, GripVertical, Images, Search, X,
 } from 'lucide-react'
 import { useStore, useStorePick, type SidebarPosition } from '../store/useStore'
 import { SKINS, getSkin, createCustomSkin, parseSkinFile } from '../lib/skins'
@@ -114,6 +114,51 @@ const NAV_POSITIONS: { id: SidebarPosition; label: string; icon: ElementType }[]
 type Tab = 'account' | 'appearance' | 'playback' | 'feedback' | 'about'
 
 const SECTION_IDS: Tab[] = ['account', 'appearance', 'playback', 'feedback', 'about']
+
+// A hand-maintained index of every setting row, used by the search bar to
+// jump straight to the tab a match lives on. Only lists rows that actually
+// exist on the mobile layout — no Shortcuts/Library/App/Developer tabs here
+// (keyboard shortcuts and Electron-only settings don't apply on mobile).
+const SETTINGS_SEARCH_INDEX: { tab: Tab; label: string; sub?: string }[] = [
+  // Appearance
+  { tab: 'appearance', label: 'Skin', sub: 'Custom skin colors and presets' },
+  { tab: 'appearance', label: 'Accent color' },
+  { tab: 'appearance', label: 'Gradient surfaces', sub: 'Accent-tinted gradients behind the app, sidebar, and player' },
+  { tab: 'appearance', label: 'Surface gradients', sub: 'Accent-tinted gradients on toggle groups, search bars, badges, and menus' },
+  { tab: 'appearance', label: 'Theme background in WRLD', sub: "Use the app's theme behind the WRLD tab instead of the playing song's cover" },
+  { tab: 'appearance', label: 'App font' },
+  { tab: 'appearance', label: 'Lyrics font' },
+  { tab: 'appearance', label: 'App text size' },
+  { tab: 'appearance', label: 'Lyrics text size' },
+  { tab: 'appearance', label: 'Lyrics alignment' },
+  { tab: 'appearance', label: 'Blur inactive lyrics', sub: 'Soften every synced line except the one playing' },
+  { tab: 'appearance', label: 'Lyric colors', sub: 'Current line and other lines' },
+  { tab: 'appearance', label: 'Navigation position', sub: 'Where the nav menu sits' },
+  { tab: 'appearance', label: 'Menu items', sub: 'Reorder or hide nav tabs' },
+  { tab: 'appearance', label: 'Menu controls', sub: 'Reorder or hide the buttons at the foot of the menu' },
+  // Playback
+  { tab: 'playback', label: 'Audio output' },
+  { tab: 'playback', label: 'Lyrics sync', sub: 'Offset lyrics timing' },
+  { tab: 'playback', label: 'Crossfade' },
+  { tab: 'playback', label: 'Smooth fade when pausing' },
+  { tab: 'playback', label: 'Prefer OG version' },
+  { tab: 'playback', label: 'Rotate suggested covers' },
+  { tab: 'playback', label: 'Era covers', sub: 'Custom cover art per era, used when a song has no cover of its own' },
+  { tab: 'playback', label: 'Sleep timer' },
+  { tab: 'playback', label: 'Last.fm scrobbling' },
+  // Feedback / About
+  { tab: 'feedback', label: 'Feedback', sub: 'Report a bug or share an idea' },
+  { tab: 'about', label: 'About', sub: 'Version, GitHub, Discord, API links' },
+  { tab: 'about', label: 'Auth Token', sub: 'View and copy your account token' },
+  { tab: 'about', label: 'API Docs' },
+  { tab: 'about', label: 'GitHub' },
+  { tab: 'about', label: 'Discord' },
+  { tab: 'about', label: 'Terms of Service' },
+  { tab: 'about', label: 'Privacy Policy' },
+  { tab: 'about', label: 'Become an Editor' },
+  { tab: 'about', label: 'Become a Contributor' },
+  { tab: 'about', label: 'FAQ', sub: 'What is this? Who are you? Why did you build this? Technical stuff?' },
+]
 
 // ── Row primitives ────────────────────────────────────────────────────────
 // Every section is built from these three, inside a SettingsCard: `Row` for a
@@ -502,6 +547,23 @@ export default function Settings(): JSX.Element {
   const [pickerOpen, setPickerOpen] = useState<'skin' | 'appFont' | 'lyricsFont' | null>(null)
   useBackToClose(() => setPickerOpen(null), pickerOpen !== null)
 
+  // ── Settings search — a flat filter over SETTINGS_SEARCH_INDEX rather than
+  // per-tab content, since matches can live on a tab you're not currently
+  // viewing. Gated the same way the rows themselves are (electron/dev mode)
+  // so a result never points at a tab that doesn't exist in this build.
+  const [settingsQuery, setSettingsQuery] = useState('')
+  const settingsQueryTrimmed = settingsQuery.trim().toLowerCase()
+  const searchResults = settingsQueryTrimmed
+    ? SETTINGS_SEARCH_INDEX.filter((r) =>
+        r.label.toLowerCase().includes(settingsQueryTrimmed) || r.sub?.toLowerCase().includes(settingsQueryTrimmed)
+      )
+    : []
+  const jumpToResult = (t: Tab): void => {
+    setTab(t)
+    setInSection(true)
+    setSettingsQuery('')
+  }
+
   // `sub` shows under the label in the category list; `color` is the badge
   // tint, matching the iOS-Settings idiom the Row primitive already uses.
   const tabs: { id: Tab; label: string; icon: ElementType; color: string; sub: string }[] = [
@@ -707,6 +769,57 @@ export default function Settings(): JSX.Element {
             instead of sharing it with a pill scroller. */}
         {!inSection && (
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 pt-3 pb-6 space-y-4">
+            {/* Search — a flat filter over every setting row (see
+                SETTINGS_SEARCH_INDEX), not just the active tab; picking a
+                result drills straight into its section. */}
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+              <input
+                type="text"
+                value={settingsQuery}
+                onChange={(e) => setSettingsQuery(e.target.value)}
+                placeholder="Search settings"
+                className="w-full bg-[var(--surface-overlay)] text-text-primary text-sm rounded-xl pl-9 pr-9 py-2.5 border border-[var(--border)] placeholder:text-text-muted focus:outline-none focus:border-[var(--accent)] transition-colors"
+              />
+              {settingsQuery && (
+                <button
+                  onClick={() => setSettingsQuery('')}
+                  title="Clear search"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted active:text-text-primary transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            {settingsQueryTrimmed ? (
+              <div>
+                <h3 className="text-text-primary text-lg font-bold mb-4">
+                  {searchResults.length > 0 ? `${searchResults.length} result${searchResults.length === 1 ? '' : 's'}` : 'No results'}
+                </h3>
+                {searchResults.length === 0 && (
+                  <p className="text-text-muted text-sm">Nothing matches “{settingsQuery.trim()}”.</p>
+                )}
+                <div className="flex flex-col">
+                  {searchResults.map((r, i) => (
+                    <button
+                      key={`${r.tab}-${r.label}-${i}`}
+                      onClick={() => jumpToResult(r.tab)}
+                      className="flex items-center justify-between gap-3 py-3 border-b border-[var(--border)] last:border-b-0 text-left active:bg-[var(--surface-overlay)] -mx-2 px-2 rounded-lg transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-text-primary text-sm truncate">{r.label}</p>
+                        {r.sub && <p className="text-text-muted text-[11px] truncate">{r.sub}</p>}
+                      </div>
+                      <span className="shrink-0 text-[11px] font-medium text-text-muted bg-[var(--surface-overlay)] border border-[var(--border)] rounded-full px-2 py-0.5">
+                        {tabs.find((t) => t.id === r.tab)?.label ?? r.tab}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <>
             {/* Account gets a profile header rather than a list row — the
                 platform idiom (iOS's Apple ID card, Android's account chip),
                 and it makes signing in discoverable instead of buried as one
@@ -755,6 +868,8 @@ export default function Settings(): JSX.Element {
                 </button>
               ))}
             </div>
+              </>
+            )}
 
           </div>
         )}
@@ -847,7 +962,7 @@ export default function Settings(): JSX.Element {
             )}
 
             {/* ── Appearance ── */}
-            {tab === 'appearance' && (
+            {!settingsQueryTrimmed && tab === 'appearance' && (
               <div>
                 <SettingsCard title="Theme">
                   <Block
@@ -1109,7 +1224,7 @@ export default function Settings(): JSX.Element {
             )}
 
             {/* ── Playback ── */}
-            {tab === 'playback' && (
+            {!settingsQueryTrimmed && tab === 'playback' && (
               <div>
                 <SettingsCard title="Audio">
                   {devices.length > 0 && (
@@ -1277,7 +1392,7 @@ export default function Settings(): JSX.Element {
             )}
 
             {/* ── Feedback ── */}
-            {tab === 'feedback' && (
+            {!settingsQueryTrimmed && tab === 'feedback' && (
               <div>
                 <p className="text-text-muted text-xs mb-4 leading-relaxed">
                   Found a bug or have an idea? Let us know. To report a problem with a
@@ -1288,7 +1403,7 @@ export default function Settings(): JSX.Element {
             )}
 
             {/* ── About ── */}
-            {tab === 'about' && (
+            {!settingsQueryTrimmed && tab === 'about' && (
               <div>
                 <p className="text-text-muted text-xs mb-3">
                   unreleased v{APP_VERSION} &mdash; powered by{' '}

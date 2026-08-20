@@ -5,7 +5,7 @@ import {
   FolderOpen, Monitor, BellOff, Minus, Loader2, Plus, AlignLeft, FileText, Trash2, Wrench, FlaskConical,
   PanelLeft, PanelRight, PanelTop, PanelBottom, Waves, Keyboard, RotateCcw, AppWindow, PictureInPicture2, Minimize2,
   ListOrdered, GripVertical, CloudUpload, Type, AlignCenter, Menu, Pencil, Upload,
-  ScrollText, ShieldCheck, Disc, Images,
+  ScrollText, ShieldCheck, Disc, Images, Search,
 } from 'lucide-react'
 import { useStore, useStorePick, type SidebarPosition } from '../store/useStore'
 import { HOTKEY_ACTIONS, HOTKEY_CATEGORIES, effectiveBinding, comboTokens, eventToCombo } from '../lib/hotkeys'
@@ -58,6 +58,56 @@ const NAV_POSITIONS: { id: SidebarPosition; label: string; icon: ElementType }[]
 ]
 
 type Tab = 'appearance' | 'playback' | 'shortcuts' | 'feedback' | 'about'
+
+// A hand-maintained index of every setting row, used by the search bar to
+// jump straight to the tab a match lives on. `electronOnly`/`devOnly` mirror
+// the same gates the rows themselves are rendered behind, so a search never
+// offers to jump somewhere the tab doesn't actually exist.
+const SETTINGS_SEARCH_INDEX: { tab: Tab; label: string; sub?: string; electronOnly?: boolean; devOnly?: boolean }[] = [
+  // Appearance
+  { tab: 'appearance', label: 'Skin', sub: 'Custom skin colors and presets' },
+  { tab: 'appearance', label: 'Accent color' },
+  { tab: 'appearance', label: 'Gradient surfaces', sub: 'Accent-tinted gradients behind the app, sidebar, and player' },
+  { tab: 'appearance', label: 'Surface gradients', sub: 'Accent-tinted gradients on toggle groups, search bars, badges, and menus' },
+  { tab: 'appearance', label: 'Theme background in WRLD', sub: "Use the app's theme behind the WRLD tab instead of the playing song's cover" },
+  { tab: 'appearance', label: 'App font' },
+  { tab: 'appearance', label: 'Lyrics font' },
+  { tab: 'appearance', label: 'App text size' },
+  { tab: 'appearance', label: 'Lyrics text size' },
+  { tab: 'appearance', label: 'Lyrics alignment' },
+  { tab: 'appearance', label: 'Blur inactive lyrics', sub: 'Soften every synced line except the one playing' },
+  { tab: 'appearance', label: 'Lyric colors', sub: 'Current line and other lines' },
+  { tab: 'appearance', label: 'Navigation position', sub: 'Where the nav menu sits — left, right, top, bottom' },
+  { tab: 'appearance', label: 'App menu button', sub: 'Where the File / Edit / View… menu opens from', electronOnly: true },
+  { tab: 'appearance', label: 'Menu items', sub: 'Reorder or hide sidebar tabs' },
+  { tab: 'appearance', label: 'Menu controls', sub: 'Reorder or hide the buttons at the foot of the menu' },
+  // Playback
+  { tab: 'playback', label: 'Audio output' },
+  { tab: 'playback', label: 'Lyrics sync', sub: 'Offset lyrics timing' },
+  { tab: 'playback', label: 'Crossfade' },
+  { tab: 'playback', label: 'Smooth fade when pausing' },
+  { tab: 'playback', label: 'Prefer OG version' },
+  { tab: 'playback', label: 'Rotate suggested covers' },
+  { tab: 'playback', label: 'Era covers', sub: 'Custom cover art per era, used when a song has no cover of its own' },
+  { tab: 'playback', label: 'Sleep timer' },
+  { tab: 'playback', label: 'Last.fm scrobbling' },
+  // Shortcuts
+  { tab: 'shortcuts', label: 'Skip amount', sub: 'How far skip-forward / skip-backward jump' },
+  { tab: 'shortcuts', label: 'Global shortcuts', sub: 'Work while the app is in the background', electronOnly: true },
+  { tab: 'shortcuts', label: 'Keyboard shortcuts', sub: 'Rebind any in-app or global hotkey' },
+  // Feedback / About
+  { tab: 'feedback', label: 'Feedback', sub: 'Report a bug or share an idea' },
+  { tab: 'about', label: 'About', sub: 'Version, GitHub, Discord, API links' },
+  { tab: 'about', label: 'Auth Token', sub: 'View and copy your account token' },
+  { tab: 'about', label: 'API Docs' },
+  { tab: 'about', label: 'GitHub' },
+  { tab: 'about', label: 'Discord' },
+  { tab: 'about', label: 'Terms of Service' },
+  { tab: 'about', label: 'Privacy Policy' },
+  { tab: 'about', label: 'Become an Editor' },
+  { tab: 'about', label: 'Become a Contributor' },
+  { tab: 'about', label: 'FAQ', sub: 'What is this? Who are you? Why did you build this? Technical stuff?' },
+]
 
 // ── Flat row primitive — no card/box, just an icon + label on the left and
 // a control on the right, separated by a hairline. Used inside each tab's
@@ -397,6 +447,24 @@ export default function Settings(): JSX.Element {
     { id: 'about', label: 'About', icon: Info },
   ]
 
+  // ── Settings search — a flat filter over SETTINGS_SEARCH_INDEX rather than
+  // per-tab content, since matches can live on a tab you're not currently
+  // viewing. Gated the same way the rows themselves are (electron/dev mode)
+  // so a result never points at a tab that doesn't exist in this build.
+  const [settingsQuery, setSettingsQuery] = useState('')
+  const settingsQueryTrimmed = settingsQuery.trim().toLowerCase()
+  const searchResults = settingsQueryTrimmed
+    ? SETTINGS_SEARCH_INDEX.filter((r) =>
+        !r.electronOnly &&
+        (!r.devOnly || developerMode) &&
+        (r.label.toLowerCase().includes(settingsQueryTrimmed) || r.sub?.toLowerCase().includes(settingsQueryTrimmed))
+      )
+    : []
+  const jumpToResult = (t: Tab): void => {
+    setTab(t)
+    setSettingsQuery('')
+  }
+
   // A deep-linked open (app menu → "Keyboard shortcuts"/"Version") sets
   // settingsTab; jump to it, then clear so a later plain open lands wherever
   // the user last was rather than snapping back here.
@@ -443,13 +511,38 @@ export default function Settings(): JSX.Element {
           </div>
         </div>
 
+        {/* Search — a flat filter over every setting row (see
+            SETTINGS_SEARCH_INDEX), not just the current tab, since the row
+            you're after might live somewhere you're not currently looking. */}
+        <div className="shrink-0 px-4 sm:px-3 pt-3 pb-2 border-b border-[var(--border)]">
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+            <input
+              type="text"
+              value={settingsQuery}
+              onChange={(e) => setSettingsQuery(e.target.value)}
+              placeholder="Search settings"
+              className="w-full bg-[var(--surface-overlay)] text-text-primary text-sm rounded-lg pl-8 pr-8 py-1.5 border border-[var(--border)] placeholder:text-text-muted focus:outline-none focus:border-[var(--accent)] transition-colors"
+            />
+            {settingsQuery && (
+              <button
+                onClick={() => setSettingsQuery('')}
+                title="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* Mobile tab bar — the sidebar collapses below sm, so categories
             move into a horizontal scroller instead. */}
         <div className="sm:hidden shrink-0 flex gap-1.5 px-4 py-2.5 border-b border-[var(--border)] overflow-x-auto">
           {tabs.map((t) => (
             <button
               key={t.id}
-              onClick={() => setTab(t.id)}
+              onClick={() => { setTab(t.id); setSettingsQuery('') }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors shrink-0 ${
                 tab === t.id ? 'bg-accent/15 text-accent' : 'text-text-muted hover:text-text-primary bg-[var(--surface-overlay)]'
               }`}
@@ -467,7 +560,7 @@ export default function Settings(): JSX.Element {
             {tabs.map((t) => (
               <button
                 key={t.id}
-                onClick={() => setTab(t.id)}
+                onClick={() => { setTab(t.id); setSettingsQuery('') }}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors mb-0.5 ${
                   tab === t.id ? 'bg-accent/15 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-[var(--surface-overlay)]'
                 }`}
@@ -480,8 +573,38 @@ export default function Settings(): JSX.Element {
 
           <div className="flex-1 min-w-0 overflow-y-auto px-6 py-5">
 
+            {/* ── Search results ── shown instead of the active tab's content
+                whenever there's a query; picking one jumps to its tab. */}
+            {settingsQueryTrimmed && (
+              <div>
+                <h3 className="text-text-primary text-lg font-bold mb-4">
+                  {searchResults.length > 0 ? `${searchResults.length} result${searchResults.length === 1 ? '' : 's'}` : 'No results'}
+                </h3>
+                {searchResults.length === 0 && (
+                  <p className="text-text-muted text-sm">Nothing matches “{settingsQuery.trim()}”.</p>
+                )}
+                <div className="flex flex-col">
+                  {searchResults.map((r, i) => (
+                    <button
+                      key={`${r.tab}-${r.label}-${i}`}
+                      onClick={() => jumpToResult(r.tab)}
+                      className="flex items-center justify-between gap-3 py-3 border-b border-[var(--border)] last:border-b-0 text-left hover:bg-[var(--surface-overlay)] -mx-2 px-2 rounded-lg transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-text-primary text-sm truncate">{r.label}</p>
+                        {r.sub && <p className="text-text-muted text-[11px] truncate">{r.sub}</p>}
+                      </div>
+                      <span className="shrink-0 text-[11px] font-medium text-text-muted bg-[var(--surface-overlay)] border border-[var(--border)] rounded-full px-2 py-0.5">
+                        {tabs.find((t) => t.id === r.tab)?.label ?? r.tab}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* ── Appearance ── */}
-            {tab === 'appearance' && (
+            {!settingsQueryTrimmed && tab === 'appearance' && (
               <div>
                 <h3 className="text-text-primary text-lg font-bold mb-4">Appearance</h3>
                 <div className="py-3 border-b border-[var(--border)]">
@@ -1049,7 +1172,7 @@ export default function Settings(): JSX.Element {
             )}
 
             {/* ── Playback ── */}
-            {tab === 'playback' && (
+            {!settingsQueryTrimmed && tab === 'playback' && (
               <div>
                 <h3 className="text-text-primary text-lg font-bold mb-4">Playback</h3>
                 {devices.length > 0 && (
@@ -1210,7 +1333,7 @@ export default function Settings(): JSX.Element {
             )}
 
             {/* ── Shortcuts ── */}
-            {tab === 'shortcuts' && (
+            {!settingsQueryTrimmed && tab === 'shortcuts' && (
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <h3 className="text-text-primary text-lg font-bold">Keyboard Shortcuts</h3>
@@ -1299,7 +1422,7 @@ export default function Settings(): JSX.Element {
             )}
 
             {/* ── Feedback ── */}
-            {tab === 'feedback' && (
+            {!settingsQueryTrimmed && tab === 'feedback' && (
               <div>
                 <h3 className="text-text-primary text-lg font-bold mb-1">Feedback</h3>
                 <p className="text-text-muted text-xs mb-4 leading-relaxed max-w-md">
@@ -1313,7 +1436,7 @@ export default function Settings(): JSX.Element {
             )}
 
             {/* ── About ── */}
-            {tab === 'about' && (
+            {!settingsQueryTrimmed && tab === 'about' && (
               <div>
                 <h3 className="text-text-primary text-lg font-bold mb-3">About</h3>
                 <p className="text-text-muted text-xs mb-3">

@@ -19,6 +19,7 @@ import {
 } from '../lib/juicewrldApi'
 import { Track } from '../types'
 import * as userApi from '../lib/userApi'
+import { useCanEdit } from '../hooks/useChannelRoles'
 import { versionsEnabled, linkSongVersion, getOwnVersionMeta, setGroupVersionTitle } from '../lib/versionsApi'
 import { fetchAllCompactGroups, filterCompactGroups, invalidateCompactGroupsCache, subscribeCompactGroupsInvalidation } from '../lib/compactGroups'
 import type { CompactGroup } from '../lib/compactGroups'
@@ -820,7 +821,7 @@ export default function ApiTrackerView(): JSX.Element {
     currentTrack: s.currentTrack, isPlaying: s.isPlaying,
   })))
 
-  const canEdit = !!(account?.is_editor || account?.is_administrator)
+  const canEdit = useCanEdit()
   const playingId = currentTrack?.id ?? null
 
   const [trackerTab, setTrackerTab] = useState<TrackerTab>('songs')

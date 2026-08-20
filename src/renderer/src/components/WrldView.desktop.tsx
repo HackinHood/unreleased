@@ -14,6 +14,7 @@ import { resumeEffectsContext } from '../lib/audioEffects'
 import { getVersionGroup } from '../lib/versionsApi'
 import type { JWApiSong } from '../lib/juicewrldApi'
 import * as userApi from '../lib/userApi'
+import { useCanEdit } from '../hooks/useChannelRoles'
 import SongInfoModal from './SongInfoModal'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { ProgressiveCover } from './ProgressiveCover'
@@ -1505,18 +1506,17 @@ const FmLikeButton = memo(function FmLikeButton({ light }: { light: boolean }): 
 // (like LyricsPanel/FmProgressBar) so it reads the store directly instead of
 // drilling props from WrldView.
 const SongMenu = memo(function SongMenu({ light }: { light: boolean }): JSX.Element {
-  const { currentTrack, radioFmActive, radioFmNowPlaying, radioFmMatchedSong, likedTrackIds, toggleLike, account, setActiveView, setPendingEditorSongId } = useStore(useShallow(s => ({
+  const { currentTrack, radioFmActive, radioFmNowPlaying, radioFmMatchedSong, likedTrackIds, toggleLike, setActiveView, setPendingEditorSongId } = useStore(useShallow(s => ({
     currentTrack: s.currentTrack,
     radioFmActive: s.radioFmActive,
     radioFmNowPlaying: s.radioFmNowPlaying,
     radioFmMatchedSong: s.radioFmMatchedSong,
     likedTrackIds: s.likedTrackIds,
     toggleLike: s.toggleLike,
-    account: s.account,
     setActiveView: s.setActiveView,
     setPendingEditorSongId: s.setPendingEditorSongId,
   })))
-  const canEdit = !!(account?.is_editor || account?.is_administrator)
+  const canEdit = useCanEdit()
 
   const [open, setOpen] = useState(false)
   const [showSongInfo, setShowSongInfo] = useState(false)
@@ -1663,6 +1663,15 @@ const WrldQueuePanel = memo(function WrldQueuePanel({ onClose, variant }: {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
+  const [search, setSearch] = useState('')
+
+  const query = search.trim().toLowerCase()
+  const matchesQuery = (track: Track): boolean =>
+    !query || track.title.toLowerCase().includes(query) || track.artist.toLowerCase().includes(query)
+  // Pair each track with its original absolute index so onPlay/onRemove keep
+  // working correctly after filtering shrinks the array.
+  const upcomingIndexed = upcoming.map((track, i) => ({ track, i }))
+  const filteredUpcoming = query ? upcomingIndexed.filter(({ track }) => matchesQuery(track)) : upcomingIndexed
 
   const handleDrop = (idx: number): void => {
     if (dragIdx !== null && dragIdx !== idx) reorderQueue(dragIdx, idx)
@@ -1712,6 +1721,26 @@ const WrldQueuePanel = memo(function WrldQueuePanel({ onClose, variant }: {
         </div>
       </div>
 
+      {queue.length > 0 && (
+        <div className="relative z-10 px-3 pt-3 shrink-0">
+          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white/[0.07]">
+            <Search size={13} className="text-white/50 shrink-0" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search queue"
+              className="flex-1 min-w-0 bg-transparent text-xs text-white/90 placeholder:text-white/40 outline-none"
+            />
+            {search && (
+              <button onClick={() => setSearch('')} className="text-white/50 hover:text-white/90 transition-colors shrink-0">
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="relative z-10 flex-1 overflow-y-auto wrld-queue-scroll" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.2) transparent' }}>
         <style>{`
           .wrld-queue-scroll::-webkit-scrollbar { width: 6px; }
@@ -1735,32 +1764,44 @@ const WrldQueuePanel = memo(function WrldQueuePanel({ onClose, variant }: {
               </span>
               <ChevronDown size={12} className={`transition-transform ${historyOpen ? 'rotate-180' : ''}`} />
             </button>
-            {historyOpen && (
-              <div className="opacity-60">
-                {[...history].reverse().slice(0, WRLD_MAX_HISTORY_SHOWN).map((track, i) => (
-                  <WrldQueueRow
-                    key={`hist-${track.id}-${i}`}
-                    track={track}
-                    isActive={false}
-                    isPlaying={false}
-                    onPlay={() => radioMode ? jumpToTrack(track) : playTrack(track)}
-                  />
-                ))}
-                {history.length > WRLD_MAX_HISTORY_SHOWN && (
-                  <p className="text-white/40 text-[10px] text-center py-1">
-                    +{history.length - WRLD_MAX_HISTORY_SHOWN} older
-                  </p>
-                )}
-              </div>
-            )}
+            {historyOpen && (() => {
+              // Displayed newest-first, so reversed index i maps back to
+              // absolute queue position history.length - 1 - i.
+              const reversedIndexed = [...history].reverse().map((track, i) => ({ track, i }))
+              const filtered = query ? reversedIndexed.filter(({ track }) => matchesQuery(track)) : reversedIndexed
+              const shown = query ? filtered : filtered.slice(0, WRLD_MAX_HISTORY_SHOWN)
+              return (
+                <div className="opacity-60">
+                  {shown.map(({ track, i }) => (
+                    <WrldQueueRow
+                      key={`hist-${track.id}-${i}`}
+                      track={track}
+                      isActive={false}
+                      isPlaying={false}
+                      onPlay={() => radioMode ? jumpToTrack(track) : playTrack(track)}
+                    />
+                  ))}
+                  {!query && filtered.length > WRLD_MAX_HISTORY_SHOWN && (
+                    <p className="text-white/40 text-[10px] text-center py-1">
+                      +{filtered.length - WRLD_MAX_HISTORY_SHOWN} older
+                    </p>
+                  )}
+                  {query && shown.length === 0 && (
+                    <p className="text-white/40 text-[10px] text-center py-1">No matches</p>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         )}
 
         {currentTrack ? (
-          <div className="px-3 py-3">
-            <p className="text-white/50 text-[10px] uppercase tracking-widest px-1 mb-2 font-semibold">Now Playing</p>
-            <WrldQueueRow track={currentTrack} isActive isPlaying={isPlaying} />
-          </div>
+          !query && (
+            <div className="px-3 py-3">
+              <p className="text-white/50 text-[10px] uppercase tracking-widest px-1 mb-2 font-semibold">Now Playing</p>
+              <WrldQueueRow track={currentTrack} isActive isPlaying={isPlaying} />
+            </div>
+          )
         ) : (
           <div className="flex flex-col items-center justify-center h-40 gap-2 text-center px-8">
             <ListMusic className="text-white/30 w-8 h-8" />
@@ -1768,17 +1809,17 @@ const WrldQueuePanel = memo(function WrldQueuePanel({ onClose, variant }: {
           </div>
         )}
 
-        {currentTrack && <div className="mx-3 border-t border-white/10" />}
+        {!query && currentTrack && <div className="mx-3 border-t border-white/10" />}
 
-        {upcoming.length > 0 ? (
+        {filteredUpcoming.length > 0 ? (
           <div className="px-3 pt-3 pb-6">
             <p className="text-white/50 text-[10px] uppercase tracking-widest px-1 mb-2 font-semibold">
-              {shuffle ? 'Shuffle' : 'Up Next'} · {upcoming.length}
+              {query ? 'Results' : shuffle ? 'Shuffle' : 'Up Next'} · {filteredUpcoming.length}
             </p>
-            {upcoming.map((track, i) => (
+            {filteredUpcoming.map(({ track, i }) => (
               <div
                 key={`${track.id}-${queueIndex + 1 + i}`}
-                draggable
+                draggable={!query}
                 onDragStart={() => setDragIdx(i)}
                 onDragOver={(e) => { e.preventDefault(); setDragOverIdx(i) }}
                 onDrop={() => handleDrop(i)}
@@ -1789,13 +1830,15 @@ const WrldQueuePanel = memo(function WrldQueuePanel({ onClose, variant }: {
                   track={track}
                   isActive={false}
                   isPlaying={false}
-                  showDrag
+                  showDrag={!query}
                   onPlay={() => playTrack(track, queue.slice(queueIndex + 1 + i))}
                   onRemove={() => removeFromQueue(queueIndex + 1 + i)}
                 />
               </div>
             ))}
           </div>
+        ) : query ? (
+          <p className="text-white/50 text-xs text-center py-4">No matches</p>
         ) : currentTrack ? (
           <p className="text-white/50 text-xs text-center py-4">Nothing up next</p>
         ) : null}

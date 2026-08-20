@@ -223,10 +223,14 @@ function OverviewTab() {
           <Endpoint method="GET" path="/radio/random/" description="Random playable song with full metadata" />
           <Endpoint method="GET" path="/radio/live/" description="Live 999 FM station state — now playing, votes, listeners" />
           <Endpoint method="GET" path="/radio/stream.mp3" description="Live radio MP3 stream (WebSocket /ws/radio/ carries the same audio + metadata)" />
+          <Endpoint method="GET" path="/files/channels/" description="List active comp channels (public)" />
           <Endpoint method="GET" path="/files/browse/" description="Browse the file system" />
+          <Endpoint method="GET" path="/files/list-all/" description="Flat listing of every file in a comp channel" />
           <Endpoint method="GET" path="/files/info/" description="Metadata for a single file" />
           <Endpoint method="GET" path="/files/cover-art/" description="Cover art image for an audio file" />
+          <Endpoint method="GET" path="/files/thumbnail/" description="Thumbnail image for a file" />
           <Endpoint method="GET" path="/files/download/" description="Stream/download audio — supports Range requests" />
+          <Endpoint method="POST" path="/files/zip-selection/" description="Immediate ZIP stream of selected paths (not a background job)" />
           <Endpoint method="GET" path="/versions/" description="All song-version rows (bulk mode via ?all=true)" />
           <Endpoint method="GET" path="/versions/{song_id}/" description="Version row for one song, if linked" />
           <Endpoint method="POST" path="/versions/" description="Link a song into a version group (editor+)" />
@@ -258,6 +262,23 @@ function OverviewTab() {
           <Endpoint method="POST" path="/accounts/admin/comp-proposals/{id}/reverse/" description="Reverse an approved comp-file proposal (admin)" />
           <Endpoint method="GET" path="/accounts/admin/comp-proposals/{id}/staging/" description="Download the staged file for review (admin)" />
           <Endpoint method="GET" path="/accounts/admin/comp-files/{filepath}/history/" description="Revision history for a compilation file (admin)" />
+          <Endpoint method="GET" path="/accounts/admin/channels/" description="List all comp channels, incl. inactive (admin)" />
+          <Endpoint method="POST" path="/accounts/admin/channels/" description="Create a comp channel (admin)" />
+          <Endpoint method="PATCH" path="/accounts/admin/channels/{id}/" description="Rename/describe/reactivate a comp channel (admin)" />
+          <Endpoint method="DELETE" path="/accounts/admin/channels/{id}/" description="Deactivate a comp channel (admin)" />
+          <Endpoint method="GET" path="/accounts/admin/channels/{id}/members/" description="List a comp channel's per-user role memberships (admin)" />
+          <Endpoint method="POST" path="/accounts/admin/channels/{id}/members/" description="Set a user's editor/contributor/manager flags for a comp channel (admin)" />
+          <Endpoint method="GET" path="/news/" description="Paginated news feed. Filter: ?channel=, sort: ?ordering=" />
+          <Endpoint method="GET" path="/news/{id}/" description="Single news post" />
+          <Endpoint method="POST" path="/news/" description="Create a news post (is_news or admin)" />
+          <Endpoint method="PATCH" path="/news/{id}/" description="Edit a news post — own post only unless admin (is_news or admin)" />
+          <Endpoint method="DELETE" path="/news/{id}/" description="Delete a news post — own post only unless admin (is_news or admin)" />
+          <Endpoint method="GET" path="/news/channels/" description="List news channels" />
+          <Endpoint method="POST" path="/news/channels/" description="Create a news channel (admin)" />
+          <Endpoint method="PATCH" path="/news/channels/{slug}/" description="Rename/describe a news channel (admin)" />
+          <Endpoint method="DELETE" path="/news/channels/{slug}/" description="Delete a news channel — only if empty (admin)" />
+          <Endpoint method="POST" path="/news/uploads/" description="Upload a post attachment — multipart, ≤25MB (is_news or admin)" />
+          <Endpoint method="GET" path="/news/attachments/{id}/stream/" description="Stream/download a hosted attachment" />
           <Endpoint method="GET" path="/library/favorites/" description="List personal favorites (any logged-in user)" />
           <Endpoint method="POST" path="/library/favorites/" description="Add a favorite" />
           <Endpoint method="DELETE" path="/library/favorites/{song_id}/" description="Remove a favorite" />
@@ -471,12 +492,61 @@ function SongsTab() {
 function FilesTab() {
   return (
     <div className="space-y-6">
+      <Section title="Comp Channels">
+        <p className="text-sm text-text-secondary leading-relaxed">
+          The file tree can be split into multiple <span className="font-semibold text-text-primary">comp
+          channels</span> (<Code>comp</Code>, <Code>comp_alrdywrld</Code>, …) — each its own root on disk, with its
+          own staging/archive folders and its own edit-proposal and comp-file-proposal queues. Editor/contributor/manager
+          access is a <span className="font-semibold text-text-primary">per-channel membership</span>, not just the
+          old global profile flags (see Roles above). These are a completely separate system from News channels
+          (News tab) — different slugs, different roles, different storage; <Code>?channel=</Code> means something
+          different depending which endpoint it&apos;s on.
+        </p>
+        <p className="text-xs text-text-muted mt-2">
+          Every endpoint on this tab accepts an optional <Code>channel</Code> param (query string on GET, JSON/form
+          field on POST) — omit it, or pass an unrecognized slug, and the API falls back to the primary channel.
+          Paths are always relative to that one channel&apos;s root, never across trees.
+        </p>
+        <div className="flex items-center gap-2 mb-1 mt-3"><Badge color="get">GET</Badge><code className="text-xs font-mono text-text-primary">/files/channels/</code></div>
+        <p className="text-xs text-text-muted mb-2">Public, no auth. Active channels only.</p>
+        <Pre>{`{
+  "channels": [
+    { "slug": "compilation", "name": "Compilation", "description": "", "is_primary": true }
+  ]
+}`}</Pre>
+        <p className="text-xs text-text-muted">
+          For the full list including inactive channels (plus <Code>id</Code>, <Code>is_active</Code>,{' '}
+          <Code>sort_order</Code>), see <Code>GET /accounts/admin/channels/</Code> under Admin: Channels
+          (Auth &amp; Accounts tab) — admin-only.
+        </p>
+      </Section>
+
       <Section title="GET /files/browse/ — Directory Listing">
         <Table
           headers={['Param', 'Required', 'Description']}
           rows={[
             [<Code>path</Code>, 'No', 'Directory path relative to compilation root'],
             [<Code>search</Code>, 'No', 'Filter items by name (e.g. ".mp3")'],
+            [<Code>channel</Code>, 'No', 'Comp channel slug — defaults to the primary channel'],
+          ]}
+        />
+      </Section>
+
+      <Section title="GET /files/list-all/ — Flat File List" defaultOpen={false}>
+        <Table
+          headers={['Param', 'Required', 'Description']}
+          rows={[
+            [<Code>channel</Code>, 'No', 'Comp channel slug — defaults to the primary channel'],
+          ]}
+        />
+      </Section>
+
+      <Section title="GET /files/thumbnail/ — Thumbnail Image" defaultOpen={false}>
+        <Table
+          headers={['Param', 'Required', 'Description']}
+          rows={[
+            [<Code>path</Code>, 'Yes', 'File path relative to compilation root'],
+            [<Code>channel</Code>, 'No', 'Comp channel slug — defaults to the primary channel'],
           ]}
         />
       </Section>
@@ -486,6 +556,7 @@ function FilesTab() {
           headers={['Param', 'Required', 'Description']}
           rows={[
             [<Code>path</Code>, 'Yes', 'File path relative to compilation root'],
+            [<Code>channel</Code>, 'No', 'Comp channel slug — defaults to the primary channel'],
           ]}
         />
       </Section>
@@ -496,6 +567,7 @@ function FilesTab() {
           rows={[
             [<Code>path</Code>, 'Yes', 'Audio file path relative to compilation root'],
             [<Code>small</Code>, 'No', <>&quot;true&quot; — returns a degraded ~128px JPEG instead of the full-size embedded art</>],
+            [<Code>channel</Code>, 'No', 'Comp channel slug — defaults to the primary channel'],
           ]}
         />
         <p className="text-xs text-text-muted">
@@ -516,6 +588,7 @@ function FilesTab() {
           rows={[
             [<Code>path</Code>, 'Yes', 'File path relative to compilation root'],
             [<Code>small</Code>, 'No', <>&quot;true&quot; — for an image path, returns a degraded/downscaled version instead of the original</>],
+            [<Code>channel</Code>, 'No', 'Comp channel slug — defaults to the primary channel'],
           ]}
         />
         <p className="text-xs text-text-muted">
@@ -543,7 +616,8 @@ function FilesTab() {
           <div>
             <div className="flex items-center gap-2 mb-1"><Badge color="post">POST</Badge><code className="text-xs font-mono text-text-primary">/start-zip-job/</code></div>
             <p className="text-xs text-text-muted">Start a background ZIP job. Returns a <Code>job_id</Code> for polling.</p>
-            <Pre>{`{ "paths": ["Compilation/song1.mp3", "Compilation/song2.mp3"] }`}</Pre>
+            <Pre>{`{ "paths": ["Compilation/song1.mp3", "Compilation/song2.mp3"], "channel": "sessions-comp" }`}</Pre>
+            <p className="text-xs text-text-muted"><Code>channel</Code> is optional — omit it for the primary channel.</p>
           </div>
           <div>
             <div className="flex items-center gap-2 mb-1"><Badge color="get">GET</Badge><code className="text-xs font-mono text-text-primary">/zip-job-status/{'{job_id}'}/ </code></div>
@@ -555,8 +629,12 @@ function FilesTab() {
           </div>
           <div>
             <div className="flex items-center gap-2 mb-1"><Badge color="post">POST</Badge><code className="text-xs font-mono text-text-primary">/files/zip-selection/</code></div>
-            <p className="text-xs text-text-muted">Immediate ZIP stream (not background).</p>
-            <Pre>{`{ "paths": ["Compilation/Folder"] }`}</Pre>
+            <p className="text-xs text-text-muted">
+              Immediate ZIP stream (not background) — POST a list of relative paths, get a streaming zip of those
+              files/folders from that channel&apos;s tree back directly (no <Code>job_id</Code> polling).
+            </p>
+            <Pre>{`{ "paths": ["Compilation/Folder"], "channel": "sessions-comp" }`}</Pre>
+            <p className="text-xs text-text-muted"><Code>channel</Code> is optional — omit it for the primary channel.</p>
           </div>
         </div>
       </Section>
@@ -701,12 +779,13 @@ function AuthTab() {
     <div className="space-y-6">
       <Section title="Roles">
         <Table
-          headers={['Role', 'role string', 'is_editor', 'is_administrator', 'is_contributor']}
+          headers={['Role', 'role string', 'is_editor', 'is_administrator', 'is_contributor', 'is_manager']}
           rows={[
-            ['Standard', <Code>applicant</Code>, '—', '—', '—'],
-            ['Editor', <Code>editor</Code>, '✓', '—', '—'],
-            ['Contributor', <Code>contributor</Code>, '—', '—', '✓'],
-            ['Admin', <Code>administrator</Code>, '✓', '✓', '—'],
+            ['Standard', <Code>applicant</Code>, '—', '—', '—', '—'],
+            ['Editor', <Code>editor</Code>, '✓', '—', '—', '—'],
+            ['Contributor', <Code>contributor</Code>, '—', '—', '✓', '—'],
+            ['Manager', <Code>manager</Code>, '—', '—', '—', '✓'],
+            ['Admin', <Code>administrator</Code>, '✓', '✓', '—', '—'],
           ]}
         />
         <p className="text-xs text-text-muted mt-2">
@@ -716,9 +795,27 @@ function AuthTab() {
         <p className="text-xs text-text-muted mt-2">
           <Code>contributor</Code> is a separate track from editor — it grants access to the comp-file proposal
           pipeline below (uploading/replacing/moving/deleting files in the compilation), not to song-data edit
-          proposals. A user can hold either role independently of the other. <Code>is_manager</Code> is an optional
-          flag layered on top of admin for reviewing comp-file proposals specifically — treat it as absent unless
-          the account payload actually includes it.
+          proposals. <Code>manager</Code> is likewise independent — a flag (<Code>manager_enabled</Code> on{' '}
+          <Code>/admin/users/</Code>, <Code>is_manager</Code> on the account payload) that grants the proposal/comp-proposal
+          review queues without full admin access (no user management, no security settings). A user can hold any
+          combination of editor/contributor/manager. All three are optional/undefined on older account payloads —
+          read them defensively.
+        </p>
+        <p className="text-xs text-text-muted mt-2">
+          <Code>is_news</Code> is a fourth, similarly independent flag — it grants News write access (create posts,
+          edit/delete your own) without needing <Code>is_editor</Code>. Admins get News write access regardless of{' '}
+          <Code>is_news</Code>. See the News tab.
+        </p>
+        <p className="text-xs text-text-muted mt-2">
+          On a deployment with multiple comp channels (see Comp Channels, Files &amp; Stream tab), these role
+          booleans are the <span className="font-semibold text-text-primary">global</span> grant. A user can
+          additionally hold editor/contributor/manager <span className="font-semibold text-text-primary">per
+          comp channel</span> via <Code>account.memberships</Code> — an array of{' '}
+          <Code>{'{ channel_slug, channel_name, is_primary, is_editor, is_contributor, is_manager, auto_approve_proposals, auto_approve_comp_proposals }'}</Code>{' '}
+          rows, one per channel the user has any flag set on. Admins implicitly get every active channel with every
+          flag on. Treat a missing global flag as "check memberships for this channel" rather than "denied." This
+          is a completely separate system from News channels below — different slugs, different roles, different
+          storage.
         </p>
         <p className="text-xs text-text-muted font-semibold mt-3">Attach token to every authenticated request:</p>
         <Pre>{`Authorization: Token YOUR_TOKEN_HERE`}</Pre>
@@ -773,6 +870,8 @@ Authorization: Token <token>`}</Pre>
   "is_editor": false,
   "is_administrator": false,
   "is_contributor": false,
+  "is_manager": false,
+  "is_news": false,
   "otp_enabled": false,
   "user_preferences": [
     { "song": 94086, "name": "My title", "cover_url": "/assets/wod.jpg", "default_version": "v1", "playcount": 12 }
@@ -782,14 +881,21 @@ Authorization: Token <token>`}</Pre>
   ],
   "listening_plays": [
     { "song": 94086, "played_at": "2026-08-03T20:14:00Z" }
+  ],
+  "news_subscriptions": ["announcements"],   // news-channel slugs the user follows — max 50
+  "memberships": [
+    { "channel_slug": "alrdywrld", "channel_name": "alrdywrld", "is_primary": false, "is_editor": true, "is_contributor": true, "is_manager": false, "auto_approve_proposals": false, "auto_approve_comp_proposals": false }
   ]
 }`}</Pre>
             <p className="text-xs text-text-muted mt-2">
               Also mounted at <Code>/juicewrld/accounts/account/me/</Code> (same handler, different prefix).
             </p>
             <p className="text-xs text-text-muted mt-2">
-              <Code>listening_plays</Code> and <Code>is_manager</Code> aren&apos;t guaranteed present on every
-              account payload yet — read them defensively (optional/undefined, not required).
+              <Code>listening_plays</Code>, <Code>is_manager</Code>, <Code>is_news</Code>, <Code>news_subscriptions</Code>,
+              and <Code>memberships</Code> aren&apos;t guaranteed present on every account payload yet — read them
+              defensively (optional/undefined, not required). <Code>memberships</Code> only lists channels the
+              user has at least one flag set on; see Roles above for how per-channel access composes with the
+              global booleans. <Code>news_subscriptions</Code> is capped at 50 entries.
             </p>
           </div>
           <div>
@@ -925,7 +1031,9 @@ Authorization: Token <token>`}</Pre>
             ['Any logged-in user', '/account/me/ (incl. PATCH), /application/, /library/*'],
             ['Editor or admin', '/me/, /editor/proposals/, /editor/leaderboard/, /badges/, /reports/ (read + review)'],
             ['Contributor', '/contributor/proposals/ (comp-file proposals — read/write your own)'],
-            ['Admin only', '/admin/users/, /admin/proposals/, /admin/applications/, /admin/comp-proposals/, /admin/comp-files/'],
+            ['Manager or admin', '/admin/proposals/, /admin/comp-proposals/ (review queues only — not /admin/users/ or /admin/applications/)'],
+            ['Admin only', '/admin/users/, /admin/applications/, /admin/comp-files/, /admin/channels/'],
+            ['is_news or admin, gated on author for edit/delete', '/news/ (is_news or admin can create; is_news holders can only edit/delete their own posts, admins any)'],
             ['Beta code (X-Beta-Code)', '/beta/versions, /beta/download — independent of the token/role system'],
           ]}
         />
@@ -947,6 +1055,11 @@ Authorization: Token <token>`}</Pre>
         />
         <p className="text-xs text-text-muted">
           <Code>change_type</Code> is <Code>"create"</Code>, <Code>"update"</Code>, or <Code>"delete"</Code> — <Code>"update"</Code> is by far the most common in practice.
+        </p>
+        <p className="text-xs text-text-muted">
+          <Code>GET</Code> and <Code>POST</Code> both accept an optional <Code>channel</Code> param/field (slug) —
+          omit for the primary channel's proposal queue. Channel access is governed by the per-channel{' '}
+          <Code>is_editor</Code> membership flag (see Roles above), not just the global one.
         </p>
         <Pre>{`POST /accounts/editor/proposals/
 Authorization: Token <token>
@@ -979,6 +1092,7 @@ Content-Type: application/json
   "id": 167,
   "editor_username": "freakypallet",
   "editor_id": 12,
+  "channel_slug": "compilation",
   "song": 94086,
   "song_public_id": 163,
   "change_type": "update",
@@ -1020,7 +1134,8 @@ Content-Type: application/json
   "contact": "optional",
   "experience": "optional",
   "motivation": "required — why you want this access",
-  "areas": "optional"
+  "areas": "optional",
+  "channel": "optional — applying for a role scoped to one channel rather than globally"
 }`}</Pre>
         <p className="text-xs text-text-muted"><Code>status</Code> on the returned application is <Code>pending</Code>, <Code>approved</Code>, or <Code>rejected</Code>.</p>
         <p className="text-xs text-text-muted">
@@ -1151,29 +1266,109 @@ X-Beta-Code: YOUR_CODE`}</Pre>
         <Table
           headers={['Method', 'Path', 'Description']}
           rows={[
-            ['GET', '/accounts/admin/users/', 'List all users. Filter: ?role=editor|contributor|administrator|applicant'],
+            ['GET', '/accounts/admin/users/', 'List all users. Filter: ?role=editor|contributor|manager|administrator|applicant'],
             ['GET', '/accounts/admin/users/{user_id}/', 'Single user detail — role, is_active, Discord info, proposal counts, badges'],
-            ['PATCH', '/accounts/admin/users/{user_id}/', 'Update role, is_active, auto_approve_proposals, or contributor flags'],
+            ['PATCH', '/accounts/admin/users/{user_id}/', 'Update role, is_active, auto_approve_proposals, or contributor/manager flags'],
           ]}
         />
         <Pre>{`PATCH /accounts/admin/users/{user_id}/
 
 {
-  "role": "contributor",            // "editor" | "contributor" | "applicant"
+  "role": "contributor",            // "editor" | "contributor" | "manager" | "applicant"
   "is_active": true,
   "auto_approve_proposals": false,
   "contributor_enabled": true,
+  "manager_enabled": false,
   "auto_approve_comp_proposals": false
 }`}</Pre>
         <Table
           headers={['Field', 'Type', 'Meaning']}
           rows={[
             [<Code>contributor_enabled</Code>, 'boolean', 'Whether this user has comp-file proposal access, independent of role string'],
+            [<Code>manager_enabled</Code>, 'boolean', 'Whether this user can review proposals/comp-proposals without full admin access, independent of role string'],
             [<Code>auto_approve_comp_proposals</Code>, 'boolean', "Skip manual review and apply this user's comp-file proposals automatically"],
             [<Code>comp_proposal_count</Code>, 'number', "Read-only — this user's total comp-file proposal submissions"],
             [<Code>comp_approved_count</Code>, 'number', 'Read-only — how many of those were approved'],
           ]}
         />
+        <p className="text-xs text-text-muted">
+          These fields grant access <span className="font-semibold text-text-primary">globally</span>. For a
+          per-channel grant instead, use Admin: Channels below.
+        </p>
+        <p className="text-xs text-text-muted">Requires admin token (<Code>is_administrator: true</Code>).</p>
+      </Section>
+
+      <Section title="Admin: Channels" defaultOpen={false}>
+        <p className="text-sm text-text-secondary leading-relaxed">
+          Manages the <span className="font-semibold text-text-primary">comp</span> channels referenced throughout
+          this doc (Files &amp; Stream&apos;s <Code>?channel=</Code>, proposal/comp-proposal scoping, per-channel{' '}
+          <Code>memberships</Code>) — not News channels, a separate system. Exactly one channel has{' '}
+          <Code>is_primary: true</Code>; it can never be deactivated and its <Code>is_active</Code> can&apos;t be
+          changed.
+        </p>
+        <Table
+          headers={['Method', 'Path', 'Description']}
+          rows={[
+            ['GET', '/accounts/admin/channels/', 'List all channels, including inactive ones (adds id/is_active/sort_order over the public /files/channels/ list)'],
+            ['POST', '/accounts/admin/channels/', 'Create a channel and its disk folders'],
+            ['PATCH', '/accounts/admin/channels/{id}/', 'Update name, description, sort_order, is_active'],
+            ['DELETE', '/accounts/admin/channels/{id}/', "Deactivate (not a hard delete — files aren't touched). Primary can't be deleted"],
+            ['GET', '/accounts/admin/channels/{id}/members/', "List the channel's per-user role memberships"],
+            ['POST', '/accounts/admin/channels/{id}/members/', "Create or update one user's editor/contributor/manager flags for this channel"],
+          ]}
+        />
+        <Pre>{`POST /accounts/admin/channels/
+
+{
+  "name": "alrdywrld",
+  "description": "optional",
+  "slug": "optional",
+  "root_dirname": "optional",
+  "sort_order": 0
+}`}</Pre>
+        <p className="text-xs text-text-muted">
+          <Code>slug</Code> and the <Code>comp_&lt;slug&gt;</Code> disk root are generated from{' '}
+          <Code>name</Code> when omitted. A new channel is never primary.
+        </p>
+        <Pre>{`PATCH /accounts/admin/channels/{id}/
+
+{
+  "name": "optional",
+  "description": "optional",
+  "sort_order": "optional",
+  "is_active": true             // reactivate a previously-deactivated channel — no-op/rejected on the primary channel
+}`}</Pre>
+        <Table
+          headers={['Field', 'Type', 'Meaning']}
+          rows={[
+            [<Code>id</Code>, 'number', 'Numeric id — used in the URL, not the slug'],
+            [<Code>slug</Code>, 'string', 'Stable identifier used as the ?channel= query value elsewhere'],
+            [<Code>is_primary</Code>, 'boolean', 'True on exactly one channel — the default when ?channel= is omitted'],
+            [<Code>is_active</Code>, 'boolean', "False after DELETE — deactivated channels are hidden, not erased"],
+          ]}
+        />
+        <p className="text-xs text-text-muted font-semibold mt-3">Set a member&apos;s flags:</p>
+        <Pre>{`POST /accounts/admin/channels/{id}/members/
+
+{
+  "user_id": 42,
+  "editor_enabled": true,
+  "contributor_enabled": true,
+  "manager_enabled": false,
+  "auto_approve_proposals": false,
+  "auto_approve_comp_proposals": false
+}`}</Pre>
+        <p className="text-xs text-text-muted">
+          Adding a member with every flag omitted/false still creates the membership row (visible in the channel&apos;s
+          member list) with no access yet — flags are toggled afterward. On the{' '}
+          <span className="font-semibold text-text-primary">primary</span> channel specifically, setting these
+          flags also mirrors the old global profile flags (<Code>is_editor</Code>, etc).
+        </p>
+        <p className="text-xs text-text-muted">
+          Admins implicitly get every active channel with every role flag on in{' '}
+          <Code>memberships</Code> (see Roles above) — everyone else only sees channels they were explicitly added
+          to.
+        </p>
         <p className="text-xs text-text-muted">Requires admin token (<Code>is_administrator: true</Code>).</p>
       </Section>
 
@@ -1181,7 +1376,7 @@ X-Beta-Code: YOUR_CODE`}</Pre>
         <Table
           headers={['Method', 'Path', 'Description']}
           rows={[
-            ['GET', '/accounts/admin/proposals/', 'List all proposals. Filter: ?status=pending|approved|rejected|reversed'],
+            ['GET', '/accounts/admin/proposals/', 'List all proposals. Filter: ?status=pending|approved|rejected|reversed&channel='],
             ['POST', '/accounts/admin/proposals/{id}/review/', 'Approve, reject, or revise-and-approve a proposal'],
             ['POST', '/accounts/admin/proposals/{id}/reverse/', 'Reverse a previously approved proposal'],
           ]}
@@ -1191,8 +1386,13 @@ X-Beta-Code: YOUR_CODE`}</Pre>
 {
   "action": "approve",          // "approve" | "reject" | "revise"
   "review_notes": "optional",
-  "revised_data": { }           // only for action: "revise" — overrides proposed_data
+  "revised_data": { },          // only for action: "revise" — overrides proposed_data
+  "channel": "optional — the proposal's channel slug"
 }`}</Pre>
+        <p className="text-xs text-text-muted">
+          Requires admin or manager token, and — on a channel-scoped deployment — the per-channel{' '}
+          <Code>is_manager</Code>/<Code>is_editor</Code> membership flag for the proposal&apos;s own channel.
+        </p>
       </Section>
 
       <Section title="Admin: Applications" defaultOpen={false}>
@@ -1219,15 +1419,17 @@ X-Beta-Code: YOUR_CODE`}</Pre>
         <p className="text-sm text-text-secondary leading-relaxed">
           A second, separate proposal pipeline from song-data Edit Proposals above — this one is for changes to the{' '}
           <span className="font-semibold text-text-primary">compilation&apos;s files themselves</span> (uploading a
-          new file, replacing one, moving/renaming, or deleting), submitted by contributors and reviewed by admins.
-          Everything under <Code>/accounts/contributor/</Code> requires <Code>is_contributor</Code>; everything
-          under <Code>/accounts/admin/comp-proposals/</Code> and <Code>/accounts/admin/comp-files/</Code> requires{' '}
-          <Code>is_administrator</Code>.
+          new file, replacing one, moving/renaming, or deleting), submitted by contributors and reviewed by admins
+          or managers. Everything under <Code>/accounts/contributor/</Code> requires <Code>is_contributor</Code>{' '}
+          (globally or via a comp-channel membership); everything under <Code>/accounts/admin/comp-proposals/</Code>{' '}
+          requires admin or manager (again, globally or per-channel); <Code>/accounts/admin/comp-files/</Code>{' '}
+          requires <Code>is_administrator</Code>.
         </p>
         <p className="text-xs text-text-muted mt-2">
-          Backend note: none of this works until the server ships these routes plus the underlying{' '}
-          <Code>listening_plays</Code> profile field and file staging/archive storage — the client codes against
-          this contract ahead of the backend landing it.
+          Comp-channel scoped: list, create, review, and history calls only see that channel&apos;s proposals and
+          files — pass <Code>?channel=</Code>/a <Code>channel</Code> field on every endpoint below, same as the
+          Files &amp; Stream tab. Staging storage lives under <Code>comp_staging/&lt;slug&gt;/proposals/</Code> per
+          channel (the primary channel keeps the older unprefixed <Code>comp_staging/proposals/</Code> path).
         </p>
       </Section>
 
@@ -1258,7 +1460,8 @@ FormData:
   file_path         "Compilation/Unreleased/Song.mp3"     // target path; a folder path for "create_folder"
   destination_path  "Compilation/Unreleased/New Name.mp3" // only for "move"
   contributor_notes "optional"
-  file              <binary>                              // only for "upload"/"replace"`}</Pre>
+  file              <binary>                              // only for "upload"/"replace"
+  channel           "optional — channel slug, defaults to the primary channel"`}</Pre>
         <p className="text-xs text-text-muted mt-2">
           <Code>create_folder</Code> takes only <Code>file_path</Code> (the new folder&apos;s path, with no
           extension) — no <Code>file</Code> and no <Code>destination_path</Code>. On approval the empty folder is
@@ -1269,6 +1472,7 @@ FormData:
   "id": 55,
   "contributor_username": "someuser",
   "contributor_id": 12,
+  "channel_slug": "compilation",
   "file_path": "Compilation/Unreleased/Song.mp3",
   "destination_path": null,
   "change_type": "replace",
@@ -1294,7 +1498,7 @@ FormData:
         <Table
           headers={['Method', 'Path', 'Description']}
           rows={[
-            ['GET', '/accounts/admin/comp-proposals/', 'List all comp-file proposals. Filter: ?status=pending|approved|rejected|reversed'],
+            ['GET', '/accounts/admin/comp-proposals/', 'List all comp-file proposals. Filter: ?status=pending|approved|rejected|reversed&channel='],
             ['POST', '/accounts/admin/comp-proposals/{id}/review/', 'Approve or reject a proposal'],
             ['POST', '/accounts/admin/comp-proposals/{id}/reverse/', 'Reverse a previously approved proposal'],
             ['GET', '/accounts/admin/comp-proposals/{id}/staging/', 'Download the staged file to inspect before approving'],
@@ -1304,8 +1508,12 @@ FormData:
 
 {
   "action": "approve",          // "approve" | "reject"
-  "review_notes": "optional"
+  "review_notes": "optional",
+  "channel": "optional — the proposal's channel slug"
 }`}</Pre>
+        <p className="text-xs text-text-muted">
+          <Code>/reverse/</Code> and <Code>/staging/</Code> also accept <Code>?channel=</Code>.
+        </p>
         <p className="text-xs text-text-muted">
           Unlike song-data proposals, there is no <Code>&quot;revise&quot;</Code> action here — a comp-file change
           is either accepted as staged or rejected, since there&apos;s no meaningful way to hand-edit a binary file
@@ -1366,6 +1574,149 @@ FormData:
 // POST request
 { "otp_token": "123456" }
 // Response: { "otp_enabled": true }`}</Pre>
+      </Section>
+    </div>
+  )
+}
+
+function NewsTab() {
+  return (
+    <div className="space-y-6">
+      <Section title="Overview">
+        <p className="text-sm text-text-secondary leading-relaxed">
+          Announcement feed — posts belong to a <span className="font-semibold text-text-primary">news
+          channel</span> (freeform editorial feeds like Announcements/Releases/Leaks — a completely different
+          system from the Comp Channels on the Files &amp; Stream tab; <Code>?channel=</Code> here is a news slug,
+          not a file-tree slug), can be featured, and can carry image and audio/file attachments. Posting requires{' '}
+          <Code>is_news</Code> or admin; editing/deleting a post is restricted to its author unless the caller is
+          an admin.
+        </p>
+      </Section>
+
+      <Section title="Feed">
+        <Table
+          headers={['Method', 'Path', 'Access', 'Description']}
+          rows={[
+            ['GET', '/news/', 'No auth', 'Paginated feed. Filter: ?channel=, sort: ?ordering=-published_at|published_at, ?page=, ?page_size='],
+            ['GET', '/news/{id}/', 'No auth', 'Single post'],
+            ['POST', '/news/', 'is_news or admin', 'Create a post'],
+            ['PATCH', '/news/{id}/', 'is_news or admin', "Edit a post — own post only, unless admin"],
+            ['DELETE', '/news/{id}/', 'is_news or admin', "Delete a post — own post only, unless admin"],
+          ]}
+        />
+        <Pre>{`GET /news/?channel=announcements&ordering=-published_at
+
+{
+  "results": [ /* NewsItem[] — see shape below */ ],
+  "count": 42,
+  "next": "https://juicewrldapi.com/juicewrld/news/?channel=announcements&page=2"
+}`}</Pre>
+        <p className="text-xs text-text-muted">
+          Omit <Code>channel</Code> (or pass the client&apos;s pseudo-value <Code>&quot;all&quot;</Code>, which is
+          never sent to the server) for the unfiltered feed across every channel.
+        </p>
+        <p className="text-xs text-text-muted font-semibold mt-3">Create payload (title + channel required, rest optional):</p>
+        <Pre>{`POST /news/
+Authorization: Token <token>
+
+{
+  "title": "required",
+  "channel": "announcements",   // a news-channel slug — required
+  "summary": "optional — short plain-text teaser shown in the feed",
+  "body": "optional — full article, Markdown",
+  "category": "optional — freeform label, e.g. \\"Release\\"",
+  "featured": false,
+  "image_url": "optional — https URL, or a base64 data: image ≤2MB",
+  "attachments": [ /* { name, url } from POST /news/uploads/ — the full desired set */ ]
+}`}</Pre>
+        <p className="text-xs text-text-muted font-semibold mt-3">Post object shape:</p>
+        <Pre>{`{
+  "id": 12,
+  "title": "New leak dropped",
+  "summary": "Short teaser text",
+  "body": "Full **markdown** article body",
+  "image_url": "https://juicewrldapi.com/media/news/cover.jpg",
+  "channel": "leaks",
+  "category": "Leak",
+  "featured": true,
+  "author": "someuser",
+  "author_id": 12,
+  "attachments": [
+    { "id": 5, "name": "snippet.mp3", "url": "...", "mime": "audio/mpeg", "size": 1048576 }
+  ],
+  "published_at": "2026-08-19T16:00:00Z"
+}`}</Pre>
+        <p className="text-xs text-text-muted">
+          <Code>author_id</Code> is what the client compares against the logged-in user&apos;s own id to decide
+          whether Edit/Delete show up — this field being absent or wrong on the server response breaks that gating,
+          so make sure it&apos;s always populated.
+        </p>
+        <p className="text-xs text-text-muted">
+          Body is rendered client-side as Markdown with raw HTML stripped — links/images are restricted to
+          http/https/mailto. There is no server-side sanitization requirement beyond that (the client never
+          executes raw HTML from <Code>body</Code>).
+        </p>
+      </Section>
+
+      <Section title="Channels">
+        <Table
+          headers={['Method', 'Path', 'Access', 'Description']}
+          rows={[
+            ['GET', '/news/channels/', 'No auth', 'List news channels'],
+            ['POST', '/news/channels/', 'Admin', 'Create a channel — slug generated from label'],
+            ['PATCH', '/news/channels/{slug}/', 'Admin', 'Rename/re-describe a channel'],
+            ['DELETE', '/news/channels/{slug}/', 'Admin', 'Delete a channel — only if it has no posts'],
+          ]}
+        />
+        <Pre>{`{ "results": [
+  { "id": "announcements", "label": "Announcements", "description": "optional one-liner" }
+] }`}</Pre>
+        <p className="text-xs text-text-muted">
+          <Code>id</Code> on the returned object <span className="font-semibold text-text-primary">is</span> the
+          slug — used both in the URL for PATCH/DELETE and as the <Code>?channel=</Code> value on the Feed
+          endpoints above.
+        </p>
+      </Section>
+
+      <Section title="Attachments">
+        <p className="text-sm text-text-secondary leading-relaxed">
+          Cover images ride inline as an https URL or a base64 <Code>data:</Code> image (≤2MB) in the post payload.
+          Everything else — including audio clips — uploads separately through a dedicated endpoint first, and the
+          post payload then references the returned hosted <Code>{'{ name, url }'}</Code>.
+        </p>
+        <Table
+          headers={['Method', 'Path', 'Access', 'Description']}
+          rows={[
+            ['POST', '/news/uploads/', 'is_news or admin', 'Upload one file — multipart, ≤25MB. Returns a hosted attachment record'],
+            ['GET', '/news/attachments/{id}/stream/', 'No auth', 'Stream/download a hosted attachment. An optional /{name} suffix and ?download=1 (forces a download instead of inline playback) are both supported'],
+          ]}
+        />
+        <Pre>{`POST /news/uploads/
+Authorization: Token <token>
+Content-Type: multipart/form-data; boundary=... (set automatically)
+
+FormData:
+  file  <binary>`}</Pre>
+        <p className="text-xs text-text-muted font-semibold mt-3">Attachment object shape:</p>
+        <Pre>{`{
+  "id": 5,
+  "name": "snippet.mp3",
+  "url": "https://juicewrldapi.com/media/news/attachments/snippet.mp3",
+  "mime": "audio/mpeg",
+  "size": 1048576
+}`}</Pre>
+        <p className="text-xs text-text-muted">
+          The client classifies an attachment as image/audio/generic-file first by <Code>mime</Code>, falling back
+          to a guess from <Code>name</Code>&apos;s extension when <Code>mime</Code> is missing or generic (e.g.{' '}
+          <Code>application/octet-stream</Code>) — send an accurate <Code>mime</Code> where possible so that guess
+          is never needed.
+        </p>
+        <p className="text-xs text-text-muted">
+          The client builds attachment stream/download URLs from <Code>id</Code> via{' '}
+          <Code>{'/news/attachments/{id}/stream/{name}'}</Code> when <Code>id</Code> is present, and falls back
+          to the raw <Code>url</Code> field only for older/id-less rows — a new upload should always come back with
+          an <Code>id</Code>.
+        </p>
       </Section>
     </div>
   )
@@ -1843,6 +2194,7 @@ const TABS = [
   { id: 'playlists', label: 'Playlists' },
   { id: 'radio',     label: '999 FM' },
   { id: 'auth',      label: 'Auth & Accounts' },
+  { id: 'news',      label: 'News' },
   { id: 'patterns',  label: 'Code Patterns' },
 ] as const
 
@@ -1856,6 +2208,7 @@ const TAB_CONTENT: Record<TabId, () => JSX.Element> = {
   playlists: PlaylistsTab,
   radio:     RadioTab,
   auth:      AuthTab,
+  news:      NewsTab,
   patterns:  FetchPatternTab,
 }
 

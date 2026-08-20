@@ -168,7 +168,8 @@ export default function App(): JSX.Element {
           <div className="flex-1 overflow-hidden flex">
             <ErrorBoundary>
             <Suspense fallback={null}>
-            {activeView === 'api-tracker' ? <ApiTrackerView />
+            {isMobile && showSettings ? <Settings />
+              : activeView === 'api-tracker' ? <ApiTrackerView />
               : activeView === 'api-files' ? <ApiFilesView />
               : activeView === 'editor' ? <EditorPage />
               : activeView === 'contributor' ? <ContributorPage />
@@ -216,7 +217,10 @@ export default function App(): JSX.Element {
       <ErrorBoundary fallback={null}><LastfmScrobbler /></ErrorBoundary>
       <ErrorBoundary fallback={null}><NewsNotifier /></ErrorBoundary>
       <ErrorBoundary fallback={null}><BottomNav /></ErrorBoundary>
-      {showSettings && (
+      {/* Mobile renders Settings in the content slot above (a page, not a
+          dialog — see Settings.mobile.tsx) so the player bar and bottom nav
+          stay usable underneath it. Desktop keeps the modal-overlay form. */}
+      {showSettings && !isMobile && (
         <ErrorBoundary variant="overlay" onDismiss={() => setShowSettings(false)}>
           <Suspense fallback={null}><Settings /></Suspense>
         </ErrorBoundary>

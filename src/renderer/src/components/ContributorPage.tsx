@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { useStorePick } from '../store/useStore'
 import * as userApi from '../lib/userApi'
+import { isPrimaryChannelSlug } from '../hooks/useChannelRoles'
 import { CONTRIBUTOR_ENABLED } from '../lib/userApi'
 import type { CompFileProposal, CompProposalChangeType, EditorApplication } from '../lib/userApi'
 import type { ViewType } from '../types'
@@ -32,7 +33,7 @@ const CHANGE_OPTIONS: { value: CompProposalChangeType; label: string; icon: type
   { value: 'create_folder', label: 'New folder', icon: FolderPlus },
 ]
 
-function ApplyPanel({ onSubmitted, rejection }: { onSubmitted: () => void; rejection?: EditorApplication | null }): JSX.Element {
+function ApplyPanel({ onSubmitted, rejection, channel }: { onSubmitted: () => void; rejection?: EditorApplication | null; channel?: string }): JSX.Element {
   const [motivation, setMotivation] = useState('')
   const [contact, setContact] = useState('')
   const [experience, setExperience] = useState('')
@@ -51,6 +52,7 @@ function ApplyPanel({ onSubmitted, rejection }: { onSubmitted: () => void; rejec
         experience,
         areas,
         application_type: 'contributor',
+        channel,
       })
       setState('submitted')
       setTimeout(onSubmitted, 1200)
@@ -98,7 +100,7 @@ function ApplyPanel({ onSubmitted, rejection }: { onSubmitted: () => void; rejec
 }
 
 export default function ContributorPage(): JSX.Element {
-  const { account, setActiveView, previousView, pendingCompProposal, setPendingCompProposal, downloads } = useStorePick('account', 'setActiveView', 'previousView', 'pendingCompProposal', 'setPendingCompProposal', 'downloads')
+  const { account, setActiveView, previousView, pendingCompProposal, setPendingCompProposal, downloads, activeChannel, channels } = useStorePick('account', 'setActiveView', 'previousView', 'pendingCompProposal', 'setPendingCompProposal', 'downloads', 'activeChannel', 'channels')
   const activeUploads = downloads.filter((d) => d.type === 'upload' && d.state === 'downloading')
   const [application, setApplication] = useState<EditorApplication | null | undefined>(undefined)
   const [proposals, setProposals] = useState<CompFileProposal[]>([])
@@ -131,7 +133,7 @@ export default function ContributorPage(): JSX.Element {
   // once the form is ready for another, guaranteeing one queue per click.
   const submitLatch = useRef(false)
 
-  const isContributor = !!(account?.is_contributor || account?.is_administrator)
+  const isContributor = userApi.isChannelContributor(account, activeChannel, isPrimaryChannelSlug(channels, activeChannel))
 
   // Where "back" goes. Prefer the profile the user actually arrived from —
   // an editor-contributor reaches this page from the editor profile, and
@@ -145,7 +147,7 @@ export default function ContributorPage(): JSX.Element {
   const reload = (): void => {
     if (!isContributor) return
     setLoading(true)
-    userApi.getMyCompProposals().then(setProposals).catch(() => {}).finally(() => setLoading(false))
+    userApi.getMyCompProposals(activeChannel).then(setProposals).catch(() => {}).finally(() => setLoading(false))
   }
 
   // A background upload landing means there's a new proposal to show. The
@@ -165,10 +167,10 @@ export default function ContributorPage(): JSX.Element {
       setLoading(false)
       return
     }
-    userApi.getMyApplication('contributor').then(r => setApplication(r.application)).catch(() => setApplication(null))
+    userApi.getMyApplication('contributor', activeChannel).then(r => setApplication(r.application)).catch(() => setApplication(null))
     if (isContributor) reload()
     else setLoading(false)
-  }, [account, isContributor])
+  }, [account, isContributor, activeChannel])
 
   // Arrived from the Files context menu with a file already in mind. Consumed
   // once and cleared, so coming back to this page later starts blank instead
@@ -224,6 +226,7 @@ export default function ContributorPage(): JSX.Element {
     form.append('change_type', changeType)
     form.append('contributor_notes', notes)
     if (file) form.append('file', file)
+    if (activeChannel) form.append('channel', activeChannel)
     return form
   }
 
@@ -388,7 +391,8 @@ export default function ContributorPage(): JSX.Element {
     return (
       <ApplyPanel
         rejection={application?.status === 'rejected' ? application : null}
-        onSubmitted={() => userApi.getMyApplication('contributor').then(r => setApplication(r.application))}
+        onSubmitted={() => userApi.getMyApplication('contributor', activeChannel).then(r => setApplication(r.application))}
+        channel={activeChannel}
       />
     )
   }
@@ -628,6 +632,7 @@ export default function ContributorPage(): JSX.Element {
           kind="any"
           allowFolderSelect={picker === 'upload-folder' || picker === 'dest-folder'}
           emptyFolderProposable={isCreateFolder}
+          channel={activeChannel}
           multiple={picker === 'delete-files'}
           onSelectMany={(paths) => {
             setDeletePaths(prev => [...prev, ...paths.filter(x => !prev.includes(x))])

@@ -1,6 +1,30 @@
 // Small UI pieces shared between AdminPage's tabs and ReportsTab (the latter
 // is also embedded standalone in EditorProfileView for editor-only accounts).
-import { Search, X as XIcon } from 'lucide-react'
+import { useState } from 'react'
+import { Search, X as XIcon, Copy, Check } from 'lucide-react'
+
+// A field's raw value, not the JSX rendering of it (which may drop blank
+// lines, truncate, or otherwise reformat for display) — copying is for
+// pasting the real value somewhere else, so callers should always pass the
+// untruncated string regardless of what's currently visible on screen.
+export function CopyButton({ text, label }: { text: string; label: string }): JSX.Element {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation()
+        navigator.clipboard.writeText(text).then(() => {
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1200)
+        })
+      }}
+      title={`Copy ${label}`}
+      className="p-0.5 rounded text-inherit opacity-60 hover:opacity-100 transition-opacity"
+    >
+      {copied ? <Check size={10} /> : <Copy size={10} />}
+    </button>
+  )
+}
 
 export function relativeTime(iso: string | null): string {
   if (!iso) return '—'

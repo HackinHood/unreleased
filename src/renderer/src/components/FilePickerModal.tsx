@@ -6,6 +6,7 @@ import {
   JWApiFileEntry, JWApiBrowseResponse,
 } from '../lib/juicewrldApi'
 import { getMediaType } from '../lib/fileTypes'
+import { useStore } from '../store/useStore'
 
 function breadcrumbs(path: string): { label: string; path: string }[] {
   if (!path) return []
@@ -65,6 +66,7 @@ interface Props {
   multiple?: boolean
   onSelectMany?: (paths: string[]) => void
   emptyFolderProposable?: boolean
+  channel?: string
 }
 
 // A scoped-down version of ApiFilesView's browser for picking one file out of
@@ -80,7 +82,20 @@ interface Props {
 // Audio mode is the opposite: a song's `path` field in the API is the raw
 // storage path ("Compilation/1. Released Discography/…mp3") and the app builds
 // stream URLs from it, so handing back an absolute URL there would double-wrap.
-export default function FilePickerModal({ kind = 'image', songTitle, altTitles = [], onSelect, onClose, allowFolderSelect = false, title, multiple = false, onSelectMany, emptyFolderProposable = false }: Props): JSX.Element {
+export default function FilePickerModal({ kind = 'image', songTitle, altTitles = [], onSelect, onClose, allowFolderSelect = false, title, multiple = false, onSelectMany, emptyFolderProposable = false, channel }: Props): JSX.Element {
+  const storeChannel = useStore((s) => s.activeChannel)
+  const activeChannel = channel ?? storeChannel
+  const browseParams = useCallback((path: string): Record<string, string> => {
+    const p: Record<string, string> = {}
+    if (path) p.path = path
+    if (activeChannel) p.channel = activeChannel
+    return p
+  }, [activeChannel])
+  const searchParams = useCallback((term: string): Record<string, string> => {
+    const p: Record<string, string> = { search: term }
+    if (activeChannel) p.channel = activeChannel
+    return p
+  }, [activeChannel])
   const isAudio = kind === 'audio'
   // Image mode is the only one that earns a thumbnail grid; audio and 'any'
   // both render the compact list.
@@ -121,7 +136,7 @@ export default function FilePickerModal({ kind = 'image', songTitle, altTitles =
 
   const navigate = useCallback(async (path: string, pushHistory = true, resetSearch = true) => {
     if (resetSearch) { setSearch(''); setDebouncedSearch('') }
-    const cached = apiPeek<JWApiBrowseResponse>('/files/browse/', path ? { path } : {})
+    const cached = apiPeek<JWApiBrowseResponse>('/files/browse/', browseParams(path))
     if (cached) {
       setEntries(parseBrowseEntries(cached))
       setCurrentPath(path)
@@ -132,7 +147,7 @@ export default function FilePickerModal({ kind = 'image', songTitle, altTitles =
       setError(null)
     }
     try {
-      const data = await apiFetch<JWApiBrowseResponse>('/files/browse/', path ? { path } : {})
+      const data = await apiFetch<JWApiBrowseResponse>('/files/browse/', browseParams(path))
       if (pushHistory) setHistory((h) => [...h, currentPath])
       setCurrentPath(path)
       setEntries(parseBrowseEntries(data))
@@ -141,7 +156,7 @@ export default function FilePickerModal({ kind = 'image', songTitle, altTitles =
     } finally {
       if (resetSearch) setLoading(false)
     }
-  }, [currentPath])
+  }, [currentPath, browseParams])
 
   // Always prefetch the root listing (silently, without touching the search
   // box) so clearing the initial title search drops straight into a populated
@@ -158,12 +173,12 @@ export default function FilePickerModal({ kind = 'image', songTitle, altTitles =
     let cancelled = false
     setSearchLoading(true)
     const term = debouncedSearch.trim()
-    apiFetch<JWApiBrowseResponse>('/files/browse/', { search: term })
+    apiFetch<JWApiBrowseResponse>('/files/browse/', searchParams(term))
       .then((data) => { if (!cancelled) setSearchResults(filterSearchResults(parseBrowseEntries(data), term)) })
       .catch(() => { if (!cancelled) setSearchResults([]) })
       .finally(() => { if (!cancelled) setSearchLoading(false) })
     return () => { cancelled = true }
-  }, [debouncedSearch, isSearching])
+  }, [debouncedSearch, isSearching, searchParams])
 
   // Merge in results for the song's alt titles alongside the primary-title
   // search seeded above — a cover is often filed under a feature's alias or
@@ -174,7 +189,7 @@ export default function FilePickerModal({ kind = 'image', songTitle, altTitles =
     if (!initialQuery || altQueries.length === 0) return
     let cancelled = false
     Promise.all(altQueries.map((q) =>
-      apiFetch<JWApiBrowseResponse>('/files/browse/', { search: q })
+      apiFetch<JWApiBrowseResponse>('/files/browse/', searchParams(q))
         .then((data) => filterSearchResults(parseBrowseEntries(data), q))
         .catch(() => [] as JWApiFileEntry[])
     )).then((lists) => {
@@ -378,7 +393,7 @@ export default function FilePickerModal({ kind = 'image', songTitle, altTitles =
                 return (
                   <button
                     key={entry.path}
-                    onClick={() => { if (isDir) navigate(entry.path); else onSelect(buildStreamUrl(entry.path)) }}
+                    onClick={() => { if (isDir) navigate(entry.path); else onSelect(buildStreamUrl(entry.path, activeChannel)) }}
                     title={entry.name}
                     className="group flex flex-col rounded-xl overflow-hidden transition-colors bg-surface-overlay hover:bg-surface-raised text-left"
                   >
@@ -390,7 +405,7 @@ export default function FilePickerModal({ kind = 'image', songTitle, altTitles =
                           <img
                             // Picker thumbnails only — the path handed back on
                             // select is still the full-size one.
-                            src={smallCoverUrl(buildStreamUrl(entry.path))}
+                            src={smallCoverUrl(buildStreamUrl(entry.path, activeChannel))}
                             alt=""
                             className="w-full h-full object-cover"
                             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}

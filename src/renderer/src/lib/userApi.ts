@@ -25,6 +25,9 @@ export interface AccountUser {
   // Optional: the API only started returning this with the manager role, so
   // older responses and anything replayed from cache simply omit it.
   is_manager?: boolean
+  // Grants News write access (create/edit-own/delete-own posts) — separate
+  // from is_editor. Admins can write News regardless of this flag.
+  is_news?: boolean
   is_administrator: boolean
   otp_enabled: boolean
   // JSON blobs stored on the profile and PATCHable through this same route —
@@ -35,6 +38,64 @@ export interface AccountUser {
   playlist_folders?: ServerPlaylistFolder[]
   // Channel ids the user follows for news notifications (see lib/newsNotifications).
   news_subscriptions?: string[]
+  memberships?: ChannelMembership[]
+}
+
+export interface ChannelMembership {
+  channel_slug: string
+  channel_name: string
+  is_primary?: boolean
+  is_editor: boolean
+  is_contributor: boolean
+  is_manager: boolean
+  auto_approve_proposals?: boolean
+  auto_approve_comp_proposals?: boolean
+}
+
+export function channelMembership(
+  account: AccountUser | null,
+  slug: string | null | undefined,
+): ChannelMembership | null {
+  if (!account || !slug) return null
+  const found = account.memberships?.find((m) => m.channel_slug === slug)
+  if (found) return found
+  if (account.is_administrator) {
+    return {
+      channel_slug: slug,
+      channel_name: slug,
+      is_editor: true,
+      is_contributor: true,
+      is_manager: true,
+    }
+  }
+  return null
+}
+
+// The global is_editor/is_contributor/is_manager booleans are an unscoped
+// grant that predates per-channel memberships — but the backend only ever
+// honours it on the *primary* channel (legacy accounts never got a membership
+// row, so their global flag has to keep covering the one channel that existed
+// before channels did). On any other channel, the global flag alone isn't
+// enough — the account needs an explicit membership row for that channel, or
+// admin. `isPrimary` defaults true so call sites that can't yet determine it
+// (e.g. before the channel list has loaded) keep the old, safe behavior.
+export function isChannelEditor(account: AccountUser | null, slug: string | null | undefined, isPrimary = true): boolean {
+  if (account?.is_administrator) return true
+  if (account?.is_editor && isPrimary) return true
+  return !!channelMembership(account, slug)?.is_editor
+}
+
+export function isChannelContributor(account: AccountUser | null, slug: string | null | undefined, isPrimary = true): boolean {
+  if (!CONTRIBUTOR_ENABLED) return false
+  if (account?.is_administrator) return true
+  if (account?.is_contributor && isPrimary) return true
+  return !!channelMembership(account, slug)?.is_contributor
+}
+
+export function isChannelManager(account: AccountUser | null, slug: string | null | undefined, isPrimary = true): boolean {
+  if (account?.is_administrator) return true
+  if (account?.is_manager && isPrimary) return true
+  return !!channelMembership(account, slug)?.is_manager
 }
 
 export interface ApiSongLite {
@@ -538,6 +599,7 @@ export interface AdminUser {
   is_active: boolean
   role: string
   contributor_enabled: boolean
+  manager_enabled?: boolean
   discord_id: string
   discord_username: string
   discord_avatar: string
@@ -576,9 +638,10 @@ export function applicationType(app: Pick<EditorApplication, 'application_type'>
  *  contributor application, and vice versa). Filtering here means the worst
  *  case is an apply form whose POST fails with the server's own message,
  *  rather than a dead end with no controls. */
-export async function getMyApplication(type?: ApplicationType): Promise<{ application: EditorApplication | null }> {
+export async function getMyApplication(type?: ApplicationType, channel?: string): Promise<{ application: EditorApplication | null }> {
   const url = new URL(`${ACCOUNT_BASE}/application/`)
   if (type) url.searchParams.set('type', type)
+  if (channel) url.searchParams.set('channel', channel)
   const res = await request<{ application: EditorApplication | null }>(url.toString(), { method: 'GET' })
   if (type && res.application && applicationType(res.application) !== type) return { application: null }
   return res
@@ -591,6 +654,7 @@ export async function submitApplication(payload: {
   motivation: string
   areas?: string
   application_type?: ApplicationType
+  channel?: string
 }): Promise<EditorApplication> {
   return request(`${ACCOUNT_BASE}/application/`, {
     method: 'POST',
@@ -598,15 +662,17 @@ export async function submitApplication(payload: {
   })
 }
 
-function myProposalsUrl(): string {
-  return `${ACCOUNT_BASE}/editor/proposals/`
+function myProposalsUrl(channel?: string): string {
+  const url = new URL(`${ACCOUNT_BASE}/editor/proposals/`)
+  if (channel) url.searchParams.set('channel', channel)
+  return url.toString()
 }
 
 // Cached (offline-fallback) like the other "list my stuff" reads — this is
 // the tab a signed-in editor lands on, and it shouldn't go blank just because
 // the request raced a flaky connection.
-export async function getMyProposals(): Promise<SongEditProposal[]> {
-  const url = myProposalsUrl()
+export async function getMyProposals(channel?: string): Promise<SongEditProposal[]> {
+  const url = myProposalsUrl(channel)
   return request(url, { method: 'GET' }, true, url)
 }
 
@@ -616,6 +682,7 @@ export async function createProposal(payload: {
   title?: string
   proposed_data: Record<string, unknown>
   editor_notes?: string
+  channel?: string
 }): Promise<SongEditProposal> {
   return request(`${ACCOUNT_BASE}/editor/proposals/`, {
     method: 'POST',
@@ -673,9 +740,10 @@ export async function getLeaderboard(): Promise<Array<{
 // an item belongs to, and a review queue is re-fetched right after acting on
 // it anyway (see AdminPage), so the tiny staleness window only ever shows up
 // if the connection drops between an action and that refetch.
-export async function adminListProposals(statusFilter?: ProposalStatus): Promise<SongEditProposal[]> {
+export async function adminListProposals(statusFilter?: ProposalStatus, channel?: string): Promise<SongEditProposal[]> {
   const url = new URL(`${ACCOUNT_BASE}/admin/proposals/`)
   if (statusFilter) url.searchParams.set('status', statusFilter)
+  if (channel) url.searchParams.set('channel', channel)
   return request(url.toString(), { method: 'GET' }, true, url.toString())
 }
 
@@ -683,6 +751,7 @@ export async function adminReviewProposal(id: number, payload: {
   action: 'approve' | 'reject' | 'revise'
   review_notes?: string
   revised_data?: Record<string, unknown>
+  channel?: string
 }): Promise<SongEditProposal> {
   return request(`${ACCOUNT_BASE}/admin/proposals/${id}/review/`, {
     method: 'POST',
@@ -690,8 +759,10 @@ export async function adminReviewProposal(id: number, payload: {
   })
 }
 
-export async function adminReverseProposal(id: number): Promise<SongEditProposal> {
-  return request(`${ACCOUNT_BASE}/admin/proposals/${id}/reverse/`, { method: 'POST' })
+export async function adminReverseProposal(id: number, channel?: string): Promise<SongEditProposal> {
+  const url = new URL(`${ACCOUNT_BASE}/admin/proposals/${id}/reverse/`)
+  if (channel) url.searchParams.set('channel', channel)
+  return request(url.toString(), { method: 'POST' })
 }
 
 export async function adminListApplications(statusFilter?: ApplicationStatus): Promise<EditorApplication[]> {
@@ -717,8 +788,9 @@ export async function adminListUsers(roleFilter?: string): Promise<AdminUser[]> 
 }
 
 export async function adminUpdateUser(userId: number, payload: {
-  role?: 'editor' | 'contributor' | 'applicant'
+  role?: 'editor' | 'contributor' | 'manager' | 'applicant'
   contributor_enabled?: boolean
+  manager_enabled?: boolean
   is_active?: boolean
   auto_approve_proposals?: boolean
   auto_approve_comp_proposals?: boolean
@@ -750,33 +822,49 @@ export async function confirmOtpSetup(otpToken: string): Promise<{ otp_enabled: 
 // of leading users to forms that fail on submit.
 export const CONTRIBUTOR_ENABLED = true
 
+export function isEditorAnywhere(account: AccountUser | null): boolean {
+  if (!account) return false
+  return !!account.is_editor || !!account.memberships?.some((m) => m.is_editor)
+}
+
+export function isManagerAnywhere(account: AccountUser | null): boolean {
+  if (!account) return false
+  return !!account.is_manager || !!account.memberships?.some((m) => m.is_manager)
+}
+
+export function isContributorAnywhere(account: AccountUser | null): boolean {
+  if (!account || !CONTRIBUTOR_ENABLED) return false
+  return !!account.is_contributor || !!account.memberships?.some((m) => m.is_contributor)
+}
+
 export function showStaffProfile(account: AccountUser | null): boolean {
   if (!account) return false
-  const isContributor = CONTRIBUTOR_ENABLED && !!account.is_contributor
-  return !!(account.is_administrator || account.is_editor || account.is_manager || isContributor)
+  return !!(account.is_administrator || isEditorAnywhere(account) || isManagerAnywhere(account) || isContributorAnywhere(account))
 }
 
 export function staffProfileView(account: AccountUser | null): ViewType {
   if (!account) return 'api-tracker'
-  const isContributor = CONTRIBUTOR_ENABLED && !!account.is_contributor
   // Everyone with review duties lands on the editor profile — it's the personal
   // page (your own song edits, your own comp files) and it embeds the review
   // queue as a tab. Pointing managers straight at the review panel instead cost
   // them any way to reach their own proposals, since this is the single profile
   // entry in the sidebar and bottom bar. It also carries a Comp tab of its own,
   // so contributors who also hold one of these roles lose nothing here.
-  if (account.is_administrator || account.is_editor || account.is_manager) return 'editor-profile'
-  if (isContributor) return 'contributor-profile'
+  if (account.is_administrator || isEditorAnywhere(account) || isManagerAnywhere(account)) return 'editor-profile'
+  if (isContributorAnywhere(account)) return 'contributor-profile'
   return 'editor-profile'
 }
 
 export function staffProfileLabel(account: AccountUser | null): string {
   if (!account) return 'Profile'
   if (account.is_administrator) return 'Admin'
-  if (account.is_manager) return 'Manager'
-  const isContributor = CONTRIBUTOR_ENABLED && !!account.is_contributor
-  if (account.is_editor && isContributor) return 'Staff'
-  if (account.is_editor) return 'Editor'
+  const isContributor = isContributorAnywhere(account)
+  const isEditor = isEditorAnywhere(account)
+  const isManager = isManagerAnywhere(account)
+  if (isEditor && isManager) return 'Staff'
+  if (isManager) return 'Manager'
+  if (isEditor && isContributor) return 'Staff'
+  if (isEditor) return 'Editor'
   if (isContributor) return 'Contributor'
   return 'Profile'
 }
@@ -792,13 +880,15 @@ async function multipartRequest<T>(url: string, form: FormData, method = 'POST')
   return apiRequest<T>(url, { method, headers, body: form })
 }
 
-function myCompProposalsUrl(): string {
-  return `${ACCOUNT_BASE}/contributor/proposals/`
+function myCompProposalsUrl(channel?: string): string {
+  const url = new URL(`${ACCOUNT_BASE}/contributor/proposals/`)
+  if (channel) url.searchParams.set('channel', channel)
+  return url.toString()
 }
 
-export async function getMyCompProposals(): Promise<CompFileProposal[]> {
+export async function getMyCompProposals(channel?: string): Promise<CompFileProposal[]> {
   assertContributorApi()
-  const url = myCompProposalsUrl()
+  const url = myCompProposalsUrl(channel)
   return request(url, { method: 'GET' }, true, url)
 }
 
@@ -858,16 +948,18 @@ export async function withdrawCompProposal(id: number): Promise<void> {
 }
 
 // Same offline-fallback-only caching as adminListProposals above.
-export async function adminListCompProposals(statusFilter?: ProposalStatus): Promise<CompFileProposal[]> {
+export async function adminListCompProposals(statusFilter?: ProposalStatus, channel?: string): Promise<CompFileProposal[]> {
   if (!CONTRIBUTOR_ENABLED) return []
   const url = new URL(`${ACCOUNT_BASE}/admin/comp-proposals/`)
   if (statusFilter) url.searchParams.set('status', statusFilter)
+  if (channel) url.searchParams.set('channel', channel)
   return request(url.toString(), { method: 'GET' }, true, url.toString())
 }
 
 export async function adminReviewCompProposal(id: number, payload: {
   action: 'approve' | 'reject'
   review_notes?: string
+  channel?: string
 }): Promise<CompFileProposal> {
   assertContributorApi()
   return request(`${ACCOUNT_BASE}/admin/comp-proposals/${id}/review/`, {
@@ -876,17 +968,23 @@ export async function adminReviewCompProposal(id: number, payload: {
   })
 }
 
-export async function adminReverseCompProposal(id: number): Promise<CompFileProposal> {
+export async function adminReverseCompProposal(id: number, channel?: string): Promise<CompFileProposal> {
   assertContributorApi()
-  return request(`${ACCOUNT_BASE}/admin/comp-proposals/${id}/reverse/`, { method: 'POST' })
+  const url = new URL(`${ACCOUNT_BASE}/admin/comp-proposals/${id}/reverse/`)
+  if (channel) url.searchParams.set('channel', channel)
+  return request(url.toString(), { method: 'POST' })
 }
 
-export function adminCompProposalStagingUrl(id: number): string {
-  return `${ACCOUNT_BASE}/admin/comp-proposals/${id}/staging/`
+export function adminCompProposalStagingUrl(id: number, channel?: string): string {
+  const url = new URL(`${ACCOUNT_BASE}/admin/comp-proposals/${id}/staging/`)
+  if (channel) url.searchParams.set('channel', channel)
+  return url.toString()
 }
 
-export async function adminCompFileHistory(filepath: string): Promise<{ filepath: string; revisions: CompFileRevision[] }> {
+export async function adminCompFileHistory(filepath: string, channel?: string): Promise<{ filepath: string; revisions: CompFileRevision[] }> {
   assertContributorApi()
   const encoded = filepath.split('/').map(encodeURIComponent).join('/')
-  return request(`${ACCOUNT_BASE}/admin/comp-files/${encoded}/history/`, { method: 'GET' })
+  const url = new URL(`${ACCOUNT_BASE}/admin/comp-files/${encoded}/history/`)
+  if (channel) url.searchParams.set('channel', channel)
+  return request(url.toString(), { method: 'GET' })
 }

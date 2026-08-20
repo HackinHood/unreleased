@@ -7,6 +7,7 @@ import FilePickerModal from './FilePickerModal'
 import { useStore, useStorePick } from '../store/useStore'
 import { apiFetch, JWApiSong, JWApiEra, buildImageUrl, CATEGORY_LABELS } from '../lib/juicewrldApi'
 import * as userApi from '../lib/userApi'
+import { isPrimaryChannelSlug } from '../hooks/useChannelRoles'
 import { invalidateLyricsCache } from './Player'
 import type { EditorApplication } from '../lib/userApi'
 import {
@@ -439,8 +440,8 @@ export default function EditorPage({ initialSongId = null }: {
     account, currentTrack,
     pendingEditorSongId, setPendingEditorSongId, setActiveView, previousView,
     pendingEditProposal, setPendingEditProposal,
-    setShowUserAuth, logoutAccount,
-  } = useStorePick('account', 'currentTrack', 'pendingEditorSongId', 'setPendingEditorSongId', 'setActiveView', 'previousView', 'pendingEditProposal', 'setPendingEditProposal', 'setShowUserAuth', 'logoutAccount')
+    setShowUserAuth, logoutAccount, activeChannel, channels,
+  } = useStorePick('account', 'currentTrack', 'pendingEditorSongId', 'setPendingEditorSongId', 'setActiveView', 'previousView', 'pendingEditProposal', 'setPendingEditProposal', 'setShowUserAuth', 'logoutAccount', 'activeChannel', 'channels')
   // Where "back"/"nothing to edit" should return to — wherever the user was
   // before landing here, falling back to the editor dashboard when that's
   // unknown (e.g. a deep link straight into the editor).
@@ -450,13 +451,8 @@ export default function EditorPage({ initialSongId = null }: {
   // which would otherwise re-run that effect and make it call itself forever.
   const backViewRef = useRef(backView)
   backViewRef.current = backView
-  const isEditor = !!account?.is_editor
   const isAdmin  = !!account?.is_administrator
-  // Admins can edit songs too (SongContextMenu's canEdit check already grants
-  // them the "Edit" menu item) — gating this page on isEditor alone sent
-  // admin-only accounts straight to the "apply to be an editor" screen
-  // instead of the actual editor, every time they clicked Edit.
-  const canEdit  = isEditor || isAdmin
+  const canEdit  = userApi.isChannelEditor(account, activeChannel, isPrimaryChannelSlug(channels, activeChannel))
 
   const [application, setApplication] = useState<EditorApplication | null>(null)
   const [appLoading, setAppLoading]   = useState(false)
@@ -859,11 +855,11 @@ export default function EditorPage({ initialSongId = null }: {
   useEffect(() => {
     if (!account || canEdit) { setApplication(null); return }
     setAppLoading(true)
-    userApi.getMyApplication('editor')
+    userApi.getMyApplication('editor', activeChannel)
       .then(r => setApplication(r.application))
       .catch(() => setApplication(null))
       .finally(() => setAppLoading(false))
-  }, [account, canEdit])
+  }, [account, canEdit, activeChannel])
 
   const current: Record<string, unknown> = {
     name, credited_artists: artists, album, category: cat,
@@ -914,6 +910,7 @@ export default function EditorPage({ initialSongId = null }: {
         await userApi.createProposal({
           song: song.id, change_type: 'update',
           title: name || song.name, proposed_data: patch, editor_notes: edNotes,
+          channel: activeChannel,
         })
       }
       // Lyrics may have changed (and auto-approve admins make it live instantly)
@@ -938,6 +935,7 @@ export default function EditorPage({ initialSongId = null }: {
       await userApi.createProposal({
         song: song.id, change_type: 'delete',
         title: name || song.name, proposed_data: {}, editor_notes: edNotes,
+        channel: activeChannel,
       })
       setDeleteState('submitted')
       setTimeout(() => setDeleteState('idle'), 3000)
@@ -1027,7 +1025,7 @@ export default function EditorPage({ initialSongId = null }: {
   if (!canEdit) return (
     <ApplicationView
       application={application} loading={appLoading}
-      onSubmitted={onSubmitted} onSignOut={onSignOut}
+      onSubmitted={onSubmitted} onSignOut={onSignOut} channel={activeChannel}
     />
   )
 
@@ -1439,11 +1437,12 @@ function AppField({ label, value, onChange, rows, placeholder, hint }: {
 }
 
 /* ── Application view ─────────────────────────────────────────────────────── */
-const ApplicationView = memo(function ApplicationView({ application, loading, onSubmitted, onSignOut }: {
+const ApplicationView = memo(function ApplicationView({ application, loading, onSubmitted, onSignOut, channel }: {
   application: EditorApplication | null
   loading: boolean
   onSubmitted: (a: EditorApplication) => void
   onSignOut: () => void
+  channel?: string
 }): JSX.Element {
   const [displayName, setDisplayName] = useState('')
   const [contact,     setContact]     = useState('')
@@ -1457,7 +1456,7 @@ const ApplicationView = memo(function ApplicationView({ application, loading, on
     setError(null)
     if (motivation.trim().length < 20) { setError('Motivation must be at least 20 characters.'); return }
     setSubmitting(true)
-    try { onSubmitted(await userApi.submitApplication({ display_name: displayName, contact, experience, motivation, areas })) }
+    try { onSubmitted(await userApi.submitApplication({ display_name: displayName, contact, experience, motivation, areas, channel })) }
     catch (e) { setError(e instanceof Error ? e.message : 'Submission failed') }
     finally { setSubmitting(false) }
   }

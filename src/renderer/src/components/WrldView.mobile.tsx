@@ -20,6 +20,7 @@ import { getVersionGroup } from '../lib/versionsApi'
 import type { JWApiSong } from '../lib/juicewrldApi'
 import type { SyncedLyricLine, Track } from '../types'
 import * as userApi from '../lib/userApi'
+import { useCanEdit } from '../hooks/useChannelRoles'
 import SongInfoModal from './SongInfoModal'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { ProgressiveCover } from './ProgressiveCover'
@@ -818,18 +819,17 @@ const FmLikeButton = memo(function FmLikeButton({ light }: { light: boolean }): 
 // "···" for the current track. SongContextMenu is the app-wide one and already
 // comes up as a bottom sheet on a phone, so the x/y it takes are ignored here.
 const SongMenu = memo(function SongMenu({ light }: { light: boolean }): JSX.Element {
-  const { currentTrack, radioFmActive, radioFmNowPlaying, radioFmMatchedSong, likedTrackIds, toggleLike, account, setActiveView, setPendingEditorSongId } = useStore(useShallow(s => ({
+  const { currentTrack, radioFmActive, radioFmNowPlaying, radioFmMatchedSong, likedTrackIds, toggleLike, setActiveView, setPendingEditorSongId } = useStore(useShallow(s => ({
     currentTrack: s.currentTrack,
     radioFmActive: s.radioFmActive,
     radioFmNowPlaying: s.radioFmNowPlaying,
     radioFmMatchedSong: s.radioFmMatchedSong,
     likedTrackIds: s.likedTrackIds,
     toggleLike: s.toggleLike,
-    account: s.account,
     setActiveView: s.setActiveView,
     setPendingEditorSongId: s.setPendingEditorSongId,
   })))
-  const canEdit = !!(account?.is_editor || account?.is_administrator)
+  const canEdit = useCanEdit()
 
   const [open, setOpen] = useState(false)
   const [showSongInfo, setShowSongInfo] = useState(false)
@@ -959,6 +959,15 @@ function QueueSheet({ onClose }: { onClose: () => void }): JSX.Element {
   // reorderQueue's (from, to) are indices within `upcoming` itself — see its
   // definition in queueSlice.ts — which is exactly what useDragReorder tracks.
   const drag = useDragReorder(upcoming.length, reorderQueue)
+  const [search, setSearch] = useState('')
+
+  const query = search.trim().toLowerCase()
+  const matchesQuery = (track: Track): boolean =>
+    !query || track.title.toLowerCase().includes(query) || track.artist.toLowerCase().includes(query)
+  // Pair each track with its original absolute index so onPlay/onRemove keep
+  // working correctly after filtering shrinks the array.
+  const upcomingIndexed = upcoming.map((track, i) => ({ track, i }))
+  const filteredUpcoming = query ? upcomingIndexed.filter(({ track }) => matchesQuery(track)) : upcomingIndexed
 
   return (
     <Sheet
@@ -995,25 +1004,55 @@ function QueueSheet({ onClose }: { onClose: () => void }): JSX.Element {
             <span className="text-[11px] font-semibold uppercase tracking-wider flex-1 text-left">History · {history.length}</span>
             <ChevronDown size={15} className={`transition-transform ${historyOpen ? 'rotate-180' : ''}`} />
           </button>
-          {historyOpen && (
-            <div className="opacity-70">
-              {[...history].reverse().slice(0, MAX_HISTORY_SHOWN).map((track, i) => (
-                <QueueRow
-                  key={`hist-${track.id}-${i}`}
-                  track={track}
-                  onPlay={() => radioMode ? jumpToTrack(track) : playTrack(track)}
-                />
-              ))}
-              {history.length > MAX_HISTORY_SHOWN && (
-                <p className="text-text-muted text-xs text-center py-1.5">+{history.length - MAX_HISTORY_SHOWN} older</p>
-              )}
-            </div>
-          )}
+          {historyOpen && (() => {
+            // Displayed newest-first, so reversed index i maps back to
+            // absolute queue position history.length - 1 - i.
+            const reversedIndexed = [...history].reverse().map((track, i) => ({ track, i }))
+            const filtered = query ? reversedIndexed.filter(({ track }) => matchesQuery(track)) : reversedIndexed
+            const shown = query ? filtered : filtered.slice(0, MAX_HISTORY_SHOWN)
+            return (
+              <div className="opacity-70">
+                {shown.map(({ track, i }) => (
+                  <QueueRow
+                    key={`hist-${track.id}-${i}`}
+                    track={track}
+                    onPlay={() => radioMode ? jumpToTrack(track) : playTrack(track)}
+                  />
+                ))}
+                {!query && filtered.length > MAX_HISTORY_SHOWN && (
+                  <p className="text-text-muted text-xs text-center py-1.5">+{filtered.length - MAX_HISTORY_SHOWN} older</p>
+                )}
+                {query && shown.length === 0 && (
+                  <p className="text-text-muted text-xs text-center py-1.5">No matches</p>
+                )}
+              </div>
+            )
+          })()}
           <SheetDivider />
         </>
       )}
 
-      {currentTrack ? (
+      {queue.length > 0 && (
+        <div className="px-5 pt-2 pb-1">
+          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-surface-overlay">
+            <Search size={13} className="text-text-muted shrink-0" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search queue"
+              className="flex-1 min-w-0 bg-transparent text-xs text-text-primary placeholder:text-text-muted outline-none"
+            />
+            {search && (
+              <button onClick={() => setSearch('')} className="text-text-muted transition-colors shrink-0">
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!query && (currentTrack ? (
         <>
           <p className="px-5 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted">Now playing</p>
           <QueueRow track={currentTrack} active playing={isPlaying} />
@@ -1023,19 +1062,19 @@ function QueueSheet({ onClose }: { onClose: () => void }): JSX.Element {
           <ListMusic size={28} className="text-text-muted" />
           <p className="text-text-muted text-sm">Queue is empty</p>
         </div>
-      )}
+      ))}
 
-      {upcoming.length > 0 ? (
+      {filteredUpcoming.length > 0 ? (
         <>
           <SheetDivider />
           <p className="px-5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-            {shuffle ? 'Shuffle' : 'Up next'} · {upcoming.length}
+            {query ? 'Results' : shuffle ? 'Shuffle' : 'Up next'} · {filteredUpcoming.length}
           </p>
-          {upcoming.map((track, i) => (
+          {filteredUpcoming.map(({ track, i }) => (
             <QueueRow
               key={`${track.id}-${queueIndex + 1 + i}`}
               track={track}
-              reorder={reorder}
+              reorder={!query && reorder}
               dragging={drag.dragIndex === i}
               rowStyle={drag.rowStyle(i)}
               handleProps={drag.handleProps(i)}
@@ -1044,6 +1083,8 @@ function QueueSheet({ onClose }: { onClose: () => void }): JSX.Element {
             />
           ))}
         </>
+      ) : query ? (
+        <p className="text-text-muted text-xs text-center py-5">No matches</p>
       ) : currentTrack ? (
         <p className="text-text-muted text-xs text-center py-5">Nothing up next</p>
       ) : null}

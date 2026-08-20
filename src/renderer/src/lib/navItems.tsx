@@ -26,8 +26,8 @@ export const NAV_ITEMS: NavItemDef[] = [
   // only the label is Games, so the tab can hold more than one game later.
   { view: 'heardle', label: 'Games', icon: <Gamepad2 size={18} /> },
   { view: 'stats', label: 'Wrapped', icon: <BarChart3 size={18} /> },
+  { view: 'news', label: 'News', icon: <Newspaper size={18} /> },
   // Extras — off by default, addable from Settings → Appearance → Menu items.
-  { view: 'news', label: 'News', icon: <Newspaper size={18} />, defaultHidden: true },
   { view: 'liked', label: 'Liked Songs', icon: <Heart size={18} />, defaultHidden: true },
   { view: 'docs', label: 'API Docs', icon: <BookOpen size={18} />, defaultHidden: true },
 ]

@@ -2,7 +2,8 @@ import { useEffect, useState, useMemo, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { Loader2, Trophy, FileEdit, Pencil, Trash2, RefreshCw, Plus, X, Check, AlertCircle, ChevronDown, ChevronUp, Search, Flag, ShieldCheck, FolderOpen, Copy } from 'lucide-react'
 import { useStore } from '../store/useStore'
-import { getMyProposals, getLeaderboard, withdrawProposal, createProposal, resubmitProposal, SongEditProposal, ProposalStatus, getMyCompProposals, CompFileProposal } from '../lib/userApi'
+import { getMyProposals, getLeaderboard, withdrawProposal, createProposal, resubmitProposal, SongEditProposal, ProposalStatus, getMyCompProposals, CompFileProposal, isChannelContributor, isChannelManager } from '../lib/userApi'
+import { isPrimaryChannelSlug } from '../hooks/useChannelRoles'
 import { apiFetch, JWApiEra, JWApiSong } from '../lib/juicewrldApi'
 import * as reportsApi from '../lib/reportsApi'
 import type { SongReportRow, SongReportStatus } from '../lib/reportsApi'
@@ -11,7 +12,6 @@ import FilePickerModal from './FilePickerModal'
 import { BasicRow, BasicSelect, SyncedLyricsTable, cleanDate } from './EditorPage.desktop'
 import AdminPage from './AdminPage.mobile'
 import CompProposalList, { CompFilterBar, filterCompProposals, type CompFilterTab } from './CompProposalList'
-import { CONTRIBUTOR_ENABLED } from '../lib/userApi'
 
 const CATEGORIES = [
   { value: 'released', label: 'Released' },
@@ -95,7 +95,7 @@ function CopyFromSong({ onCopy, copiedFrom, onClear }: {
   )
 }
 
-function AddSongModal({ onClose, onSubmitted }: { onClose: () => void; onSubmitted: () => void }): JSX.Element {
+function AddSongModal({ onClose, onSubmitted, channel }: { onClose: () => void; onSubmitted: () => void; channel?: string }): JSX.Element {
   const [name,    setName]    = useState('')
   const [artists, setArtists] = useState('')
   const [cat,     setCat]     = useState('')
@@ -203,7 +203,7 @@ function AddSongModal({ onClose, onSubmitted }: { onClose: () => void; onSubmitt
     if (!name.trim() || submitState === 'submitting') return
     setSubmitState('submitting'); setSubmitError(null)
     try {
-      await createProposal({ song: null, change_type: 'create', title: name.trim(), proposed_data: proposed, editor_notes: edNotes })
+      await createProposal({ song: null, change_type: 'create', title: name.trim(), proposed_data: proposed, editor_notes: edNotes, channel })
       setSubmitState('submitted')
       setTimeout(() => { onSubmitted(); onClose() }, 1200)
     } catch (e) {
@@ -387,12 +387,22 @@ function changeTypeLabel(type: string): string {
 }
 
 export default function EditorProfileView(): JSX.Element {
-  const { account, setActiveView, setPendingEditorSongId, setPendingEditProposal } = useStore(useShallow(s => ({
+  const { account, setActiveView, setPendingEditorSongId, setPendingEditProposal, activeChannel, channels, setActiveChannel, loadChannels } = useStore(useShallow(s => ({
     account: s.account,
     setActiveView: s.setActiveView,
     setPendingEditorSongId: s.setPendingEditorSongId,
     setPendingEditProposal: s.setPendingEditProposal,
+    activeChannel: s.activeChannel,
+    channels: s.channels,
+    setActiveChannel: s.setActiveChannel,
+    loadChannels: s.loadChannels,
   })))
+  // Every list on this page — my proposals, my comp proposals, the Admin tab's
+  // review queues — is already scoped to activeChannel (see the effects
+  // below and AdminPage). ApiFilesView is the only other place that lets a
+  // user change it; without a switcher here too, reviewing a second channel
+  // meant leaving the profile to flip it in Files first.
+  useEffect(() => { if (channels.length === 0) loadChannels().catch(() => {}) }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [proposals, setProposals] = useState<SongEditProposal[]>([])
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
@@ -412,12 +422,15 @@ export default function EditorProfileView(): JSX.Element {
   // Not `|| is_administrator`: this tab lists proposals *you* submitted, and
   // an admin who never contributed has none. Their review queue is the Admin
   // tab's "Comp files" — the one place proposals are reviewed.
-  const isContributor = CONTRIBUTOR_ENABLED && !!account?.is_contributor
+  const isPrimary = isPrimaryChannelSlug(channels, activeChannel)
+  const isContributor = isChannelContributor(account, activeChannel, isPrimary)
   const isAdmin = !!account?.is_administrator
   // Managers only get the Admin tab (renamed "Manager" for them below) — they
   // have no song-edit or report-review power, so they land there directly
-  // rather than on a Proposals tab that'll always be empty for them.
-  const isManager = !!account?.is_manager
+  // rather than on a Proposals tab that'll always be empty for them. Scoped
+  // to the active channel — a manager grant on one channel shouldn't leave
+  // this visible (and then erroring) on a channel they don't actually manage.
+  const isManager = isChannelManager(account, activeChannel, isPrimary)
   const managerOnly = isManager && !isAdmin
   const [profileTab, setProfileTab] = useState<'proposals' | 'reports' | 'admin' | 'comp'>(managerOnly ? 'admin' : 'proposals')
   const [reportStatus, setReportStatus] = useState<SongReportStatus | ''>('pending')
@@ -430,8 +443,8 @@ export default function EditorProfileView(): JSX.Element {
   useEffect(() => {
     if (profileTab !== 'comp' || !isContributor) return
     setLoadingComp(true)
-    getMyCompProposals().then(setCompProposals).catch(() => {}).finally(() => setLoadingComp(false))
-  }, [profileTab, isContributor, refreshKey])
+    getMyCompProposals(activeChannel).then(setCompProposals).catch(() => {}).finally(() => setLoadingComp(false))
+  }, [profileTab, isContributor, refreshKey, activeChannel])
 
   useEffect(() => {
     if (profileTab !== 'reports' || !canReviewReports) return
@@ -471,14 +484,14 @@ export default function EditorProfileView(): JSX.Element {
   useEffect(() => {
     setRefreshing(true)
     Promise.all([
-      getMyProposals().then(setProposals).catch(() => {}),
+      getMyProposals(activeChannel).then(setProposals).catch(() => {}),
       getLeaderboard().then((data) => setLeaderboard(data as LeaderboardEntry[])).catch(() => {}),
     ]).finally(() => {
       setLoadingProposals(false)
       setLoadingLeaderboard(false)
       setRefreshing(false)
     })
-  }, [refreshKey])
+  }, [refreshKey, activeChannel])
 
   const myEntry = leaderboard.find((e) => e.discord_username === account?.discord_username)
 
@@ -556,6 +569,18 @@ export default function EditorProfileView(): JSX.Element {
           )}
           {isContributor && !account?.is_administrator && (
             <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 text-[10px] font-semibold uppercase tracking-wide shrink-0">Contributor</span>
+          )}
+          {channels.length > 1 && (
+            <div className="flex items-center bg-surface-overlay rounded-full p-0.5 gap-0.5 shrink-0">
+              {channels.map((ch) => (
+                <button
+                  key={ch.slug}
+                  onClick={() => setActiveChannel(ch.slug)}
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-semibold transition-colors ${activeChannel === ch.slug ? 'bg-surface-raised text-text-primary' : 'text-text-muted'}`}
+                  title={ch.description || ch.name}
+                >{ch.name}</button>
+              ))}
+            </div>
           )}
           {(account?.is_editor || account?.is_administrator) && (
             <button
@@ -822,6 +847,7 @@ export default function EditorProfileView(): JSX.Element {
         <AddSongModal
           onClose={() => setShowAddSong(false)}
           onSubmitted={() => setRefreshKey(k => k + 1)}
+          channel={activeChannel}
         />
       )}
     </div>

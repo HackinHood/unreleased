@@ -7,6 +7,7 @@ import {
   GitBranch, Info, StickyNote, Quote, Copy, Download, Loader2, LucideIcon
 } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
+import { useCanEdit } from '../hooks/useChannelRoles'
 import { JWApiSong, CATEGORY_LABELS, buildImageUrl, parseDuration, apiFetch, resolvePrefCoverUrl } from '../lib/juicewrldApi'
 import { versionsEnabled, getVersionGroup, SongVersionMeta } from '../lib/versionsApi'
 import { formatDuration } from '../lib/format'
@@ -426,7 +427,7 @@ export default function SongInfoModal({ song, onClose, onEdit }: Props): JSX.Ele
 // ChangesFeedPanel opening info for a feed item). Renders nothing until
 // something sets it, then fetches that song and shows the modal in-app.
 export function GlobalSongInfoHost(): JSX.Element | null {
-  const { infoSongId, setInfoSongId, account } = useStorePick('infoSongId', 'setInfoSongId', 'account')
+  const { infoSongId, setInfoSongId } = useStorePick('infoSongId', 'setInfoSongId')
   const [song, setSong] = useState<JWApiSong | null>(null)
 
   useEffect(() => {
@@ -437,7 +438,7 @@ export function GlobalSongInfoHost(): JSX.Element | null {
   }, [infoSongId])
 
   if (infoSongId == null || !song) return null
-  const canEdit = !!account && (account.is_editor || account.is_administrator)
+  const canEdit = useCanEdit()
   return (
     <SongInfoModal
       song={song}

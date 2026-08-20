@@ -6,8 +6,8 @@ import { ls } from '../lib/persist'
 import * as userApi from '../lib/userApi'
 import type { AccountUser, PlaylistSummary } from '../lib/userApi'
 import * as preferencesApi from '../lib/preferencesApi'
-import { apiFetch, apiPeek, buildStreamUrl, buildImageUrl, parseDuration, resolvePrefCoverUrl } from '../lib/juicewrldApi'
-import type { JWApiSong } from '../lib/juicewrldApi'
+import { apiFetch, apiPeek, buildStreamUrl, buildImageUrl, parseDuration, resolvePrefCoverUrl, fetchChannels } from '../lib/juicewrldApi'
+import type { JWApiSong, JWApiChannel } from '../lib/juicewrldApi'
 import {
   emptySongPref, isEmptySongPref, normalizePrefText, setSongPrefsCache,
 } from '../lib/songPrefs'
@@ -304,6 +304,11 @@ interface AppState {
   apiTrackerEra: string
   apiFilesPath: string
   apiFilesLastPath: string
+
+  channels: JWApiChannel[]
+  activeChannel: string
+  setActiveChannel: (slug: string) => void
+  loadChannels: () => Promise<void>
 
   // Account
   account: AccountUser | null
@@ -1575,6 +1580,20 @@ export const useStore = create<AppStore>((set, get, store) => ({
   setApiFilesLastPath: (path) => set({ apiFilesLastPath: path }),
   setApiFilesPath: (path) => set({ apiFilesPath: path }),
 
+  channels: [],
+  activeChannel: ls.get<string>('activeChannel') || '',
+  setActiveChannel: (slug) => { set({ activeChannel: slug }); ls.set('activeChannel', slug) },
+  loadChannels: async () => {
+    const list = await fetchChannels()
+    if (!list.length) return
+    const current = get().activeChannel
+    const valid = list.some((c) => c.slug === current)
+    const primary = list.find((c) => c.is_primary) ?? list[0]
+    const next = valid ? current : primary.slug
+    set({ channels: list, activeChannel: next })
+    ls.set('activeChannel', next)
+  },
+
   // ── Account ───────────────────────────────────────────────────────────────
   account: null,
   playlists: [],
@@ -1749,6 +1768,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
           .filter(([path, params]) => apiPeek(path, params) === undefined)
           .map(([path, params]) => apiFetch(path, params)),
       )
+      get().loadChannels().catch(() => {})
     } finally {
       _apiPrefetchInFlight = false
     }
