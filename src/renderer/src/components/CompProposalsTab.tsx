@@ -8,6 +8,7 @@ import { getToken } from '../lib/userApi'
 import { relativeTime, shortDate, StatusChip, Empty } from './adminShared'
 import { useBackToClose } from '../hooks/useBackToClose'
 import { buildStreamUrl } from '../lib/juicewrldApi'
+import { useStore } from '../store/useStore'
 import { getMediaType } from '../lib/fileTypes'
 import { formatBytes, formatDuration } from '../lib/format'
 
@@ -103,6 +104,7 @@ function MediaPreview({ label, name, src, loading, error, bytes }: {
 }
 
 export default function CompProposalsTab({ embedded = false, onChanged }: { embedded?: boolean; onChanged?: () => void }): JSX.Element {
+  const activeChannel = useStore((s) => s.activeChannel)
   const [status, setStatus] = useState<ProposalStatus | ''>('pending')
   const [proposals, setProposals] = useState<CompFileProposal[]>([])
   const [selected, setSelected] = useState<CompFileProposal | null>(null)
@@ -111,10 +113,15 @@ export default function CompProposalsTab({ embedded = false, onChanged }: { embe
   const [reviewNotes, setReviewNotes] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  // Separate from `error` (review/reverse action failures, shown in the detail
+  // pane) — this covers the list fetch itself and has to stay visible even
+  // with nothing selected, since a channel-access failure clears the list.
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     setLoading(true)
-    userApi.adminListCompProposals(status || undefined)
+    setLoadError(null)
+    userApi.adminListCompProposals(status || undefined, activeChannel)
       .then(rows => {
         setProposals(rows)
         // Reviewing a proposal reloads the list and moves the selection, so
@@ -123,9 +130,16 @@ export default function CompProposalsTab({ embedded = false, onChanged }: { embe
         setSelected(rows[0] ?? null)
         setReviewNotes('')
       })
-      .catch(() => {})
+      .catch((e) => {
+        setLoadError(e instanceof Error ? e.message : 'Could not load comp proposals')
+        // Don't leave the previous channel's list on screen underneath the
+        // error — its approve/reject actions would still be live against the
+        // wrong channel context.
+        setProposals([])
+        setSelected(null)
+      })
       .finally(() => setLoading(false))
-  }, [status, refreshKey])
+  }, [status, refreshKey, activeChannel])
 
   const reload = (): void => {
     setRefreshKey(k => k + 1)
@@ -136,7 +150,7 @@ export default function CompProposalsTab({ embedded = false, onChanged }: { embe
     setActionId(id)
     setError(null)
     try {
-      await userApi.adminReviewCompProposal(id, { action, review_notes: reviewNotes })
+      await userApi.adminReviewCompProposal(id, { action, review_notes: reviewNotes, channel: activeChannel })
       reload()
     } catch (e) {
       setError(e instanceof Error ? e.message : `Could not ${action} this proposal`)
@@ -149,7 +163,7 @@ export default function CompProposalsTab({ embedded = false, onChanged }: { embe
     setActionId(id)
     setError(null)
     try {
-      await userApi.adminReverseCompProposal(id)
+      await userApi.adminReverseCompProposal(id, activeChannel)
       reload()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not reverse this proposal')
@@ -160,7 +174,7 @@ export default function CompProposalsTab({ embedded = false, onChanged }: { embe
 
   const downloadStaging = (p: CompFileProposal): void => {
     const token = getToken()
-    const url = userApi.adminCompProposalStagingUrl(p.id)
+    const url = userApi.adminCompProposalStagingUrl(p.id, activeChannel)
     fetch(url, { headers: token ? { Authorization: `Token ${token}` } : {} })
       .then(r => r.blob())
       .then(blob => {
@@ -183,7 +197,7 @@ export default function CompProposalsTab({ embedded = false, onChanged }: { embe
   // (approval moves it into comp/, rejection discards it) — matches the same
   // condition the existing "Staged file" download button already gates on.
   const stagingUrl = selected && selected.staging_filename && selected.status === 'pending'
-    ? userApi.adminCompProposalStagingUrl(selected.id)
+    ? userApi.adminCompProposalStagingUrl(selected.id, activeChannel)
     : null
   const staged = useAuthedBlobUrl(stagingUrl)
 
@@ -219,7 +233,7 @@ export default function CompProposalsTab({ embedded = false, onChanged }: { embe
             for a plain upload it's simply not there yet, so the public fetch
             404s and the slot quietly shows "unavailable". */}
         <div className="grid grid-cols-1 gap-3">
-          <MediaPreview label="Current file" name={p.file_path} src={buildStreamUrl(p.file_path)} />
+          <MediaPreview label="Current file" name={p.file_path} src={buildStreamUrl(p.file_path, activeChannel)} />
           {p.staging_filename && (
             <MediaPreview
               label="Proposed file"
@@ -297,6 +311,11 @@ export default function CompProposalsTab({ embedded = false, onChanged }: { embe
 
   return (
     <div className={`flex-1 min-w-0 h-full flex flex-col overflow-hidden ${embedded ? '' : 'bg-[var(--surface)]'}`}>
+      {loadError && (
+        <div className="mx-3 mt-3 flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs shrink-0">
+          <AlertCircle size={13} className="shrink-0 mt-0.5" /> {loadError}
+        </div>
+      )}
       <div className="shrink-0 p-3 border-b border-[var(--border)] flex gap-2 overflow-x-auto scrollbar-none">
         {(['pending', 'approved', 'rejected', 'reversed', ''] as const).map(s => (
           <button key={s || 'all'} onClick={() => setStatus(s)}

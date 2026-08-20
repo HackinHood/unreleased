@@ -1,15 +1,14 @@
-// News feed data layer. The backend endpoints don't exist yet — this file
-// defines the shape the UI codes against and the full set of read/write calls,
-// ready to flip on the moment `/news/` ships. Until then `NEWS_ENABLED` keeps
-// reads on an empty state and makes every mutation throw a clear "not available
-// yet" error instead of firing at routes that aren't there.
+// News feed data layer. `/news/` is live on the backend — `NEWS_ENABLED` is
+// kept as a kill switch (reads fall back to an empty state and mutations
+// throw a clear "not available" error) rather than removed outright.
 import { JWAPI_BASE } from './juicewrldApi'
 import { apiRequest } from './apiClient'
 import { getToken } from './userApi'
+import { getMediaType } from './fileTypes'
 
 // Flip to true once the API exposes /news/. Everything below already speaks the
 // intended contract, so no other change should be needed.
-export const NEWS_ENABLED = false
+export const NEWS_ENABLED = true
 
 const NEWS_BASE = `${JWAPI_BASE}/news`
 
@@ -100,8 +99,33 @@ export interface NewsAttachment {
 // Client-side cap, checked before upload. Keep in sync with the backend's limit.
 export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024 // 25 MB
 
-export function isImageAttachment(a: { mime: string }): boolean {
-  return a.mime.startsWith('image/')
+export function isImageAttachment(a: { mime: string; name?: string }): boolean {
+  if (a.mime.startsWith('image/')) return true
+  if (a.name) return getMediaType(a.name) === 'image'
+  return false
+}
+
+export function isAudioAttachment(a: { mime: string; name?: string }): boolean {
+  if (a.mime.startsWith('audio/')) return true
+  if (a.name) return getMediaType(a.name) === 'audio'
+  return false
+}
+
+export function ensureHttpsMediaUrl(url: string | null | undefined): string | null {
+  if (!url) return null
+  if (url.startsWith('http://juicewrldapi.com')) {
+    return `https://${url.slice('http://'.length)}`
+  }
+  return url
+}
+
+export function buildNewsAttachmentStreamUrl(attachment: NewsAttachment, download = false): string {
+  if (attachment.id != null) {
+    const name = encodeURIComponent(attachment.name || 'file')
+    const base = `${NEWS_BASE}/attachments/${attachment.id}/stream/${name}`
+    return download ? `${base}?download=1` : base
+  }
+  return ensureHttpsMediaUrl(attachment.url) ?? attachment.url
 }
 
 // Uploads one file and returns its hosted attachment record. Attachments go

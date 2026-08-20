@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Heart, Play, Loader2, MoreHorizontal } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import * as userApi from '../lib/userApi'
+import { useCanEdit } from '../hooks/useChannelRoles'
 import { Track, LibraryTrack } from '../types'
 import { libraryTrackToTrack } from '../lib/fileTypes'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
@@ -12,7 +13,7 @@ import { formatDuration } from '../lib/format'
 
 export default function LikedSongsView(): JSX.Element {
   const { account, playTrack, playCollection, playNext, toggleLike, setShowUserAuth, setActiveView, setPendingEditorSongId, libraryTracks, likedTrackIds } = useStorePick('account', 'playTrack', 'playCollection', 'playNext', 'toggleLike', 'setShowUserAuth', 'setActiveView', 'setPendingEditorSongId', 'libraryTracks', 'likedTrackIds')
-  const canEdit = !!(account?.is_editor || account?.is_administrator)
+  const canEdit = useCanEdit()
   const [apiTracks, setApiTracks] = useState<Track[]>([])
   const [loading, setLoading] = useState(true)
   const [ctxMenu, setCtxMenu] = useState<SongContextMenuState | null>(null)

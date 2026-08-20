@@ -28,6 +28,7 @@ import { readArt } from '../lib/localLibrary'
 import { formatDuration } from '../lib/format'
 import { apiFetch, smallCoverUrl, JWApiSong } from '../lib/juicewrldApi'
 import { trackIdToSongId } from '../lib/userApi'
+import { useCanEdit } from '../hooks/useChannelRoles'
 import { toFileUrl } from '../lib/fileTypes'
 import { isAndroidApp } from '../lib/androidUpdate'
 import { startMediaSession, updateMediaMetadata, updateMediaPlaybackState, onMediaControlEvent, fetchArtworkBase64 } from '../lib/mediaControl'
@@ -131,7 +132,7 @@ export default function Player(): JSX.Element {
     setActiveView,
     activeView,
     playNext, account, updateLibraryTrack, setPendingEditorSongId, sidebarPosition } = useStorePick('currentTrack', 'currentTrackFull', 'isPlaying', 'volume', 'progress', 'currentTime', 'shuffle', 'repeat', 'setIsPlaying', 'setVolume', 'setProgress', 'setCurrentTime', 'setCurrentTrackFull', 'toggleShuffle', 'toggleRepeat', 'nextTrack', 'prevTrack', 'showQueue', 'setShowQueue', 'playerCollapsed', 'setPlayerCollapsed', 'queue', 'queueIndex', 'crossfadeEnabled', 'crossfadeDuration', 'sleepTimerEnd', 'setSleepTimer', 'audioOutput', 'setAudioOutput', 'playbackSpeed', 'setPlaybackSpeed', 'likedTrackIds', 'toggleLike', 'setActiveView', 'activeView', 'playNext', 'account', 'updateLibraryTrack', 'setPendingEditorSongId', 'sidebarPosition')
-  const canEditSong = !!(account?.is_editor || account?.is_administrator)
+  const canEditSong = useCanEdit()
 
   const [showContextMenu, setShowContextMenu] = useState(false)
   // Cursor position for a right-click-spawned menu. null → menu was opened via

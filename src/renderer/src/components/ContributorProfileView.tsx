@@ -3,7 +3,7 @@ import { RefreshCw, ChevronLeft, Plus, FolderOpen } from 'lucide-react'
 import { useStorePick } from '../store/useStore'
 import * as userApi from '../lib/userApi'
 import type { CompFileProposal } from '../lib/userApi'
-import { CONTRIBUTOR_ENABLED } from '../lib/userApi'
+import { isPrimaryChannelSlug } from '../hooks/useChannelRoles'
 import CompProposalList, { CompFilterBar, filterCompProposals, type CompFilterTab } from './CompProposalList'
 
 // A contributor-only account's home. Reviewing other people's proposals is
@@ -11,14 +11,14 @@ import CompProposalList, { CompFilterBar, filterCompProposals, type CompFilterTa
 // page's "Comp files" tab, reachable from the editor profile.
 
 export default function ContributorProfileView(): JSX.Element {
-  const { account, setActiveView } = useStorePick('account', 'setActiveView')
+  const { account, setActiveView, activeChannel, channels } = useStorePick('account', 'setActiveView', 'activeChannel', 'channels')
   const [proposals, setProposals] = useState<CompFileProposal[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<CompFilterTab>('all')
   const [refreshKey, setRefreshKey] = useState(0)
   const [withdrawingId, setWithdrawingId] = useState<number | null>(null)
 
-  const isContributor = CONTRIBUTOR_ENABLED && !!(account?.is_contributor || account?.is_administrator)
+  const isContributor = userApi.isChannelContributor(account, activeChannel, isPrimaryChannelSlug(channels, activeChannel))
 
   useEffect(() => {
     if (!isContributor) {
@@ -26,8 +26,8 @@ export default function ContributorProfileView(): JSX.Element {
       return
     }
     setLoading(true)
-    userApi.getMyCompProposals().then(setProposals).catch(() => {}).finally(() => setLoading(false))
-  }, [isContributor, refreshKey])
+    userApi.getMyCompProposals(activeChannel).then(setProposals).catch(() => {}).finally(() => setLoading(false))
+  }, [isContributor, refreshKey, activeChannel])
 
   const withdraw = async (id: number): Promise<void> => {
     setWithdrawingId(id)
