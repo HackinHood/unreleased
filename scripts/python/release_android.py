@@ -35,8 +35,8 @@ for the desktop app's auto-updater or gets anywhere near the web deploy.
      Without --install this step is skipped entirely — the release build now
      happens in CI (see below), so no local Android SDK is required for an
      ordinary release.
-  7. Push android to GitHub — origin (leanwrldd/unreleased) and the
-     Juice-WRLD-API/Unreleased mirror.
+  7. Push android to GitHub — origin (Juice-WRLD-API/Unreleased) and the
+     leanwrldd/unreleased mirror.
   8. Create the GitHub release (tag android-v<version>, target_commitish
      android) on both repos, already published with no APK attached.
      Publishing is what fires each repo's build-android.yml
@@ -55,8 +55,8 @@ from pathlib import Path
 
 # ── Config ────────────────────────────────────────────────────────────────────
 ROOT           = Path(__file__).parent.parent.parent
-REPO_OWNER     = "leanwrldd"
-REPO_NAME      = "unreleased"
+REPO_OWNER     = "Juice-WRLD-API"
+REPO_NAME      = "Unreleased"
 ANDROID_BRANCH = "android"
 API_BASE       = "https://api.github.com"
 APK_PATH       = ROOT / "android" / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
@@ -64,10 +64,10 @@ ANDROID_PACKAGE = "com.juicewrldapi.player"
 
 # Best-effort mirror: every android release also pushes the branch and
 # publishes a matching release here, same as release.py does for desktop.
-# origin is the source of truth and the mirror is a nice-to-have — failures
-# here are warned, never fatal.
-MIRROR_OWNER = "Juice-WRLD-API"
-MIRROR_NAME  = "Unreleased"
+# origin (Juice-WRLD-API/Unreleased) is the source of truth and the mirror
+# is a nice-to-have — failures here are warned, never fatal.
+MIRROR_OWNER = "leanwrldd"
+MIRROR_NAME  = "unreleased"
 
 # ── ANSI helpers ──────────────────────────────────────────────────────────────
 RST  = "\033[0m"
@@ -478,8 +478,8 @@ def step_release(version, token, notes, state):
 
 def _publish_github_release(owner, repo, tag, notes, token, state, id_key, new_key):
     """Create/update a published GitHub release on (owner, repo) — no assets.
-    Shared by the real release (leanwrldd/unreleased) and the mirror
-    (Juice-WRLD-API/Unreleased) so both go through identical create/update
+    Shared by the real release (Juice-WRLD-API/Unreleased) and the mirror
+    (leanwrldd/unreleased) so both go through identical create/update
     logic and both end up published (so both fire their own CI build)."""
     info(f"Creating release {_c(tag, WHT, BOLD)} on {owner}/{repo} (target: {ANDROID_BRANCH})…")
     try:
