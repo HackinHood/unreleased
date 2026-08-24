@@ -9,7 +9,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // Keep versionName in step with package.json's version when releasing;
         // bump versionCode by 1 each APK (Android compares the integer, not the name).
-        versionCode 33
+        versionCode 34
         versionName "3.1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
