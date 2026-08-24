@@ -9,6 +9,7 @@ import type { ListeningPlayEvent } from './listeningPlays'
 import type { ServerPlaylistFolder } from './playlistFolders'
 import { apiRequest, cacheDelete } from './apiClient'
 import { cacheSet } from './apiCache'
+import { IS_ANDROID } from './platform'
 
 const ACCOUNT_BASE = `${JWAPI_BASE}/accounts`
 const LIBRARY_BASE = `${JWAPI_BASE}/library`
@@ -224,7 +225,14 @@ export function trackIdToSongId(trackId: string): number | null {
 }
 
 
+// The Android WebView serves the app from https://localhost (see
+// capacitor.config.ts), which isn't a real, Discord-registered redirect
+// target. Reuse the desktop app's already-registered callback instead — the
+// Android login flow (see useStore's loginWithDiscord) opens it in an
+// in-app browser and intercepts the navigation before that page ever loads,
+// the same trick Electron's popup window does.
 export function discordRedirectUri(): string {
+  if (IS_ANDROID) return 'https://player.juicewrldapi.com/auth/discord/callback'
   return `${window.location.origin}/auth/discord/callback`
 }
 
@@ -243,6 +251,51 @@ export async function exchangeDiscord(
     method: 'POST',
     body: JSON.stringify({ code, state, redirect_uri: redirectUri }),
   }, false)
+}
+
+const DISCORD_CALLBACK_HOST = 'player.juicewrldapi.com'
+const DISCORD_CALLBACK_PATH = '/auth/discord/callback'
+
+// Android has no way to hand an OAuth redirect back into the app (see
+// discordRedirectUri above), so this opens the Discord authorize page in an
+// in-app WebView and watches its navigations, grabbing `code`/`state` off
+// the query string the instant it tries to hit the callback URL — mirroring
+// what Electron's popup BrowserWindow does with will-navigate/will-redirect.
+// Resolves null if the user closes the browser without completing login.
+export async function loginWithDiscordInAppBrowser(
+  authorizeUrl: string,
+): Promise<{ code: string; state: string } | null> {
+  const { InAppBrowser, DefaultWebViewOptions } = await import('@capacitor/inappbrowser')
+
+  return new Promise<{ code: string; state: string } | null>((resolve) => {
+    let settled = false
+    const finish = (r: { code: string; state: string } | null) => {
+      if (settled) return
+      settled = true
+      navListenerPromise.then((h) => h.remove())
+      closeListenerPromise.then((h) => h.remove())
+      resolve(r)
+    }
+
+    const navListenerPromise = InAppBrowser.addListener('browserPageNavigationCompleted', ({ url }) => {
+      if (!url) return
+      let parsed: URL
+      try { parsed = new URL(url) } catch { return }
+      if (parsed.hostname !== DISCORD_CALLBACK_HOST || parsed.pathname !== DISCORD_CALLBACK_PATH) return
+      const code = parsed.searchParams.get('code')
+      const state = parsed.searchParams.get('state')
+      InAppBrowser.close()
+      finish(code && state ? { code, state } : null)
+    })
+    const closeListenerPromise = InAppBrowser.addListener('browserClosed', () => finish(null))
+
+    // Listeners are registered before the browser opens (both calls fire
+    // synchronously over the native bridge), so no navigation can slip
+    // through unobserved.
+    Promise.all([navListenerPromise, closeListenerPromise]).then(() => {
+      InAppBrowser.openInWebView({ url: authorizeUrl, options: DefaultWebViewOptions })
+    })
+  })
 }
 
 export async function logout(): Promise<void> {

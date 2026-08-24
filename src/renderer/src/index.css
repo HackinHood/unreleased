@@ -234,6 +234,17 @@ input[type='range']:hover::-webkit-slider-thumb,
 input[type='range']:active::-webkit-slider-thumb {
   opacity: 1;
 }
+/* Touch devices have no :hover at all, so a hover-gated thumb never becomes
+   visible except mid-drag (:active) — on a bare slider with no accent fill
+   (anything not wrapped in .progress-track/.eq-band, e.g. the crossfade
+   duration slider) that left nothing on screen at all until the user's
+   finger was already on it. Android WebView correctly reports (hover: none)
+   for a touchscreen, so this only affects touch, not mouse/trackpad. */
+@media (hover: none) {
+  input[type='range']::-webkit-slider-thumb {
+    opacity: 1;
+  }
+}
 
 .progress-track input[type='range']::-webkit-slider-runnable-track {
   background: linear-gradient(to right, var(--accent) var(--val, 0%), var(--surface-overlay) var(--val, 0%));

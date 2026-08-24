@@ -38,7 +38,7 @@ import { HOTKEY_ACTIONS, effectiveBinding } from '../lib/hotkeys'
 import { DEFAULT_NAV_ORDER, DEFAULT_NAV_VISIBILITY, DEFAULT_NAV_CONTROL_ORDER, DEFAULT_NAV_CONTROL_VISIBILITY } from '../lib/navItems'
 import { getLastfmSession } from '../lib/lastfm'
 import * as localLibrary from '../lib/localLibrary'
-import { runWhenIdle } from '../lib/platform'
+import { runWhenIdle, IS_ANDROID } from '../lib/platform'
 import { getOfflineApi } from '../lib/offlineBackend'
 
 // Key used to track songs downloaded individually (song context menu →
@@ -1711,6 +1711,16 @@ export const useStore = create<AppStore>((set, get, store) => ({
   loginWithDiscord: async () => {
     const redirectUri = userApi.discordRedirectUri()
     const { authorize_url, state } = await userApi.getDiscordAuthUrl(redirectUri)
+    if (IS_ANDROID) {
+      // No page navigation to hand the redirect back to on Android — open
+      // the authorize page in an in-app browser and pull code/state off the
+      // callback navigation directly (see loginWithDiscordInAppBrowser).
+      const result = await userApi.loginWithDiscordInAppBrowser(authorize_url)
+      if (!result) return
+      if (result.state !== state) throw new Error('Discord OAuth state mismatch')
+      await get().completeDiscordLogin(result.code, result.state)
+      return
+    }
     // Defense-in-depth CSRF check: the server already validates `state`
     // server-side, but stash the issued value so completeDiscordLogin can
     // also reject a mismatched one before ever calling exchange. sessionStorage

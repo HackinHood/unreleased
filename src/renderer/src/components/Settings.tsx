@@ -1207,13 +1207,16 @@ export default function Settings(): JSX.Element {
                     // The slider was 80px wide next to the label; on a phone that
                     // is 12 steps across five-eighths of an inch.
                     <div className="flex items-center gap-3 py-2 pl-10 border-b border-[var(--border)] last:border-b-0">
-                      <input
-                        type="range" min={1} max={12} step={1}
-                        value={crossfadeDuration}
-                        onChange={(e) => setCrossfade(true, parseInt(e.target.value))}
-                        aria-label="Crossfade length"
-                        className="flex-1 min-w-0 h-9 accent-[var(--accent)]"
-                      />
+                      <div className="flex-1 min-w-0 progress-track">
+                        <input
+                          type="range" min={1} max={12} step={1}
+                          value={crossfadeDuration}
+                          onChange={(e) => setCrossfade(true, parseInt(e.target.value))}
+                          aria-label="Crossfade length"
+                          className="w-full h-9"
+                          style={{ '--val': `${((crossfadeDuration - 1) / 11) * 100}%` } as React.CSSProperties}
+                        />
+                      </div>
                       <span className="text-text-muted text-xs tabular-nums w-8 text-right shrink-0">{crossfadeDuration}s</span>
                     </div>
                   )}

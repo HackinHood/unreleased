@@ -642,7 +642,17 @@ function ArtBackdrop({ artSrc, artError, isDarkSkin, radioFmActive, onError, ext
   extraDim?: boolean
 }): JSX.Element {
   return (
-    <div className="absolute inset-0 overflow-hidden">
+    // bg-black: a guaranteed opaque base underneath every layer below. The
+    // stack above it (blurred cover, gradients with a `via-transparent`
+    // middle, the noise texture) was never meant to be fully opaque on its
+    // own — each layer assumes something solid sits behind it — which is
+    // fine on the main WRLD page (nothing behind it but the app shell) but
+    // left the portaled lyrics screen showing whatever page was still
+    // mounted behind it through the transparent middle. The blurred cover
+    // still paints on top of this exactly as before, so it still reads as
+    // "matches the cover" — this only guarantees there's always something
+    // solid under it.
+    <div className="absolute inset-0 overflow-hidden bg-black">
       {artSrc && !artError ? (
         // The full-res cover, not the ~128px `small=1` degraded variant — see
         // the resolution note below, this is a separate problem from that one.
@@ -1293,7 +1303,14 @@ function LyricsScreen({
   useBackToClose(onClose)
 
   return createPortal(
-    <div className="fixed inset-0 z-[70] flex flex-col animate-sheet-in">
+    // isolate: ArtBackdrop's noise-texture layer uses mix-blend-overlay,
+    // which blends with whatever's painted behind it in the same stacking
+    // context — without a boundary here, that reaches past this portal into
+    // the still-mounted page behind it (this overlay sits on top of it, not
+    // in place of it) and visibly ghosts that page's content through. Seen
+    // as faint text from the Tracker list bleeding through the lyrics
+    // screen's backdrop, reading as "the background is transparent".
+    <div className="fixed inset-0 z-[70] flex flex-col animate-sheet-in isolate">
       {/* Repaints the page's own backdrop instead of an opaque theme colour —
           the text colours below were picked against the artwork, not against
           --surface. */}

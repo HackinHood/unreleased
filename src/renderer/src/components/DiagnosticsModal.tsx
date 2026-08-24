@@ -1,10 +1,12 @@
 ﻿import { useRef, useState } from 'react'
-import { X, Info, FolderOpen, Terminal } from 'lucide-react'
+import { X, Info, FolderOpen, Terminal, Trash2 } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import { cacheStats } from '../lib/apiCache'
 import type { Track } from '../types'
 import { formatBytes } from '../lib/format'
 import { APP_VERSION } from '../lib/appVersion'
+import { isAndroidApp } from '../lib/androidUpdate'
+import { readLogFile, clearLogFile } from '../lib/runLog'
 
 function localStorageBytes(): number {
   let bytes = 0
@@ -91,6 +93,15 @@ function ValuePopup({ label, value, onClose }: { label: string; value: string; o
 export default function DiagnosticsModal(): JSX.Element {
   const overlayRef = useRef<HTMLDivElement>(null)
   const [expanded, setExpanded] = useState<{ label: string; value: string } | null>(null)
+  const [logText, setLogText] = useState<string | null>(null)
+  const [logLoading, setLogLoading] = useState(false)
+  const loadLog = (): void => {
+    setLogLoading(true)
+    readLogFile().then((text) => { setLogText(text ?? '(empty)'); setLogLoading(false) })
+  }
+  const clearLog = (): void => {
+    clearLogFile().then(() => setLogText('(empty)'))
+  }
   const R = ({ label, value }: { label: string; value: string }): JSX.Element => (
     <Row label={label} value={value} onExpand={(l, v) => setExpanded({ label: l, value: v })} />
   )
@@ -195,12 +206,35 @@ export default function DiagnosticsModal(): JSX.Element {
             <R label="Language" value={navigator.language} />
             <R label="User agent" value={navigator.userAgent} />
           </Section>
+
+          {isAndroidApp() && (
+            <Section title="Logs">
+              <div className="flex items-center gap-2 py-1">
+                <button
+                  onClick={loadLog}
+                  disabled={logLoading}
+                  className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-surface-overlay text-text-primary text-xs font-medium active:bg-surface-highest transition-colors disabled:opacity-50"
+                >
+                  <Terminal size={13} />{logLoading ? 'Loading…' : 'View on-device log'}
+                </button>
+                <button
+                  onClick={clearLog}
+                  className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-surface-overlay text-text-muted text-xs font-medium active:bg-surface-highest transition-colors"
+                >
+                  <Trash2 size={13} />Clear
+                </button>
+              </div>
+            </Section>
+          )}
         </div>
 
       </div>
 
       {expanded && (
         <ValuePopup label={expanded.label} value={expanded.value} onClose={() => setExpanded(null)} />
+      )}
+      {logText != null && (
+        <ValuePopup label="On-device log" value={logText} onClose={() => setLogText(null)} />
       )}
     </div>
   )
