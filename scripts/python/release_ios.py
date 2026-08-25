@@ -30,8 +30,8 @@ same as how build-android.yml now builds the release APK.
      ios-v* tag)
   ── nothing left to answer past this point ──
   5. Commit all changes to ios
-  6. Push ios to GitHub — origin (leanwrldd/unreleased) and the
-     Juice-WRLD-API/Unreleased mirror.
+  6. Push ios to GitHub — origin (Juice-WRLD-API/Unreleased) and the
+     leanwrldd/unreleased mirror.
   7. Create the GitHub release (tag ios-v<version>, target_commitish ios) on
      both repos, already published with no .ipa attached. Publishing is what
      fires each repo's build-ios.yml `on: release: types: [published]`
@@ -52,16 +52,16 @@ from pathlib import Path
 
 # ── Config ────────────────────────────────────────────────────────────────────
 ROOT       = Path(__file__).parent.parent.parent
-REPO_OWNER = "leanwrldd"
-REPO_NAME  = "unreleased"
+REPO_OWNER = "Juice-WRLD-API"
+REPO_NAME  = "Unreleased"
 IOS_BRANCH = "ios"
 API_BASE   = "https://api.github.com"
 IOS_PACKAGE = "com.juicewrldapi.player"
 
 # Best-effort mirror: every ios release also pushes the branch and publishes
 # a matching release here, same as release_android.py does.
-MIRROR_OWNER = "Juice-WRLD-API"
-MIRROR_NAME  = "Unreleased"
+MIRROR_OWNER = "leanwrldd"
+MIRROR_NAME  = "unreleased"
 
 # ── ANSI helpers ──────────────────────────────────────────────────────────────
 RST  = "\033[0m"
