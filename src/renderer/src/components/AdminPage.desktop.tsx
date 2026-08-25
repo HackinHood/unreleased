@@ -330,9 +330,23 @@ export default function AdminPage({ embedded = false }: { embedded?: boolean }):
             <Loader2 size={20} className="animate-spin text-text-muted" />
           </div>
         )}
-        {tab === 'proposals'    && <ProposalsTab proposals={proposals} status={propStatus} setStatus={setPropStatus} onChanged={() => setRefreshKey(k => k + 1)} channel={activeChannel} />}
+        {tab === 'proposals'    && <ProposalsTab
+          proposals={proposals}
+          status={propStatus}
+          setStatus={setPropStatus}
+          onChanged={() => setRefreshKey(k => k + 1)}
+          onReviewed={(updated) => setProposals(prev => {
+            const next = prev.map(p => p.id === updated.id ? updated : p)
+            return propStatus && updated.status !== propStatus ? next.filter(p => p.id !== updated.id) : next
+          })}
+          channel={activeChannel}
+        />}
         {tab === 'comp-proposals' && <CompProposalsTab embedded onChanged={() => setRefreshKey(k => k + 1)} />}
-        {tab === 'applications' && <ApplicationsTab applications={applications} onChanged={() => setRefreshKey(k => k + 1)} />}
+        {tab === 'applications' && <ApplicationsTab
+          applications={applications}
+          onChanged={() => setRefreshKey(k => k + 1)}
+          onReviewed={(updated) => setApplications(prev => prev.map(a => a.id === updated.id ? updated : a))}
+        />}
         {tab === 'reports'      && <ReportsTab reports={reports} status={reportStatus} setStatus={setReportStatus} onChanged={() => setRefreshKey(k => k + 1)} />}
         {tab === 'users'        && <UsersTab users={users} onChanged={() => setRefreshKey(k => k + 1)} currentUserId={account?.id} />}
         {tab === 'stats'        && <StatsTab applications={applications} proposals={proposals} users={users} />}
@@ -587,11 +601,12 @@ const ProposalRow = memo(function ProposalRow({ item, active, showUserHeader, on
   )
 })
 
-function ProposalsTab({ proposals, status, setStatus, onChanged, channel }: {
+function ProposalsTab({ proposals, status, setStatus, onChanged, onReviewed, channel }: {
   proposals: SongEditProposal[]
   status: ProposalStatus | ''
   setStatus: (s: ProposalStatus | '') => void
   onChanged: () => void
+  onReviewed: (updated: SongEditProposal) => void
   channel?: string
 }): JSX.Element {
   const [actionId,    setActionId]    = useState<number | null>(null)
@@ -664,14 +679,28 @@ function ProposalsTab({ proposals, status, setStatus, onChanged, channel }: {
 
   const doReview = async (id: number, action: 'approve' | 'reject') => {
     setActionId(id)
-    try { await userApi.adminReviewProposal(id, { action, review_notes: notes[id] || '', channel }); dropCache(id); setArchive(null); onChanged() }
+    try {
+      const updated = await userApi.adminReviewProposal(id, { action, review_notes: notes[id] || '', channel })
+      dropCache(id); setArchive(null)
+      // The endpoint hands back the updated row — apply it immediately rather
+      // than waiting on onChanged()'s full refetch, so the row leaves the
+      // pending list (or updates its status badge) right away instead of
+      // sitting there looking unactioned until the round-trip finishes.
+      onReviewed(updated)
+      onChanged()
+    }
     catch {} finally { setActionId(null) }
   }
 
   const doReverse = async (id: number) => {
     if (!confirm('Reverse this approval?')) return
     setActionId(id)
-    try { await userApi.adminReverseProposal(id, channel); dropCache(id); setArchive(null); onChanged() }
+    try {
+      const updated = await userApi.adminReverseProposal(id, channel)
+      dropCache(id); setArchive(null)
+      onReviewed(updated)
+      onChanged()
+    }
     catch {} finally { setActionId(null) }
   }
 
@@ -995,7 +1024,7 @@ function ProposalsTab({ proposals, status, setStatus, onChanged, channel }: {
 
 // ── Applications (master-detail) ──────────────────────────────────────────────
 
-function ApplicationsTab({ applications, onChanged }: { applications: EditorApplication[]; onChanged: () => void }): JSX.Element {
+function ApplicationsTab({ applications, onChanged, onReviewed }: { applications: EditorApplication[]; onChanged: () => void; onReviewed: (updated: EditorApplication) => void }): JSX.Element {
   const [actionId, setActionId] = useState<number | null>(null)
   const [notes,    setNotes]    = useState<Record<number, string>>({})
   const [selected, setSelected] = useState<EditorApplication | null>(null)
@@ -1004,7 +1033,14 @@ function ApplicationsTab({ applications, onChanged }: { applications: EditorAppl
 
   const doReview = async (id: number, action: 'approve' | 'reject') => {
     setActionId(id)
-    try { await userApi.adminReviewApplication(id, { action, review_notes: notes[id] || '' }); onChanged() }
+    try {
+      const updated = await userApi.adminReviewApplication(id, { action, review_notes: notes[id] || '' })
+      // Apply the returned row immediately — same reasoning as ProposalsTab's
+      // doReview — instead of leaving it looking pending until onChanged()'s
+      // refetch lands.
+      onReviewed(updated)
+      onChanged()
+    }
     catch {} finally { setActionId(null) }
   }
 

@@ -42,11 +42,11 @@ function useAuthedBlobUrl(url: string | null): { src: string | null; loading: bo
   return state
 }
 
-/** One preview slot — a live comp/ path (plain <img>/<audio> against the
- *  public download URL, same as FilePickerModal's thumbnails) or an authed
- *  blob (the staged file, not yet part of comp/). Anything that isn't audio
- *  or an image (a tracklist .txt, a folder) renders nothing — the JSON
- *  snapshot below already covers non-media proposals. */
+/** One preview slot — a live comp/ path (plain <img>/<audio>/<video> against
+ *  the public download URL, same as FilePickerModal's thumbnails) or an
+ *  authed blob (the staged file, not yet part of comp/). Anything that isn't
+ *  audio, video, or an image (a tracklist .txt, a folder) renders nothing —
+ *  the JSON snapshot below already covers non-media proposals. */
 function MediaPreview({ label, name, src, loading, error, bytes }: {
   label: string
   name: string
@@ -60,7 +60,7 @@ function MediaPreview({ label, name, src, loading, error, bytes }: {
   const [broken, setBroken] = useState(false)
   useEffect(() => { setMeta(null); setBroken(false) }, [src])
 
-  if (mediaType !== 'image' && mediaType !== 'audio') return null
+  if (mediaType !== 'image' && mediaType !== 'audio' && mediaType !== 'video') return null
 
   const failed = error || broken || (!loading && !src)
   const sizeLabel = bytes != null ? formatBytes(bytes) : null
@@ -84,6 +84,15 @@ function MediaPreview({ label, name, src, loading, error, bytes }: {
           onLoad={(e) => setMeta(`${e.currentTarget.naturalWidth}×${e.currentTarget.naturalHeight}`)}
           onError={() => setBroken(true)}
           className="max-h-56 max-w-full rounded-lg border border-[var(--border)] object-contain bg-surface-overlay"
+        />
+      ) : mediaType === 'video' ? (
+        <video
+          controls
+          src={src ?? undefined}
+          preload="metadata"
+          onLoadedMetadata={(e) => setMeta(formatDuration(e.currentTarget.duration))}
+          onError={() => setBroken(true)}
+          className="max-h-56 max-w-full rounded-lg border border-[var(--border)] bg-surface-overlay"
         />
       ) : (
         <audio
@@ -181,11 +190,25 @@ export default function CompProposalsTab({ embedded = false, onChanged }: { embe
     onChanged?.()
   }
 
+  // The review/reverse endpoints hand back the updated row, so the list can
+  // reflect it immediately instead of waiting on the reload() round-trip
+  // below — that fetch still runs (for the row's neighbors and to reconcile
+  // final ordering), it just no longer gates how long the acted-on row keeps
+  // showing as pending. Dropped from view outright when it no longer matches
+  // the current status filter, same as the server-side list would show.
+  const applyReviewResult = (updated: CompFileProposal): void => {
+    setProposals(prev => {
+      const next = prev.map(p => p.id === updated.id ? updated : p)
+      return status && updated.status !== status ? next.filter(p => p.id !== updated.id) : next
+    })
+  }
+
   const doReview = async (id: number, action: 'approve' | 'reject'): Promise<void> => {
     setActionId(id)
     setError(null)
     try {
-      await userApi.adminReviewCompProposal(id, { action, review_notes: reviewNotes, channel: activeChannel })
+      const updated = await userApi.adminReviewCompProposal(id, { action, review_notes: reviewNotes, channel: activeChannel })
+      applyReviewResult(updated)
       reload()
     } catch (e) {
       setError(e instanceof Error ? e.message : `Could not ${action} this proposal`)
@@ -198,7 +221,8 @@ export default function CompProposalsTab({ embedded = false, onChanged }: { embe
     setActionId(id)
     setError(null)
     try {
-      await userApi.adminReverseCompProposal(id, activeChannel)
+      const updated = await userApi.adminReverseCompProposal(id, activeChannel)
+      applyReviewResult(updated)
       reload()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not reverse this proposal')

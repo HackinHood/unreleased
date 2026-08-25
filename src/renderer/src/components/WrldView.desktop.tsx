@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useMemo, useState, memo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { Music, Radio, Search, SkipForward, ThumbsUp, ThumbsDown, X, ChevronDown, ChevronLeft, Play, Pause, SkipBack, SkipForward as SkipFwd, Shuffle, Repeat, Repeat1, Volume2, VolumeX, MoreHorizontal, Info, Heart, Maximize2, Minimize2, ListMusic, GripVertical, Trash2, Check, Download, History, SlidersHorizontal } from 'lucide-react'
+import { Music, Radio, Search, SkipForward, ThumbsUp, ThumbsDown, X, ChevronDown, ChevronLeft, Play, Pause, SkipBack, SkipForward as SkipFwd, Shuffle, Repeat, Repeat1, Volume2, VolumeX, MoreHorizontal, Info, Heart, Maximize2, Minimize2, ListMusic, GripVertical, Trash2, Check, Download, History, SlidersHorizontal, RefreshCw } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import { useShallow } from 'zustand/react/shallow'
-import { parseLrc, getCurrentLineIndex, isLrcFormat, downloadSyncedLyrics, splitAdLibs, ADLIB_OPACITY } from '../lib/lyrics'
+import { parseLrc, getCurrentLineIndex, isLrcFormat, downloadSyncedLyrics, splitAdLibs, ADLIB_OPACITY, useLyricsVisible } from '../lib/lyrics'
 import { formatDuration } from '../lib/format'
 import { seekAudio, getAudioDuration, getAudioCurrentTime } from './Player'
 import { buildImageUrl, apiFetch, songToTrack, JWAPI_BASE, playlistCoverUrl, smallCoverUrl } from '../lib/juicewrldApi'
@@ -43,6 +43,7 @@ export default function WrldView(): JSX.Element {
     wrldThemeBackground,
     gradientsEnabled,
     toggleEqPanel, eqFxActive,
+    lyricsOverride,
   } = useStore(useShallow(s => ({
     currentTrack: s.currentTrack,
     currentTrackFull: s.currentTrackFull,
@@ -79,6 +80,7 @@ export default function WrldView(): JSX.Element {
     toggleEqPanel: s.toggleEqPanel,
     // Same "anything non-neutral" indicator as the player bar's EQ button.
     eqFxActive: s.eqEnabled || s.playbackSpeed !== 1 || s.eqBalance !== 0 || s.eqMono || s.eqBoost !== 1 || s.skipSilence || s.reverbEnabled,
+    lyricsOverride: s.lyricsOverride,
   })))
 
   // Skins beyond the classic pair mean `theme === 'dark'` no longer covers
@@ -357,6 +359,11 @@ export default function WrldView(): JSX.Element {
     : (currentTrackFull?.syncedLyrics || currentTrackFull?.lyrics || null)
   const isSynced  = rawLyrics ? isLrcFormat(rawLyrics) : false
   const isEditor  = account?.is_editor || account?.is_administrator
+  // FM's Radio/Lyrics tabs stand on their own regardless of lyrics
+  // availability, so the manual override only applies to normal playback —
+  // same scope as the auto-collapse behavior it's overriding.
+  const lyricsVisible = useLyricsVisible(!!rawLyrics, lyricsOverride)
+  const showLyricsColumn = radioFmActive || showQueue || lyricsVisible
 
   // On the theme background these come from the skin's own text vars, so the
   // tab matches the rest of the app (and follows a skin change live) instead
@@ -872,31 +879,33 @@ export default function WrldView(): JSX.Element {
           {/* Mobile layout */}
           <div className="md:hidden relative z-10 flex flex-col h-full min-h-0">
 
-            {/* Header: art + title */}
-            <div className="flex items-center gap-3 px-4 pt-12 pb-3 shrink-0">
-              {ArtBox({ mobile: true })}
-              <div className="flex-1 min-w-0">
-                {displayTitle  && <p className="font-bold text-sm leading-tight truncate" style={{ color: txtPri }} title={displayTitle}>{displayTitle}</p>}
-                {displayArtist && <p className="text-xs mt-0.5 truncate" style={{ color: txtSec }}>{displayArtist}</p>}
-                {displayAlbum  && <p className="text-xs mt-0.5 truncate" style={{ color: txtTer }}>{displayAlbum}</p>}
-                {radioFmActive && !radioFmNowPlaying && <p className="text-xs mt-0.5" style={{ color: txtTer }}>Tuning in…</p>}
+            <div className={showLyricsColumn ? 'contents' : 'flex-1 flex flex-col justify-center'}>
+              {/* Header: art + title */}
+              <div className="flex items-center gap-3 px-4 pt-12 pb-3 shrink-0">
+                {ArtBox({ mobile: true })}
+                <div className="flex-1 min-w-0">
+                  {displayTitle  && <p className="font-bold text-sm leading-tight truncate" style={{ color: txtPri }} title={displayTitle}>{displayTitle}</p>}
+                  {displayArtist && <p className="text-xs mt-0.5 truncate" style={{ color: txtSec }}>{displayArtist}</p>}
+                  {displayAlbum  && <p className="text-xs mt-0.5 truncate" style={{ color: txtTer }}>{displayAlbum}</p>}
+                  {radioFmActive && !radioFmNowPlaying && <p className="text-xs mt-0.5" style={{ color: txtTer }}>Tuning in…</p>}
+                </div>
+                {!radioFmActive && (
+                  <button
+                    onClick={() => setShowQueue(!showQueue)}
+                    title="Playing Next"
+                    className="p-1.5 rounded-full transition-colors hover:bg-white/10"
+                    style={{ color: showQueue ? 'var(--accent)' : (textIsDark ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.55)') }}
+                  >
+                    <ListMusic size={18} />
+                  </button>
+                )}
+                <FmLikeButton light={textIsDark} />
+                <SongMenu light={textIsDark} />
               </div>
-              {!radioFmActive && (
-                <button
-                  onClick={() => setShowQueue(!showQueue)}
-                  title="Playing Next"
-                  className="p-1.5 rounded-full transition-colors hover:bg-white/10"
-                  style={{ color: showQueue ? 'var(--accent)' : (textIsDark ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.55)') }}
-                >
-                  <ListMusic size={18} />
-                </button>
-              )}
-              <FmLikeButton light={textIsDark} />
-              <SongMenu light={textIsDark} />
             </div>
 
             {/* Tab bar (FM mode) or divider line */}
-            {radioFmActive ? (
+            {showLyricsColumn && (radioFmActive ? (
               <div className="flex items-center gap-1 px-4 pb-2 shrink-0 border-b border-white/5">
                 {(['radio', 'lyrics'] as const).map(tab => (
                   <button key={tab} onClick={() => setFmTab(tab)}
@@ -909,13 +918,13 @@ export default function WrldView(): JSX.Element {
               </div>
             ) : (
               <div className="mx-4 h-px bg-white/10 shrink-0" />
-            )}
+            ))}
 
             {/* Content */}
-            {radioFmActive
+            {showLyricsColumn && (radioFmActive
               ? (fmTab === 'radio' ? FmRadioPanel() : <LyricsPanel rawLyrics={rawLyrics} isSynced={isSynced} syncedLines={syncedLines} radioFmActive={radioFmActive} currentTrack={currentTrack} isEditor={isEditor} txtPri={txtPri} txtSec={txtSec} txtTer={txtTer} txtFaint={txtFaint} />)
               : <LyricsPanel rawLyrics={rawLyrics} isSynced={isSynced} syncedLines={syncedLines} radioFmActive={radioFmActive} currentTrack={currentTrack} isEditor={isEditor} txtPri={txtPri} txtSec={txtSec} txtTer={txtTer} txtFaint={txtFaint} />
-            }
+            )}
 
             {/* Mobile playback bar — the bottom Player bar is hidden on this
                 page, and the mobile layout never had its own controls, so
@@ -1051,7 +1060,7 @@ export default function WrldView(): JSX.Element {
                 was making the browser grow a horizontal scrollbar, which
                 shifted the whole column up by its height. */}
             <div className="relative flex flex-col items-center justify-center shrink-0 px-8 xl:px-12 gap-5 overflow-y-auto overflow-x-hidden"
-              style={{ width: '50%', minWidth: 320 }}>
+              style={{ width: showLyricsColumn ? '50%' : '100%', minWidth: 320 }}>
 
               {/* Album art */}
               <div className="relative w-full" style={{ maxWidth: 320 }}>
@@ -1311,6 +1320,7 @@ export default function WrldView(): JSX.Element {
                 lyrics entirely, rather than floating a queue popup over the
                 left column) so it gets the full column's height instead of
                 a cramped 300px-capped overlay. */}
+            {showLyricsColumn && (
             <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
               {showQueue && !radioFmActive ? (
                 <div className="h-full flex items-stretch justify-center px-6 xl:px-10 py-7">
@@ -1336,6 +1346,7 @@ export default function WrldView(): JSX.Element {
                 <LyricsPanel padded rawLyrics={rawLyrics} isSynced={isSynced} syncedLines={syncedLines} radioFmActive={radioFmActive} currentTrack={currentTrack} isEditor={isEditor} txtPri={txtPri} txtSec={txtSec} txtTer={txtTer} txtFaint={txtFaint} />
               )}
             </div>
+            )}
           </div>
 
       </>
@@ -1618,7 +1629,7 @@ const WrldQueuePanel = memo(function WrldQueuePanel({ onClose, variant }: {
   // 'panel' fills the desktop right column in place of the lyrics view.
   variant: 'inline' | 'sheet' | 'panel'
 }): JSX.Element {
-  const { queue, queueIndex, currentTrack, isPlaying, shuffle, radioMode, playTrack, jumpToTrack, removeFromQueue, clearQueue, reorderQueue, onLightBackdrop } = useStore(useShallow(s => ({
+  const { queue, queueIndex, currentTrack, isPlaying, shuffle, radioMode, playTrack, jumpToTrack, removeFromQueue, clearQueue, reorderQueue, reshuffleQueue, onLightBackdrop } = useStore(useShallow(s => ({
     queue: s.queue,
     queueIndex: s.queueIndex,
     currentTrack: s.currentTrack,
@@ -1630,6 +1641,7 @@ const WrldQueuePanel = memo(function WrldQueuePanel({ onClose, variant }: {
     removeFromQueue: s.removeFromQueue,
     clearQueue: s.clearQueue,
     reorderQueue: s.reorderQueue,
+    reshuffleQueue: s.reshuffleQueue,
     // Every label in here is hardcoded white, which only works over something
     // dark. The art background always is (it's dimmed to 0.22/0.45 brightness),
     // but the theme background is whatever the skin's surface is — so on a
@@ -1793,8 +1805,17 @@ const WrldQueuePanel = memo(function WrldQueuePanel({ onClose, variant }: {
 
         {filteredUpcoming.length > 0 ? (
           <div className="px-3 pt-3 pb-6">
-            <p className="text-white/50 text-[10px] uppercase tracking-widest px-1 mb-2 font-semibold">
-              {query ? 'Results' : shuffle ? 'Shuffle' : 'Up Next'} · {filteredUpcoming.length}
+            <p className="text-white/50 text-[10px] uppercase tracking-widest px-1 mb-2 font-semibold flex items-center gap-1.5">
+              <span>{query ? 'Results' : shuffle ? 'Shuffle' : 'Up Next'} · {filteredUpcoming.length}</span>
+              {!query && shuffle && (
+                <button
+                  onClick={reshuffleQueue}
+                  title="Reshuffle"
+                  className="ml-auto p-1 -m-1 rounded text-white/50 hover:text-white/90 transition-colors"
+                >
+                  <RefreshCw size={11} />
+                </button>
+              )}
             </p>
             {filteredUpcoming.map(({ track, i }) => (
               <div

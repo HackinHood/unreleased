@@ -33,6 +33,7 @@ import type { PlaylistFolder } from '../lib/playlistFolders'
 import { Folder, FolderPlus, FolderOpen, FolderMinus } from 'lucide-react'
 import { useMultiSelect } from '../hooks/useMultiSelect'
 import { ClampedMenu } from './ClampedMenu'
+import { loadEraFullNames, eraLabel } from '../lib/eras'
 
 // ── PlaylistMosaic ────────────────────────────────────────────────────────────
 
@@ -190,6 +191,18 @@ function SortHeader({ label, field, sort, onSort }: {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
+
+function FolderSlotImg({ src }: { src: string | null }): JSX.Element {
+  const [failed, setFailed] = useState(false)
+  const showImg = src && !failed
+  return (
+    <div className="w-full h-full overflow-hidden bg-surface-raised">
+      {showImg
+        ? <img src={src} alt="" className="w-full h-full object-cover" style={{ aspectRatio: '1' }} onError={() => setFailed(true)} />
+        : <div className="w-full h-full flex items-center justify-center"><Music2 size={16} className="text-accent/40" /></div>}
+    </div>
+  )
+}
 
 // ── Local-library helpers ─────────────────────────────────────────────────────
 
@@ -390,7 +403,8 @@ export default function PlaylistsView(): JSX.Element {
     // Subscribed purely so the track memo below re-derives when a custom
     // name/cover changes — liteSongToTrack bakes the override in at conversion
     // time, so without this the rows keep the old name until a refetch.
-    songPrefs, openBulkEditor } = useStorePick('account', 'playlists', 'refreshPlaylists', 'playTrack', 'playNext', 'playCollection', 'addToQueue', 'setShowUserAuth', 'likedTrackIds', 'toggleLike', 'setActiveView', 'setPendingEditorSongId', 'localPlaylists', 'libraryTracks', 'libraryArt', 'loadLibrary', 'deleteLocalPlaylist', 'renameLocalPlaylist', 'updateLocalPlaylist', 'addToLocalPlaylist', 'pendingPlaylistId', 'setPendingPlaylistId', 'playlistsSelectedId', 'setPlaylistsSelectedId', 'playlistsSelectedLocalId', 'setPlaylistsSelectedLocalId', 'playlistsSort', 'setPlaylistsSort', 'playlistsOpenFolderId', 'setPlaylistsOpenFolderId', 'followedPlaylists', 'followPlaylist', 'unfollowPlaylist', 'updateFollowedPlaylistMeta', 'playlistFolders', 'createFolder', 'renameFolder', 'deleteFolder', 'movePlaylistsToFolder', 'appTextScale', 'songPrefs', 'openBulkEditor')
+    songPrefs, openBulkEditor, fullEraNames } = useStorePick('account', 'playlists', 'refreshPlaylists', 'playTrack', 'playNext', 'playCollection', 'addToQueue', 'setShowUserAuth', 'likedTrackIds', 'toggleLike', 'setActiveView', 'setPendingEditorSongId', 'localPlaylists', 'libraryTracks', 'libraryArt', 'loadLibrary', 'deleteLocalPlaylist', 'renameLocalPlaylist', 'updateLocalPlaylist', 'addToLocalPlaylist', 'pendingPlaylistId', 'setPendingPlaylistId', 'playlistsSelectedId', 'setPlaylistsSelectedId', 'playlistsSelectedLocalId', 'setPlaylistsSelectedLocalId', 'playlistsSort', 'setPlaylistsSort', 'playlistsOpenFolderId', 'setPlaylistsOpenFolderId', 'followedPlaylists', 'followPlaylist', 'unfollowPlaylist', 'updateFollowedPlaylistMeta', 'playlistFolders', 'createFolder', 'renameFolder', 'deleteFolder', 'movePlaylistsToFolder', 'appTextScale', 'songPrefs', 'openBulkEditor', 'fullEraNames')
+  useEffect(() => { loadEraFullNames().catch(() => {}) }, [])
   // Cast back to the component's own SortField union — the store keeps the
   // field as a plain string so it doesn't have to import this component's type.
   const sort = sortRaw as SortState
@@ -1676,29 +1690,51 @@ export default function PlaylistsView(): JSX.Element {
   const ungroupedLocal = localPlaylists.filter(lp => !foldered.has(`local:${lp.id}`))
 
   /** A folder's cover — a 2x2 mosaic of up to its first 4 members' own cover
-   *  nodes (reusing apiCoverNode / the same local-cover logic localEntry
-   *  uses), so a folder reads as "a playlist made of playlists" instead of a
+   *  art, so a folder reads as "a playlist made of playlists" instead of a
    *  plain icon. Falls back to a Folder icon tile when it has no resolvable
-   *  members yet. */
+   *  members yet.
+   *
+   *  Each quadrant is a single flat image rather than delegating to
+   *  apiCoverNode/LocalPlaylistMosaic — those fall back to a *nested* 2x2 of
+   *  a member's own top tracks when it has no cover image of its own, and a
+   *  grid-in-grid like that means two independently GPU-composited layers
+   *  (each promoted via its own translateZ(0)) stacked inside the card that
+   *  PlaylistCard applies a hover transform (`group-hover:-translate-y-1`)
+   *  to. The nested layer's bounds get reconciled against the newly
+   *  promoted ancestor layer the instant hover starts, which is what showed
+   *  up as the quadrants visibly separating for a frame before settling —
+   *  the exact flicker fixed on plain playlist covers by keeping their
+   *  mosaic to one level. Flattening folder quadrants to a single image
+   *  removes the nested layer entirely instead of trying to keep two levels
+   *  of compositing in sync. */
+  // Returns the member's flat cover image (or null if it resolves but has
+  // none), and undefined when the key doesn't resolve to a member at all —
+  // callers skip undefined so an unresolvable entry doesn't eat one of the
+  // folder's 4 slots.
+  const folderSlotImage = (key: string): string | null | undefined => {
+    const parsed = parsePlaylistKey(key)
+    if (!parsed) return undefined
+    if (parsed.kind === 'api') {
+      const p = apiById.get(Number(parsed.id))
+      if (!p) return undefined
+      const cover = covers[p.id]
+      if (cover) return cover
+      const imgs = mosaicImages[p.id]
+      return imgs?.[0] ? smallCoverUrl(imgs[0]) : null
+    }
+    const lp = localById.get(parsed.id)
+    if (!lp) return undefined
+    if (lp.coverImage) return lp.coverImage
+    return lp.trackIds.map(id => libraryArt[id]).find((a): a is string => !!a) ?? null
+  }
+
   const folderCoverNode = (f: PlaylistFolder): React.ReactNode => {
     const slots: React.ReactNode[] = []
     for (const key of f.playlistKeys) {
       if (slots.length >= 4) break
-      const parsed = parsePlaylistKey(key)
-      if (!parsed) continue
-      if (parsed.kind === 'api') {
-        const p = apiById.get(Number(parsed.id))
-        if (p) slots.push(<div key={key} className="w-full h-full overflow-hidden">{apiCoverNode(p)}</div>)
-      } else {
-        const lp = localById.get(parsed.id)
-        if (lp) slots.push(
-          <div key={key} className="w-full h-full overflow-hidden">
-            {lp.coverImage
-              ? <img src={lp.coverImage} alt="" className="w-full h-full object-cover" />
-              : <LocalPlaylistMosaic trackIds={lp.trackIds} className="w-full h-full" />}
-          </div>
-        )
-      }
+      const img = folderSlotImage(key)
+      if (img === undefined) continue
+      slots.push(<FolderSlotImg key={key} src={img} />)
     }
     if (slots.length === 0) {
       return (
@@ -2653,7 +2689,7 @@ export default function PlaylistsView(): JSX.Element {
                       <span className="truncate">{track.artist}{track.album ? ` · ${track.album}` : ''}</span>
                     </p>
                   </div>
-                  <span className="text-text-muted text-xs truncate" title={track.era || undefined}>{track.era || '—'}</span>
+                  <span className="text-text-muted text-xs truncate" title={track.era || undefined}>{track.era ? eraLabel(track.era, fullEraNames) : '—'}</span>
                   <span
                     className={`text-xs px-1.5 py-0.5 rounded border text-center truncate ${CATEGORY_COLORS[track.genre] ?? 'text-text-muted bg-surface border-[var(--border)]'}`}
                   >

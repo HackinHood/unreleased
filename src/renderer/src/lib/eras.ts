@@ -22,7 +22,18 @@ const eraOrder: string[] = []
 const eraByName: Record<string, JWApiEra> = {}
 let loadPromise: Promise<void> | null = null
 
+// Overrides for eras whose real full name isn't derivable from the API's own
+// description at all — e.g. "HIH 999"'s description is just "HIH 999 era
+// (March 2017-May 2017)", which strips down to "HIH 999" again with no
+// expansion anywhere in the API's data. Checked before the generic
+// description-based derivation below.
+const MANUAL_FULL_NAMES: Record<string, string> = {
+  'HIH 999': 'Heartbroken In Hollywood 999',
+  'UNS: JW': 'Unsurfaced Live Recordings',
+}
+
 function fullName(era: JWApiEra): string | undefined {
+  if (era.name in MANUAL_FULL_NAMES) return MANUAL_FULL_NAMES[era.name]
   const desc = era.description?.trim()
   if (!desc) return undefined
   const stripped = desc
@@ -30,8 +41,17 @@ function fullName(era: JWApiEra): string | undefined {
     // keeps meaningful parentheticals like "The Pre Party (Extended)".
     .replace(/\s*\([^)]*\d{4}[^)]*\)$/, '')
     .replace(/\s+era$/i, '')
+    // Purely administrative buckets ("Mainstream releases grouping",
+    // "SoundCloud releases grouping") aren't a stylistic era with a real
+    // full name — same treatment as no description at all.
+    .replace(/\s+releases grouping$/i, '')
+    .replace(/\s+(project|collection)$/i, '')
     .trim()
-  return stripped || undefined
+  // Stripping produced the abbreviation right back (e.g. "KILL'S WRLD era"
+  // → "KILL'S WRLD") — nothing was actually expanded, so there's no real
+  // full name to show.
+  if (!stripped || stripped === era.name) return undefined
+  return stripped
 }
 
 function pageParams(page: number): Record<string, number> {
@@ -77,6 +97,14 @@ export function loadEraFullNames(): Promise<void> {
  *  undefined until loadEraFullNames (or the offline cache) has run. */
 export function eraFullName(abbrev: string | null | undefined): string | undefined {
   return abbrev ? names[abbrev] : undefined
+}
+
+/** `abbrev` as-is, or its full name when `full` is true and one's known yet
+ *  (falls back to `abbrev` before loadEraFullNames resolves). The single
+ *  place display code should apply the "full era names" preference, so the
+ *  fallback behavior stays consistent everywhere it's used. */
+export function eraLabel(abbrev: string, full: boolean): string {
+  return full ? (eraFullName(abbrev) ?? abbrev) : abbrev
 }
 
 /** Every era seen so far, in API order. Populated by the same offline-cache

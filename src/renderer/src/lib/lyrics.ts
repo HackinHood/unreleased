@@ -1,4 +1,30 @@
+import { useEffect, useState } from 'react'
 import { SyncedLyricLine } from '../types'
+
+/**
+ * Whether a lyrics section should be shown, debounced against the
+ * lyrics-null placeholder `currentTrackFull` briefly holds while the real
+ * lyrics for a newly-started track are still loading in — collapsing
+ * immediately on that placeholder made the lyrics panel flash shut and
+ * reopen on every track change. Expanding is instant (nothing to hide);
+ * collapsing waits a beat in case lyrics show up before it commits to "no
+ * lyrics."
+ */
+export function useLyricsVisible(hasLyricsNatural: boolean, override: boolean): boolean {
+  const wantVisible = hasLyricsNatural !== override
+  const [visible, setVisible] = useState(wantVisible)
+
+  useEffect(() => {
+    if (wantVisible) {
+      setVisible(true)
+      return
+    }
+    const t = setTimeout(() => setVisible(false), 250)
+    return () => clearTimeout(t)
+  }, [wantVisible])
+
+  return visible
+}
 
 /**
  * Parse LRC format into timed lines.

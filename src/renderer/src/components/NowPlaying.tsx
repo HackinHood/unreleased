@@ -6,13 +6,15 @@ import LyricsDisplay from './LyricsDisplay'
 import { smallCoverUrl } from '../lib/juicewrldApi'
 import { ProgressiveCover } from './ProgressiveCover'
 import { useCanEdit } from '../hooks/useChannelRoles'
+import { useLyricsVisible } from '../lib/lyrics'
 
 export default function NowPlaying(): JSX.Element {
   const {
     currentTrack,
     currentTrackFull,
     setShowNowPlaying,
-  } = useStorePick('currentTrack', 'currentTrackFull', 'setShowNowPlaying')
+    lyricsOverride,
+  } = useStorePick('currentTrack', 'currentTrackFull', 'setShowNowPlaying', 'lyricsOverride')
 
   const [artCollapsed, setArtCollapsed] = useState(false)
   const [panelWidth, dragHandle] = useResizablePanel(360, 280, 520)
@@ -36,6 +38,8 @@ export default function NowPlaying(): JSX.Element {
 
   const jwMatch = currentTrack?.id.match(/^jw-(\d+)$/)
   const canEdit = useCanEdit()
+  const hasLyricsNatural = !!(currentTrackFull?.lyrics || currentTrackFull?.syncedLyrics)
+  const hasLyrics = useLyricsVisible(hasLyricsNatural, lyricsOverride)
 
   return (
     <div
@@ -99,7 +103,7 @@ export default function NowPlaying(): JSX.Element {
             <p className="text-text-muted text-sm text-center">Play a track to see it here</p>
           </div>
         ) : (
-          <>
+          <div className={hasLyrics ? 'contents' : 'flex-1 min-h-0 flex flex-col justify-center'}>
             {(() => {
               const artSrc = currentTrackFull?.albumArt ?? currentTrack.imageUrl
               return !artCollapsed && (
@@ -139,10 +143,12 @@ export default function NowPlaying(): JSX.Element {
                 </div>
               )
             })()}
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <LyricsDisplay />
-            </div>
-          </>
+            {hasLyrics && (
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <LyricsDisplay />
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>

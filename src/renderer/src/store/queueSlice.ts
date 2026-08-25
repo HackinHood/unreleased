@@ -90,8 +90,13 @@ export interface QueueSlice {
   /**
    * Start radio mode. The queue is seeded with `track` only;
    * subsequent songs come from /radio/random/ one at a time.
+   *
+   * `keepPlayState` — when true, leaves isPlaying as it already was instead
+   * of forcing it on. Use this for "activate radio as a side effect of some
+   * other toggle" call sites (turning shuffle on); leave it unset for an
+   * explicit "play this track" action, where forcing playback on is correct.
    */
-  startRadio: (track: Track, filter?: { category: string; era: string; search: string; total: number } | null) => void
+  startRadio: (track: Track, filter?: { category: string; era: string; search: string; total: number } | null, opts?: { keepPlayState?: boolean }) => void
   /** Exit radio mode, keep current track playing. */
   stopRadio: () => void
 
@@ -110,6 +115,7 @@ export interface QueueSlice {
   jumpToTrack: (track: Track, absoluteIndex?: number) => void
 
   toggleShuffle: () => void
+  reshuffleQueue: () => void
   toggleRepeat: () => void
 
   setIsPlaying: (playing: boolean) => void
@@ -309,14 +315,14 @@ export const createQueueSlice: StateCreator<any, [], [], QueueSlice> = (set, get
   },
 
   // ── startRadio ─────────────────────────────────────────────────────────────
-  startRadio: (track, filter = null) => {
+  startRadio: (track, filter = null, opts) => {
     _radioSession++
     set({
       queue: [track],
       queueIndex: 0,
       currentTrack: track,
       currentTrackFull: null,
-      isPlaying: true,
+      isPlaying: opts?.keepPlayState ? get().isPlaying : true,
       queueFilter: null,
       queueLoadingMore: false,
       radioMode: true,
@@ -324,8 +330,15 @@ export const createQueueSlice: StateCreator<any, [], [], QueueSlice> = (set, get
       radioNext: null,
       _radioWaiting: false,
       radioFmActive: false,
-      progress: 0,
-      currentTime: 0,
+      // Same reasoning as isPlaying above: when reusing the already-current
+      // track (keepPlayState), the real <audio> element's position was never
+      // actually touched (nothing here changes currentTrack.id, so the
+      // load/seek effect never re-fires) — resetting these to 0 would just
+      // make the displayed time lie about where playback really is, most
+      // visibly while paused (no 'timeupdate' event ever arrives to correct
+      // it back).
+      progress: opts?.keepPlayState ? get().progress : 0,
+      currentTime: opts?.keepPlayState ? get().currentTime : 0,
     })
     get()._prefetchRadioTrack()
     get()._maybeSwapToPreferredVersion(track)
@@ -456,11 +469,49 @@ export const createQueueSlice: StateCreator<any, [], [], QueueSlice> = (set, get
       const rf = queueFilter
         ? { category: queueFilter.category, era: queueFilter.era, search: queueFilter.search, total: queueFilter.total }
         : null
-      get().startRadio(currentTrack, rf)
+      get().startRadio(currentTrack, rf, { keepPlayState: true })
       return
     }
 
     // Turning ON (playlist/files/non-tracker): shuffle the upcoming portion
+    const played = queue.slice(0, queueIndex + 1)
+    const upcoming = fisherYates(queue.slice(queueIndex + 1))
+    set({ shuffle: true, queue: [...played, ...upcoming] })
+  },
+
+  // ── reshuffleQueue ─────────────────────────────────────────────────────────
+  // Re-rolls a fresh random order for what's still upcoming, regardless of
+  // whether shuffle was already on — unlike toggleShuffle, which only
+  // randomizes on the OFF→ON transition and otherwise just flips shuffle off.
+  reshuffleQueue: () => {
+    const { currentTrack, queue, queueIndex, queueFilter, radioMode, queueSource } = get()
+    if (!currentTrack) return
+    ls.set('shuffle', true)
+
+    if (radioMode) {
+      // Already mid radio session — only re-roll the next-up prediction.
+      // Reusing startRadio here (like the branch below does) would restart
+      // the currently playing track from 0, force-resume it if paused, and
+      // wipe this session's history — none of that belongs to "give me a
+      // different next song." Bumping _radioSession invalidates any prefetch
+      // already in flight so a stale response can't clobber this one.
+      set({ shuffle: true, radioNext: null })
+      _radioSession++
+      get()._prefetchRadioTrack()
+      return
+    }
+
+    if (queueSource === 'tracker' && currentTrack) {
+      // Not in radio mode yet — same as toggleShuffle's tracker branch,
+      // starting a fresh radio session from the current track.
+      set({ shuffle: true })
+      const rf = queueFilter
+        ? { category: queueFilter.category, era: queueFilter.era, search: queueFilter.search, total: queueFilter.total }
+        : null
+      get().startRadio(currentTrack, rf, { keepPlayState: true })
+      return
+    }
+
     const played = queue.slice(0, queueIndex + 1)
     const upcoming = fisherYates(queue.slice(queueIndex + 1))
     set({ shuffle: true, queue: [...played, ...upcoming] })

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Download, X, CheckCircle2, AlertCircle, Loader2, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react'
 import { useStorePick, DownloadItem } from '../store/useStore'
 import { formatBytes } from '../lib/format'
-import { cancelCompUpload } from '../lib/compUploads'
+import { cancelCompUpload, cancelAllCompUploads } from '../lib/compUploads'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 export default function DownloadManager(): JSX.Element | null {
@@ -69,6 +69,11 @@ export default function DownloadManager(): JSX.Element | null {
             {downloads.some(d => d.state !== 'downloading') && (
               <button onClick={clearCompletedDownloads} className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors px-1 rounded">
                 Clear
+              </button>
+            )}
+            {downloads.filter((d) => d.type === 'upload' && d.state === 'downloading').length > 1 && (
+              <button onClick={cancelAllCompUploads} className="text-[10px] text-[var(--text-muted)] hover:text-red-400 transition-colors px-1 rounded">
+                Cancel All
               </button>
             )}
             <button onClick={() => setShowDownloadManager(false)} className="p-0.5 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">

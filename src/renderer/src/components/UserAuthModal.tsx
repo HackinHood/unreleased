@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ModalOverlay, LockToggle } from './Modal'
+import { ModalOverlay } from './Modal'
 import { X, Loader2, AlertCircle, Heart, ListMusic } from 'lucide-react'
 import { useStorePick } from '../store/useStore'
 
@@ -28,27 +28,22 @@ export default function UserAuthModal({ onClose }: Props): JSX.Element {
   return (
     <ModalOverlay
       onClose={onClose}
+      standalone
       zIndexClassName="z-50"
       panelClassName="bg-surface border border-[var(--border)] rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-sm"
       minWidth={340} minHeight={300}
     >
-      {({ onHandleMouseDown, locked, toggleLock }) => (
+      {() => (
       // Bottom sheet on a phone, centered dialog from md up.
       <div
         className="bg-surface w-full h-full overflow-hidden"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
-        <div
-          className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] cursor-grab active:cursor-grabbing"
-          onMouseDown={onHandleMouseDown}
-        >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
           <h2 className="text-text-primary text-sm font-semibold">Log in</h2>
-          <div className="flex items-center gap-1">
-            <LockToggle locked={locked} onClick={toggleLock} />
-            <button onClick={onClose} className="text-text-muted hover:text-text-primary transition-colors">
-              <X size={18} />
-            </button>
-          </div>
+          <button onClick={onClose} className="text-text-muted hover:text-text-primary transition-colors">
+            <X size={18} />
+          </button>
         </div>
 
         <div className="px-5 py-5 space-y-4">

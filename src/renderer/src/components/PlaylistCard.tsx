@@ -12,7 +12,7 @@ function CardPlayOverlay({ onPlay }: { onPlay: () => void }): JSX.Element {
     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors">
       <button
         onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); onPlay() }}
-        className="absolute bottom-2 right-2 w-9 h-9 rounded-full bg-accent text-black shadow-lg flex items-center justify-center opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all hover:scale-110"
+        className="absolute bottom-2 right-2 w-9 h-9 rounded-full bg-accent text-black shadow-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110"
         title="Play"
       >
         <Play size={15} fill="currentColor" className="ml-0.5" />
@@ -64,7 +64,19 @@ export default function PlaylistCard({
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      <div className={`relative aspect-square rounded-2xl overflow-hidden bg-surface-overlay flex items-center justify-center mb-2.5 shadow-md group-hover:shadow-xl group-hover:-translate-y-1 transition-all duration-200 ${selected ? 'ring-2 ring-accent' : ''} ${isDropTarget ? 'ring-2 ring-accent scale-[1.03]' : ''}`}>
+      <div
+        className={`relative aspect-square rounded-2xl overflow-hidden bg-surface-overlay flex items-center justify-center mb-2.5 shadow-md group-hover:shadow-xl group-hover:-translate-y-1 transition-all duration-200 ${selected ? 'ring-2 ring-accent' : ''} ${isDropTarget ? 'ring-2 ring-accent scale-[1.03]' : ''}`}
+        // Kept permanently on its own GPU layer (rather than only while
+        // hovered) so entering hover just updates this layer's existing
+        // transform instead of promoting a fresh one — a late promotion here
+        // forces any already-composited child (e.g. the folder 4-grid mosaic's
+        // own translateZ(0)) to reconcile its layer bounds against the parent
+        // that instant, which showed up as a one-frame seam/twitch. will-change
+        // (not an inline transform) so it doesn't fight the group-hover
+        // translate-y utility class for the transform property.
+        style={{ willChange: 'transform' }}
+      >
+
         {cover}
         <CardPlayOverlay onPlay={onPlay} />
       </div>

@@ -445,8 +445,9 @@ export function GlobalSongInfoHost(): JSX.Element | null {
     return () => { stale = true }
   }, [infoSongId])
 
-  if (infoSongId == null || !song) return null
   const canEdit = useCanEdit()
+
+  if (infoSongId == null || !song) return null
   return (
     <SongInfoModal
       song={song}

@@ -1,7 +1,8 @@
-import { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode, useEffect, useId, useRef, useState } from 'react'
+import { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { create } from 'zustand'
 import { Lock, Unlock } from 'lucide-react'
+import { ls } from '../lib/persist'
 
 // Locked panels sit in their own z-index band, comfortably above anything
 // zCounter could reach in a real session — so "locked" always beats
@@ -32,6 +33,13 @@ interface SandboxState {
   // Locked panels can't be covered by anything else docked in the sandbox —
   // see LOCK_TIER below.
   lockedIds: Set<string>
+  // Master on/off for the whole docking behavior (Settings > Window). Off
+  // makes every non-floating, non-standalone ModalOverlay fall back to a
+  // plain centered backdrop instead of docking into the notch — see the
+  // `dockingOff` checks in ModalOverlay below. Read from localStorage at
+  // module init (not inside a component) since it has to be correct on the
+  // very first render, before any effect has a chance to run.
+  sandboxEnabled: boolean
   dock: (id: string) => void
   undock: (id: string) => void
   bringToFront: (id: string) => void
@@ -39,6 +47,7 @@ interface SandboxState {
   expand: () => void
   collapse: () => void
   toggle: () => void
+  setSandboxEnabled: (enabled: boolean) => void
 }
 export const useSandboxStore = create<SandboxState>((set) => ({
   dockedIds: new Set(),
@@ -46,6 +55,7 @@ export const useSandboxStore = create<SandboxState>((set) => ({
   zCounter: 0,
   panelZ: {},
   lockedIds: new Set(),
+  sandboxEnabled: ls.get<boolean>('sandboxEnabled') ?? false,
   dock: (id) => set((s) => {
     const z = s.zCounter + 1
     return { dockedIds: new Set(s.dockedIds).add(id), expanded: true, zCounter: z, panelZ: { ...s.panelZ, [id]: z } }
@@ -69,6 +79,10 @@ export const useSandboxStore = create<SandboxState>((set) => ({
   expand: () => set({ expanded: true }),
   collapse: () => set({ expanded: false }),
   toggle: () => set((s) => ({ expanded: !s.expanded })),
+  setSandboxEnabled: (enabled) => {
+    ls.set('sandboxEnabled', enabled)
+    set({ sandboxEnabled: enabled })
+  },
 }))
 
 // The notch's dropdown body — a plain DOM node (not React-portalled from the
@@ -198,6 +212,7 @@ function ResizeHandle({ onMouseDown }: { onMouseDown: (e: ReactMouseEvent) => vo
 export function ModalOverlay({
   onClose,
   floating = false,
+  standalone = false,
   zIndexClassName,
   panelClassName,
   minWidth = 360,
@@ -206,6 +221,13 @@ export function ModalOverlay({
 }: {
   onClose: () => void
   floating?: boolean
+  /** Skips the sandbox entirely — a plain centered, backdropped overlay like
+   * every modal used to be, not draggable/resizable/lockable and not
+   * collapsible from the notch. For modals that must always stay visible and
+   * on top regardless of sandbox state — e.g. UserAuthModal, since login
+   * shouldn't disappear into a dropdown the user can collapse or that other
+   * docked panels can stack over. */
+  standalone?: boolean
   /** Full Tailwind class, e.g. 'z-50' or 'z-[160]' — kept as one literal so Tailwind's scanner can find it. */
   zIndexClassName: string
   /** Panel's own border/radius/shadow/bg + default (pre-drag/resize) size classes. */
@@ -225,25 +247,62 @@ export function ModalOverlay({
   const toggleLockStore = useSandboxStore((s) => s.toggleLock)
   const baseZ = useSandboxStore((s) => s.panelZ[id]) ?? 0
   const locked = useSandboxStore((s) => s.lockedIds.has(id))
+  const sandboxEnabled = useSandboxStore((s) => s.sandboxEnabled)
   const z = locked ? LOCK_TIER + baseZ : baseZ
   const toggleLock = (): void => toggleLockStore(id)
+  // Either this specific modal opts out (standalone) or the user turned the
+  // whole feature off in Settings — either way it falls back to the plain
+  // backdrop below instead of docking into the notch.
+  const dockingOff = standalone || !sandboxEnabled
 
   const [rect, setRect] = useState<Rect | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const drag = useRef<{ mode: 'move' | 'resize'; startX: number; startY: number; base: Rect } | null>(null)
-
-  useEffect(() => {
-    if (floating) return
-    dock(id)
-    return () => undock(id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [floating])
 
   const currentRect = (): Rect | null => {
     if (rect) return rect
     const r = panelRef.current?.getBoundingClientRect()
     return r ? { left: r.left, top: r.top, width: r.width, height: r.height } : null
   }
+
+  // Modals dock physically under the sandbox pill (that's where their portal
+  // target lives), but should still *open* centered in the viewport rather
+  // than tucked up there. Runs once per mount, synchronously before the
+  // browser paints (useLayoutEffect, not useEffect) so the panel's default
+  // CSS-driven position under the pill is never actually visible — it
+  // measures its own natural size there, then immediately switches to the
+  // same position:fixed mechanism drag/resize already use, centered.
+  //
+  // dock(id) lives in this same effect (not a separate useEffect) so the
+  // store update — which flips the slot from invisible to visible — commits
+  // synchronously in the same pre-paint flush as the centering. Splitting
+  // them used to leave a window where the panel could paint once before
+  // dock() (a plain useEffect, not guaranteed to run before paint) landed;
+  // the panel used to paper over that by forcing itself permanently
+  // `visible`, which also defeated the notch's collapse-to-hide behavior —
+  // a collapsed sandbox still showed its docked panels, just uninteractive
+  // (pointer-events-none, inherited from the slot, isn't overridden by a
+  // child the way `visible` overrides `invisible`). Doing dock() here
+  // instead removes the need for that override entirely.
+  useLayoutEffect(() => {
+    if (floating || dockingOff) return
+    dock(id)
+    const r = panelRef.current?.getBoundingClientRect()
+    if (r) {
+      setRect({
+        left: clamp((window.innerWidth - r.width) / 2, 0, window.innerWidth - r.width),
+        top: clamp((window.innerHeight - r.height) / 2, 0, window.innerHeight - r.height),
+        width: r.width, height: r.height,
+      })
+    }
+    return () => undock(id)
+    // Deliberately once-per-mount only (plus whenever dockingOff itself
+    // flips, e.g. the user toggling the sandbox off in Settings — that
+    // re-runs the cleanup, undocking this panel, without re-centering it)
+    // — re-centering on every render would fight the user dragging it away
+    // from the middle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [floating, dockingOff])
 
   // Keeps this panel available as a snap target for everyone else, and drops
   // it once it's no longer explicitly positioned (never dragged, or closed).
@@ -254,7 +313,7 @@ export function ModalOverlay({
   }, [id, rect])
 
   useEffect(() => {
-    if (floating) return
+    if (floating || dockingOff) return
     const onMove = (e: MouseEvent): void => {
       if (!drag.current) return
       const { mode, startX, startY, base } = drag.current
@@ -284,7 +343,7 @@ export function ModalOverlay({
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
-  }, [floating, minWidth, minHeight, id])
+  }, [floating, dockingOff, minWidth, minHeight, id])
 
   const onHandleMouseDown = (e: ReactMouseEvent): void => {
     // Let the handle's own buttons/links work normally instead of starting a drag.
@@ -311,6 +370,27 @@ export function ModalOverlay({
     return createPortal(
       <div className={`fixed inset-0 ${zIndexClassName} flex`}>
         {children({ onHandleMouseDown: () => {}, locked: false, toggleLock: () => {} })}
+      </div>,
+      document.body,
+    )
+  }
+
+  if (dockingOff) {
+    // Same shape the pre-sandbox ModalOverlay always rendered: its own
+    // full-screen backdrop, portalled straight to body rather than into the
+    // (collapsible, coverable) sandbox slot — so it can't be hidden by
+    // collapsing the notch or buried under another docked panel. No
+    // drag/resize/lock either, since nothing else can ever cover it to
+    // begin with. Reached either because this modal opted out (standalone)
+    // or the user turned the sandbox off in Settings.
+    return createPortal(
+      <div
+        className={`fixed inset-0 ${zIndexClassName} flex items-center justify-center bg-black/60 backdrop-blur-sm px-4`}
+        onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+      >
+        <div className={`relative overflow-hidden ${panelClassName}`}>
+          {children({ onHandleMouseDown: () => {}, locked: false, toggleLock: () => {} })}
+        </div>
       </div>,
       document.body,
     )

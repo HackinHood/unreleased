@@ -502,7 +502,11 @@ export default function ApiFilesView(): JSX.Element {
   }
 
   const openLightbox = (entry: JWApiFileEntry): void => {
-    const mediaEntries = entries.filter((e) => {
+    // While searching, the clicked entry can live in a folder other than the
+    // one currently browsed — `entries` (the current folder's listing) won't
+    // contain it, so the gallery has to be built from the search results
+    // themselves instead.
+    const mediaEntries = (isSearching ? searchResults : entries).filter((e) => {
       const mt = getMediaType(e.name)
       return e.type === 'file' && (mt === 'image' || mt === 'video')
     })
