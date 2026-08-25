@@ -229,6 +229,9 @@ interface AppState {
   // tab), which is what every install had before these existed.
   lyricsColorActive: string | null
   lyricsColorInactive: string | null
+  // Show eras by their full name ("WRLD On Drugs") instead of the API's
+  // abbreviation ("WOD") wherever the Tracker displays one.
+  fullEraNames: boolean
   // Accent-tinted gradient washes on the app shell/sidebar/player and a sheen
   // on accent buttons (index.css `html.gradients` rules; class applied by
   // useThemeEffects). They ride the accent vars, so the Now Playing skin's
@@ -495,6 +498,7 @@ interface AppActions {
   setLyricsBlurAmount: (amount: number) => void
   setLyricsColorActive: (color: string | null) => void
   setLyricsColorInactive: (color: string | null) => void
+  setFullEraNames: (enabled: boolean) => void
   setGradientsEnabled: (enabled: boolean) => void
   setPreferOgVersion: (enabled: boolean) => void
   setRotateSuggestedCovers: (enabled: boolean) => void
@@ -1146,6 +1150,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
   lyricsBlurAmount: ls.get<number>('lyricsBlurAmount') ?? 1,
   lyricsColorActive: ls.get<string>('lyricsColorActive') ?? null,
   lyricsColorInactive: ls.get<string>('lyricsColorInactive') ?? null,
+  fullEraNames: ls.get<boolean>('fullEraNames') ?? false,
   gradientsEnabled: ls.get<boolean>('gradientsEnabled') ?? true,
   preferOgVersion: ls.get<boolean>('preferOgVersion') ?? false,
   rotateSuggestedCovers: ls.get<boolean>('rotateSuggestedCovers') ?? false,
@@ -1247,6 +1252,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
   setLyricsBlurAmount: (lyricsBlurAmount) => { set({ lyricsBlurAmount }); ls.set('lyricsBlurAmount', lyricsBlurAmount) },
   setLyricsColorActive: (lyricsColorActive) => { set({ lyricsColorActive }); ls.set('lyricsColorActive', lyricsColorActive) },
   setLyricsColorInactive: (lyricsColorInactive) => { set({ lyricsColorInactive }); ls.set('lyricsColorInactive', lyricsColorInactive) },
+  setFullEraNames: (fullEraNames) => { set({ fullEraNames }); ls.set('fullEraNames', fullEraNames) },
   setGradientsEnabled: (gradientsEnabled) => { set({ gradientsEnabled }); ls.set('gradientsEnabled', gradientsEnabled) },
 
   setHotkeyBinding: (actionId, combo) => {

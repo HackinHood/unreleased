@@ -63,6 +63,11 @@ export function cancelCompUpload(id: string): void {
   useStore.getState().updateDownload(id, { state: 'cancelled', speedBps: undefined })
 }
 
+export function cancelAllCompUploads(): void {
+  const ids = useStore.getState().downloads.filter((d) => d.type === 'upload' && d.state === 'downloading').map((d) => d.id)
+  for (const id of ids) cancelCompUpload(id)
+}
+
 async function run(): Promise<void> {
   if (running) return
   running = true

@@ -4,7 +4,7 @@ import {
   Music, Radio, Search, SkipForward, ThumbsUp, ThumbsDown, X, ChevronDown, Play, Pause,
   SkipBack, SkipForward as SkipFwd, Shuffle, Repeat, Repeat1, Volume2, VolumeX,
   MoreHorizontal, Heart, ListMusic, Trash2, Download, History, SlidersHorizontal,
-  Mic2, Layers, ArrowUpDown, Loader2, GripVertical,
+  Mic2, Layers, ArrowUpDown, Loader2, GripVertical, RefreshCw,
 } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import { useShallow } from 'zustand/react/shallow'
@@ -959,7 +959,7 @@ const MAX_HISTORY_SHOWN = 10
 // gone — there's no HTML5 drag on touch — replaced by an explicit reorder mode
 // with up/down buttons, the same pattern the Playlists tab uses.
 function QueueSheet({ onClose }: { onClose: () => void }): JSX.Element {
-  const { queue, queueIndex, currentTrack, isPlaying, shuffle, radioMode, playTrack, jumpToTrack, removeFromQueue, clearQueue, reorderQueue } = useStore(useShallow(s => ({
+  const { queue, queueIndex, currentTrack, isPlaying, shuffle, radioMode, playTrack, jumpToTrack, removeFromQueue, clearQueue, reorderQueue, reshuffleQueue } = useStore(useShallow(s => ({
     queue: s.queue,
     queueIndex: s.queueIndex,
     currentTrack: s.currentTrack,
@@ -971,6 +971,7 @@ function QueueSheet({ onClose }: { onClose: () => void }): JSX.Element {
     removeFromQueue: s.removeFromQueue,
     clearQueue: s.clearQueue,
     reorderQueue: s.reorderQueue,
+    reshuffleQueue: s.reshuffleQueue,
   })))
 
   const history = queue.slice(0, queueIndex) // played tracks, oldest first
@@ -987,6 +988,12 @@ function QueueSheet({ onClose }: { onClose: () => void }): JSX.Element {
       title="Playing next"
       header={
         <div className="flex items-center gap-2 px-5 pt-2">
+          {shuffle && upcoming.length > 0 && (
+            <button
+              onClick={reshuffleQueue}
+              className="h-8 px-3 rounded-full text-xs font-semibold bg-surface-overlay text-text-secondary flex items-center gap-1.5"
+            ><RefreshCw size={13} /> Reshuffle</button>
+          )}
           {upcoming.length > 1 && (
             <button
               onClick={() => setReorder(r => !r)}
