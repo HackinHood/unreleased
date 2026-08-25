@@ -10,6 +10,7 @@ import { apiFetch, CATEGORY_LABELS } from '../lib/juicewrldApi'
 import type { JWApiSong, JWApiEra } from '../lib/juicewrldApi'
 import type { LibraryTrack } from '../types'
 import * as userApi from '../lib/userApi'
+import { useCanEdit } from '../hooks/useChannelRoles'
 import { getVersionMetaForSongs, getOwnVersionMeta, setOwnVersionTitle, linkSongVersion, setGroupVersionTitle } from '../lib/versionsApi'
 import type { SongVersionMeta } from '../lib/versionsApi'
 import { invalidateCompactGroupsCache } from '../lib/compactGroups'
@@ -319,12 +320,13 @@ const LOCAL_FIELDS: BulkField<LibraryTrack>[] = [
 /* ── Component ─────────────────────────────────────────────────────────────── */
 
 export default function BulkEditModal(): JSX.Element | null {
-  const { target, close, account, updateLibraryTrack } = useStore(
+  const { target, close, updateLibraryTrack } = useStore(
     useShallow(s => ({
-      target: s.bulkEdit, close: s.closeBulkEditor, account: s.account,
+      target: s.bulkEdit, close: s.closeBulkEditor,
       updateLibraryTrack: s.updateLibraryTrack,
     }))
   )
+  const canEdit = useCanEdit()
   // Stays mounted and renders null when closed, so gate on the target.
   useBackToClose(close, !!target)
 
@@ -366,7 +368,6 @@ export default function BulkEditModal(): JSX.Element | null {
 
   const apiSpec = useMemo<BulkSpec<JWApiSong> | null>(() => {
     if (target?.kind !== 'api') return null
-    const canEdit = !!(account?.is_editor || account?.is_administrator)
 
     return {
       items: target.songs,
@@ -407,7 +408,7 @@ export default function BulkEditModal(): JSX.Element | null {
         })
       },
     }
-  }, [target, account, eras, versionMeta, fetchVersionMeta])
+  }, [target, canEdit, eras, versionMeta, fetchVersionMeta])
 
   const localSpec = useMemo<BulkSpec<LibraryTrack> | null>(() => {
     if (target?.kind !== 'local') return null

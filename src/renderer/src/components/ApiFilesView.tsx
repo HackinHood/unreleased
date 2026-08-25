@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import * as userApi from '../lib/userApi'
-import { CONTRIBUTOR_ENABLED } from '../lib/userApi'
+import { isPrimaryChannelSlug } from '../hooks/useChannelRoles'
 import {
   apiFetch,
   apiPeek,
@@ -85,8 +85,8 @@ function parentFolder(path: string): string {
   return i > 0 ? path.slice(0, i) : ''
 }
 
-function fileToTrack(entry: JWApiFileEntry): Track {
-  return apiFilePathToTrack(entry.path, entry.name)
+function fileToTrack(entry: JWApiFileEntry, channel?: string): Track {
+  return apiFilePathToTrack(entry.path, entry.name, channel)
 }
 
 function sortEntries(entries: JWApiFileEntry[], by: SortBy, dir: SortDir): JWApiFileEntry[] {
@@ -137,6 +137,7 @@ function Thumb({ entry, size, rounded = 'rounded-xl' }: {
   size: number
   rounded?: string
 }): JSX.Element {
+  const activeChannel = useStore((s) => s.activeChannel)
   const [errored, setErrored] = useState(false)
   const mt = entry.type === 'directory' ? 'folder' : getMediaType(entry.name)
   const box = `flex items-center justify-center bg-surface-overlay ${rounded}`
@@ -155,7 +156,7 @@ function Thumb({ entry, size, rounded = 'rounded-xl' }: {
         // /files/download/, so a folder of art would be hundreds of KB per row
         // at full size — thumbnails take the degraded copy, the lightbox still
         // opens the original.
-        src={mt === 'audio' ? buildCoverArtUrl(entry.path, true) : smallCoverUrl(buildStreamUrl(entry.path))}
+        src={mt === 'audio' ? buildCoverArtUrl(entry.path, true, activeChannel) : smallCoverUrl(buildStreamUrl(entry.path, activeChannel))}
         alt=""
         className={`${rounded} object-cover bg-surface-overlay`}
         style={{ width: size, height: size }}
@@ -195,12 +196,15 @@ export default function ApiFilesView(): JSX.Element {
     playTrack, addToQueue, apiFilesPath, setApiFilesPath, apiFilesLastPath, setApiFilesLastPath,
     account, setActiveView, setPendingEditorSongId, setPendingCompProposal, likedTrackIds,
     toggleLike, playlists, refreshPlaylists, setShowUserAuth, currentTrack, isPlaying,
+    channels, activeChannel, setActiveChannel, loadChannels,
   } = useStorePick(
     'playTrack', 'addToQueue', 'apiFilesPath', 'setApiFilesPath', 'apiFilesLastPath', 'setApiFilesLastPath',
     'account', 'setActiveView', 'setPendingEditorSongId', 'setPendingCompProposal', 'likedTrackIds',
-    'toggleLike', 'playlists', 'refreshPlaylists', 'setShowUserAuth', 'currentTrack', 'isPlaying')
-  const canEdit = !!(account?.is_editor || account?.is_administrator)
-  const canPropose = CONTRIBUTOR_ENABLED && !!(account?.is_contributor || account?.is_administrator)
+    'toggleLike', 'playlists', 'refreshPlaylists', 'setShowUserAuth', 'currentTrack', 'isPlaying',
+    'channels', 'activeChannel', 'setActiveChannel', 'loadChannels')
+  const isPrimary = isPrimaryChannelSlug(channels, activeChannel)
+  const canEdit = userApi.isChannelEditor(account, activeChannel, isPrimary)
+  const canPropose = userApi.isChannelContributor(account, activeChannel, isPrimary)
   // Set lookup for the per-row liked check — .includes on the array made the
   // listing O(rows × likes).
   const likedSet = useMemo(() => new Set(likedTrackIds), [likedTrackIds])
@@ -274,14 +278,27 @@ export default function ApiFilesView(): JSX.Element {
 
   // ── Navigation ─────────────────────────────────────────────────────────────
 
+  const navigateRequestId = useRef(0)
+
+  const browseParams = useCallback((path: string): Record<string, string> => {
+    const p: Record<string, string> = {}
+    if (path) p.path = path
+    if (activeChannel) p.channel = activeChannel
+    return p
+  }, [activeChannel])
+
   const navigate = useCallback(async (path: string, pushHistory = true) => {
     // Navigating to a folder (including tapping a directory result while
     // searching) always exits search mode and lands in normal browsing.
     setSearch(''); setDebouncedSearch('')
+    // Guard against a slower in-flight request (e.g. for a channel or folder
+    // the user has since navigated away from) landing after a newer one and
+    // clobbering the view with stale/wrong-channel data.
+    const requestId = ++navigateRequestId.current
     // Stale-while-revalidate: if this folder is already in the offline cache,
     // paint it instantly (no spinner) and refresh silently in the background.
     // Only show the loading state when there's nothing cached to fall back on.
-    const cached = apiPeek<JWApiBrowseResponse>('/files/browse/', path ? { path } : {})
+    const cached = apiPeek<JWApiBrowseResponse>('/files/browse/', browseParams(path))
     if (cached) {
       setEntries(parseEntries(cached))
       setCurrentPath(path)
@@ -293,7 +310,8 @@ export default function ApiFilesView(): JSX.Element {
     }
     scrollRef.current?.scrollTo({ top: 0 })
     try {
-      const data = await apiFetch<JWApiBrowseResponse>('/files/browse/', path ? { path } : {})
+      const data = await apiFetch<JWApiBrowseResponse>('/files/browse/', browseParams(path))
+      if (requestId !== navigateRequestId.current) return
       const items = parseEntries(data)
       if (pushHistory) {
         setHistory((h) => [...h, currentPath])
@@ -302,13 +320,14 @@ export default function ApiFilesView(): JSX.Element {
       setCurrentPath(path)
       setEntries(items)
     } catch (err) {
+      if (requestId !== navigateRequestId.current) return
       // Keep the cached listing visible on a network failure — only surface the
       // error when we had nothing to show in the first place.
       if (!cached) setError(err instanceof Error ? err.message : 'Failed to load')
     } finally {
-      setLoading(false)
+      if (requestId === navigateRequestId.current) setLoading(false)
     }
-  }, [currentPath])
+  }, [currentPath, browseParams])
 
   // Keep a ref to navigate so the popstate/back listeners always have the
   // latest version.
@@ -324,13 +343,15 @@ export default function ApiFilesView(): JSX.Element {
     if (!isSearching) { setSearchResults([]); return }
     let cancelled = false
     setSearchLoading(true)
-    apiFetch<JWApiBrowseResponse>('/files/browse/', { search: debouncedSearch.trim() })
+    const params: Record<string, string> = { search: debouncedSearch.trim() }
+    if (activeChannel) params.channel = activeChannel
+    apiFetch<JWApiBrowseResponse>('/files/browse/', params)
       .then(data => { if (!cancelled) setSearchResults(parseEntries(data)) })
       .catch(() => { if (!cancelled) setSearchResults([]) })
       .finally(() => { if (!cancelled) setSearchLoading(false) })
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, isSearching])
+  }, [debouncedSearch, isSearching, activeChannel])
 
   // Remember the browsed folder in the store so switching to another tab and
   // back restores it — the component unmounts on tab switch, so local state
@@ -358,6 +379,23 @@ export default function ApiFilesView(): JSX.Element {
     window.addEventListener('popstate', handlePopstate)
     return () => window.removeEventListener('popstate', handlePopstate)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (channels.length === 0) loadChannels().catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const onChannelChange = (slug: string): void => {
+    if (slug === activeChannel) return
+    setActiveChannel(slug)
+    setHistory([])
+    setSearch(''); setDebouncedSearch('')
+    setCurrentPath('')
+    window.history.pushState({ view: 'api-files', folderPath: '' }, '', pathToUrl(''))
+  }
+
+  useEffect(() => {
+    navigateRef.current('', false)
+  }, [activeChannel]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const goBack = useCallback((): void => {
     if (history.length > 0) {
@@ -436,7 +474,7 @@ export default function ApiFilesView(): JSX.Element {
 
   const copyLink = (entry: JWApiFileEntry): void => {
     copyToClipboard(
-      entry.type === 'file' ? buildStreamUrl(entry.path) : window.location.origin + pathToUrl(entry.path),
+      entry.type === 'file' ? buildStreamUrl(entry.path, activeChannel) : window.location.origin + pathToUrl(entry.path),
       'Link',
     )
   }
@@ -461,10 +499,10 @@ export default function ApiFilesView(): JSX.Element {
     if (playing === entry.path) return
     setPlaying(entry.path)
     try {
-      const track = fileToTrack(entry)
+      const track = fileToTrack(entry, activeChannel)
       const queue = entries
         .filter((e) => e.type === 'file' && getMediaType(e.name) === 'audio')
-        .map(fileToTrack)
+        .map((e) => fileToTrack(e, activeChannel))
       playTrack(track, queue.length > 0 ? queue : [track])
     } finally {
       setPlaying(null)
@@ -473,7 +511,7 @@ export default function ApiFilesView(): JSX.Element {
 
   const handleDownload = (entry: JWApiFileEntry): void => {
     const a = document.createElement('a')
-    a.href = buildStreamUrl(entry.path)
+    a.href = buildStreamUrl(entry.path, activeChannel)
     a.download = entry.name
     a.target = '_blank'
     a.rel = 'noopener noreferrer'
@@ -489,7 +527,7 @@ export default function ApiFilesView(): JSX.Element {
       return e.type === 'file' && (mt === 'image' || mt === 'video')
     })
     const items: LightboxItem[] = mediaEntries.map((e) => ({
-      url: buildStreamUrl(e.path),
+      url: buildStreamUrl(e.path, activeChannel),
       type: getMediaType(e.name) as 'image' | 'video',
       name: e.name,
     }))
@@ -582,7 +620,7 @@ export default function ApiFilesView(): JSX.Element {
       const res = await fetch(`${JWAPI_BASE}/start-zip-job/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paths }),
+        body: JSON.stringify(activeChannel ? { paths, channel: activeChannel } : { paths }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const { job_id } = await res.json() as { job_id: string }
@@ -737,7 +775,7 @@ export default function ApiFilesView(): JSX.Element {
         <div className="relative w-full aspect-square bg-surface-overlay flex items-center justify-center overflow-hidden">
           {hasArt ? (
             <ProgressiveCover
-              src={mt === 'audio' ? buildCoverArtUrl(entry.path) : buildStreamUrl(entry.path)}
+              src={mt === 'audio' ? buildCoverArtUrl(entry.path, false, activeChannel) : buildStreamUrl(entry.path, activeChannel)}
               alt={entry.name}
               className="w-full h-full object-cover"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
@@ -850,7 +888,7 @@ export default function ApiFilesView(): JSX.Element {
             </div>
 
             {/* Search — recursive across the whole tree, not the current folder. */}
-            <div className="px-4 pt-2">
+            <div className="px-4 pt-2 pb-2">
               <div className="relative flex items-center">
                 <Search size={16} className="absolute left-3.5 text-text-muted pointer-events-none" />
                 <input
@@ -873,6 +911,26 @@ export default function ApiFilesView(): JSX.Element {
                 )}
               </div>
             </div>
+
+            {/* Channel switcher. Only rendered once more than one channel
+                exists — a single-channel library (the common case) shows
+                nothing here. */}
+            {channels.length > 1 && (
+              <div className="flex items-center gap-2 px-4 pb-1 overflow-x-auto no-scrollbar">
+                {channels.map((ch) => (
+                  <button
+                    key={ch.slug}
+                    onClick={() => onChannelChange(ch.slug)}
+                    className={`shrink-0 h-8 px-3 rounded-full text-[12px] font-semibold transition-colors ${
+                      activeChannel === ch.slug ? 'bg-accent text-white' : 'bg-surface-overlay text-text-muted active:bg-surface-highest'
+                    }`}
+                    title={ch.description || ch.name}
+                  >
+                    {ch.name}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Filter chips. Label-only, and the selected one grows a leading
                 check instead of every chip carrying an icon: four icon+label
@@ -1158,7 +1216,7 @@ export default function ApiFilesView(): JSX.Element {
               {sheetIsAudio && (
                 <>
                   <SheetItem icon={Play} label="Play" onClick={() => { handlePlay(sheetEntry); closeSheet() }} />
-                  <SheetItem icon={ListPlus} label="Add to queue" onClick={() => { addToQueue(fileToTrack(sheetEntry)); closeSheet(); showToast('Added to queue') }} />
+                  <SheetItem icon={ListPlus} label="Add to queue" onClick={() => { addToQueue(fileToTrack(sheetEntry, activeChannel)); closeSheet(); showToast('Added to queue') }} />
                   {sheetTrackerId != null && (
                     <SheetItem
                       icon={Plus}

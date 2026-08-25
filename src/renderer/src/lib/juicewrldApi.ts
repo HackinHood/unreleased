@@ -164,8 +164,25 @@ export function apiPeek<T>(
 
 // ─── URL helpers ──────────────────────────────────────────────────────────────
 
-export function buildStreamUrl(path: string): string {
-  return `${JWAPI_BASE}/files/download/?path=${encodeURIComponent(path)}`
+export function buildStreamUrl(path: string, channel?: string): string {
+  const c = channel ? `&channel=${encodeURIComponent(channel)}` : ''
+  return `${JWAPI_BASE}/files/download/?path=${encodeURIComponent(path)}${c}`
+}
+
+export interface JWApiChannel {
+  slug: string
+  name: string
+  description?: string
+  is_primary?: boolean
+}
+
+export async function fetchChannels(): Promise<JWApiChannel[]> {
+  try {
+    const data = await apiFetch<{ channels: JWApiChannel[] }>('/files/channels/')
+    return data?.channels ?? []
+  } catch {
+    return []
+  }
 }
 
 // The API serves cover art at full size — /files/cover-art/ hands back the art
@@ -188,9 +205,10 @@ function degradable(url: string): boolean {
   return url.includes('/files/download/') && IMAGE_EXT.test(url)
 }
 
-export function buildCoverArtUrl(path: string, small = false): string {
+export function buildCoverArtUrl(path: string, small = false, channel?: string): string {
   const url = `${JWAPI_BASE}/files/cover-art/?path=${encodeURIComponent(path)}`
-  return small ? `${url}&${SMALL_COVER_PARAM}` : url
+  const c = channel ? `&channel=${encodeURIComponent(channel)}` : ''
+  return small ? `${url}&${SMALL_COVER_PARAM}${c}` : `${url}${c}`
 }
 
 /** Rewrites an already-built cover URL to the API's degraded variant.
@@ -228,7 +246,7 @@ export function apiFileIdToPath(trackId: string): string | null {
   return trackId.startsWith(API_FILE_ID_PREFIX) ? trackId.slice(API_FILE_ID_PREFIX.length) : null
 }
 
-export function apiFilePathToTrack(path: string, name?: string): Track {
+export function apiFilePathToTrack(path: string, name?: string, channel?: string): Track {
   const fileName = name ?? path.split('/').pop() ?? path
   const title = fileName.replace(/\.[^.]+$/, '')
   const slashIdx = path.lastIndexOf('/')
@@ -237,8 +255,8 @@ export function apiFilePathToTrack(path: string, name?: string): Track {
   return {
     id: apiFileTrackId(path),
     path,
-    streamUrl: buildStreamUrl(path),
-    imageUrl: buildCoverArtUrl(path),
+    streamUrl: buildStreamUrl(path, channel),
+    imageUrl: buildCoverArtUrl(path, false, channel),
     title,
     artist: 'Juice WRLD',
     album,

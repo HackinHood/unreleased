@@ -4,7 +4,7 @@ import {
   Music, Radio, Search, SkipForward, ThumbsUp, ThumbsDown, X, ChevronDown, Play, Pause,
   SkipBack, SkipForward as SkipFwd, Shuffle, Repeat, Repeat1, Volume2, VolumeX,
   MoreHorizontal, Heart, ListMusic, Trash2, Download, History, SlidersHorizontal,
-  Mic2, Layers, ArrowUpDown, Loader2, GripVertical,
+  Mic2, Layers, ArrowUpDown, Loader2, GripVertical, RefreshCw,
 } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import { useShallow } from 'zustand/react/shallow'
@@ -20,6 +20,7 @@ import { getVersionGroup } from '../lib/versionsApi'
 import type { JWApiSong } from '../lib/juicewrldApi'
 import type { SyncedLyricLine, Track } from '../types'
 import * as userApi from '../lib/userApi'
+import { useCanEdit } from '../hooks/useChannelRoles'
 import SongInfoModal from './SongInfoModal'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { ProgressiveCover } from './ProgressiveCover'
@@ -334,19 +335,30 @@ export default function WrldView(): JSX.Element {
           className="shrink-0 flex items-center gap-1 px-2"
           style={{ paddingTop: ownsTopInset ? 'max(0.25rem, env(safe-area-inset-top, 0px))' : '0.25rem' }}
         >
-          <button
-            onClick={collapse}
-            aria-label="Collapse player"
-            className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full active:bg-white/10"
-            style={{ color: txtPri }}
-          ><ChevronDown size={22} /></button>
+          {/* Three equal flex-1 columns, not a fixed-width button flanking a
+              flex-1 middle — the right side can hold one or two 44px icon
+              buttons (FmLikeButton self-hides sometimes) while the left only
+              ever has one, so a fixed-width left button made the "centered"
+              middle actually sit off-center by half that imbalance. Equal
+              columns keep the pill centered regardless of how many icons the
+              other two hold. */}
+          <div className="flex-1 flex justify-start">
+            <button
+              onClick={collapse}
+              aria-label="Collapse player"
+              className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full active:bg-white/10"
+              style={{ color: txtPri }}
+            ><ChevronDown size={22} /></button>
+          </div>
 
           <div className="flex-1 flex justify-center min-w-0">
             <FmPill active={radioFmActive} live={radioFmIsLive} disabled={fmDisabled} onClick={toggleFm} light={textIsDark} />
           </div>
 
-          <FmLikeButton light={textIsDark} />
-          <SongMenu light={textIsDark} />
+          <div className="flex-1 flex justify-end items-center gap-1">
+            <FmLikeButton light={textIsDark} />
+            <SongMenu light={textIsDark} />
+          </div>
         </div>
 
         {/* ── Cover ──────────────────────────────────────────────────────── */}
@@ -630,7 +642,17 @@ function ArtBackdrop({ artSrc, artError, isDarkSkin, radioFmActive, onError, ext
   extraDim?: boolean
 }): JSX.Element {
   return (
-    <div className="absolute inset-0 overflow-hidden">
+    // bg-black: a guaranteed opaque base underneath every layer below. The
+    // stack above it (blurred cover, gradients with a `via-transparent`
+    // middle, the noise texture) was never meant to be fully opaque on its
+    // own — each layer assumes something solid sits behind it — which is
+    // fine on the main WRLD page (nothing behind it but the app shell) but
+    // left the portaled lyrics screen showing whatever page was still
+    // mounted behind it through the transparent middle. The blurred cover
+    // still paints on top of this exactly as before, so it still reads as
+    // "matches the cover" — this only guarantees there's always something
+    // solid under it.
+    <div className="absolute inset-0 overflow-hidden bg-black">
       {artSrc && !artError ? (
         // The full-res cover, not the ~128px `small=1` degraded variant — see
         // the resolution note below, this is a separate problem from that one.
@@ -818,18 +840,17 @@ const FmLikeButton = memo(function FmLikeButton({ light }: { light: boolean }): 
 // "···" for the current track. SongContextMenu is the app-wide one and already
 // comes up as a bottom sheet on a phone, so the x/y it takes are ignored here.
 const SongMenu = memo(function SongMenu({ light }: { light: boolean }): JSX.Element {
-  const { currentTrack, radioFmActive, radioFmNowPlaying, radioFmMatchedSong, likedTrackIds, toggleLike, account, setActiveView, setPendingEditorSongId } = useStore(useShallow(s => ({
+  const { currentTrack, radioFmActive, radioFmNowPlaying, radioFmMatchedSong, likedTrackIds, toggleLike, setActiveView, setPendingEditorSongId } = useStore(useShallow(s => ({
     currentTrack: s.currentTrack,
     radioFmActive: s.radioFmActive,
     radioFmNowPlaying: s.radioFmNowPlaying,
     radioFmMatchedSong: s.radioFmMatchedSong,
     likedTrackIds: s.likedTrackIds,
     toggleLike: s.toggleLike,
-    account: s.account,
     setActiveView: s.setActiveView,
     setPendingEditorSongId: s.setPendingEditorSongId,
   })))
-  const canEdit = !!(account?.is_editor || account?.is_administrator)
+  const canEdit = useCanEdit()
 
   const [open, setOpen] = useState(false)
   const [showSongInfo, setShowSongInfo] = useState(false)
@@ -938,7 +959,7 @@ const MAX_HISTORY_SHOWN = 10
 // gone — there's no HTML5 drag on touch — replaced by an explicit reorder mode
 // with up/down buttons, the same pattern the Playlists tab uses.
 function QueueSheet({ onClose }: { onClose: () => void }): JSX.Element {
-  const { queue, queueIndex, currentTrack, isPlaying, shuffle, radioMode, playTrack, jumpToTrack, removeFromQueue, clearQueue, reorderQueue } = useStore(useShallow(s => ({
+  const { queue, queueIndex, currentTrack, isPlaying, shuffle, radioMode, playTrack, jumpToTrack, removeFromQueue, clearQueue, reorderQueue, reshuffleQueue } = useStore(useShallow(s => ({
     queue: s.queue,
     queueIndex: s.queueIndex,
     currentTrack: s.currentTrack,
@@ -950,6 +971,7 @@ function QueueSheet({ onClose }: { onClose: () => void }): JSX.Element {
     removeFromQueue: s.removeFromQueue,
     clearQueue: s.clearQueue,
     reorderQueue: s.reorderQueue,
+    reshuffleQueue: s.reshuffleQueue,
   })))
 
   const history = queue.slice(0, queueIndex) // played tracks, oldest first
@@ -966,6 +988,12 @@ function QueueSheet({ onClose }: { onClose: () => void }): JSX.Element {
       title="Playing next"
       header={
         <div className="flex items-center gap-2 px-5 pt-2">
+          {shuffle && upcoming.length > 0 && (
+            <button
+              onClick={reshuffleQueue}
+              className="h-8 px-3 rounded-full text-xs font-semibold bg-surface-overlay text-text-secondary flex items-center gap-1.5"
+            ><RefreshCw size={13} /> Reshuffle</button>
+          )}
           {upcoming.length > 1 && (
             <button
               onClick={() => setReorder(r => !r)}
@@ -1282,7 +1310,14 @@ function LyricsScreen({
   useBackToClose(onClose)
 
   return createPortal(
-    <div className="fixed inset-0 z-[70] flex flex-col animate-sheet-in">
+    // isolate: ArtBackdrop's noise-texture layer uses mix-blend-overlay,
+    // which blends with whatever's painted behind it in the same stacking
+    // context — without a boundary here, that reaches past this portal into
+    // the still-mounted page behind it (this overlay sits on top of it, not
+    // in place of it) and visibly ghosts that page's content through. Seen
+    // as faint text from the Tracker list bleeding through the lyrics
+    // screen's backdrop, reading as "the background is transparent".
+    <div className="fixed inset-0 z-[70] flex flex-col animate-sheet-in isolate">
       {/* Repaints the page's own backdrop instead of an opaque theme colour —
           the text colours below were picked against the artwork, not against
           --surface. */}

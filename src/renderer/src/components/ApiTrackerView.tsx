@@ -19,6 +19,7 @@ import {
 } from '../lib/juicewrldApi'
 import { Track } from '../types'
 import * as userApi from '../lib/userApi'
+import { useCanEdit } from '../hooks/useChannelRoles'
 import { versionsEnabled, linkSongVersion, getOwnVersionMeta, setGroupVersionTitle } from '../lib/versionsApi'
 import { fetchAllCompactGroups, filterCompactGroups, invalidateCompactGroupsCache, subscribeCompactGroupsInvalidation } from '../lib/compactGroups'
 import type { CompactGroup } from '../lib/compactGroups'
@@ -27,6 +28,7 @@ import { useVirtualWindow } from '../hooks/useVirtualWindow'
 import { runLog } from '../lib/runLog'
 import { formatDuration } from '../lib/format'
 import { registerBackHandler } from '../lib/backHandlers'
+import { loadEraFullNames, eraLabel } from '../lib/eras'
 import { useBackToClose } from '../hooks/useBackToClose'
 
 // ─── Tracker ──────────────────────────────────────────────────────────────────
@@ -243,10 +245,10 @@ function buildMonthGrid(year: number, month: number): (Date | null)[][] {
 }
 
 /** artist · era · category — the one subtitle line every song row carries. */
-function songSubtitle(song: JWApiSong): string {
+function songSubtitle(song: JWApiSong, fullEraNames: boolean): string {
   return [
     song.credited_artists || 'Juice WRLD',
-    song.era?.name,
+    song.era?.name ? eraLabel(song.era.name, fullEraNames) : undefined,
     CATEGORY_LABELS[song.category] ?? song.category,
   ].filter(Boolean).join(' · ')
 }
@@ -301,6 +303,7 @@ const SongRow = memo(function SongRow({
   // the map's other churn from re-rendering the row, and songToTrack picks up
   // the custom cover from the same source on the render this triggers.
   const pref = useStore((s) => s.songPrefs[song.id])
+  const fullEraNames = useStore((s) => s.fullEraNames)
   const track = songToTrack(song)
   const title = pref?.name || song.name
   const canPlay = !!song.path
@@ -328,7 +331,7 @@ const SongRow = memo(function SongRow({
           {title}
           {versionLabel && <span className="text-text-muted font-normal"> ({versionLabel})</span>}
         </p>
-        <p className="text-text-muted text-xs truncate mt-0.5">{songSubtitle(song)}</p>
+        <p className="text-text-muted text-xs truncate mt-0.5">{songSubtitle(song, fullEraNames)}</p>
       </div>
 
       {isCurrent && <EqBars paused={!isPlaying} />}
@@ -371,6 +374,7 @@ const DetailedSongRow = memo(function DetailedSongRow({
   song, onPlay, onMenu, selectMode, selected, onToggleSelect, playingId, isPlaying,
 }: RowProps): JSX.Element {
   const pref = useStore((s) => s.songPrefs[song.id])
+  const fullEraNames = useStore((s) => s.fullEraNames)
   const track = songToTrack(song)
   const title = pref?.name || song.name
   const canPlay = !!song.path
@@ -395,7 +399,7 @@ const DetailedSongRow = memo(function DetailedSongRow({
         </div>
         <div className="flex-1 min-w-0">
           <p className={`text-[15px] leading-snug truncate ${isCurrent ? 'text-accent font-semibold' : 'text-text-primary'}`}>{title}</p>
-          <p className="text-text-muted text-xs truncate mt-0.5">{songSubtitle(song)}</p>
+          <p className="text-text-muted text-xs truncate mt-0.5">{songSubtitle(song, fullEraNames)}</p>
         </div>
         {isCurrent && <EqBars paused={!isPlaying} />}
         <span className="text-text-muted text-[11px] tabular-nums shrink-0">{formatDuration(parseDuration(song.length), '--:--')}</span>
@@ -431,6 +435,7 @@ const SongCard = memo(function SongCard({
   song, coverH, onPlay, onMenu, selectMode, selected, onToggleSelect, playingId, isPlaying,
 }: RowProps & { coverH: number }): JSX.Element {
   const pref = useStore((s) => s.songPrefs[song.id])
+  const fullEraNames = useStore((s) => s.fullEraNames)
   const track = songToTrack(song)
   const title = pref?.name || song.name
   const canPlay = !!song.path
@@ -472,7 +477,7 @@ const SongCard = memo(function SongCard({
           <p className={`text-[13px] font-medium leading-tight truncate ${isCurrent ? 'text-accent' : 'text-text-primary'}`}>{title}</p>
           <p className="text-text-muted text-[11px] truncate mt-0.5">{song.credited_artists || 'Juice WRLD'}</p>
           <p className="text-text-muted text-[11px] truncate mt-0.5 tabular-nums">
-            {formatDuration(parseDuration(song.length), '--:--')}{song.era?.name ? ` · ${song.era.name}` : ''}
+            {formatDuration(parseDuration(song.length), '--:--')}{song.era?.name ? ` · ${eraLabel(song.era.name, fullEraNames)}` : ''}
           </p>
         </div>
         {!selectMode && (
@@ -539,6 +544,7 @@ const LyricResultRow = memo(function LyricResultRow({
   onToggleSelect: (song: JWApiSong) => void
 }): JSX.Element {
   const pref = useStore((s) => s.songPrefs[song.id])
+  const fullEraNames = useStore((s) => s.fullEraNames)
   const track = songToTrack(song)
   const title = pref?.name || song.name
   const canPlay = !!song.path
@@ -562,7 +568,7 @@ const LyricResultRow = memo(function LyricResultRow({
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-text-primary text-[15px] leading-snug truncate">{title}</p>
-        <p className="text-text-muted text-xs truncate mt-0.5">{songSubtitle(song)}</p>
+        <p className="text-text-muted text-xs truncate mt-0.5">{songSubtitle(song, fullEraNames)}</p>
         {snippet ? (
           <p className="mt-1.5 text-xs text-text-secondary italic leading-relaxed line-clamp-2">
             {snippet.before}
@@ -806,7 +812,7 @@ export default function ApiTrackerView(): JSX.Element {
     apiTrackerEra, setApiTrackerEra,
     setActiveView, setApiFilesPath, setPendingEditorSongId,
     playlists, refreshPlaylists, setShowUserAuth, likedTrackIds, toggleLike,
-    openBulkEditor, currentTrack, isPlaying,
+    openBulkEditor, currentTrack, isPlaying, fullEraNames,
   } = useStore(useShallow(s => ({
     playTrack: s.playTrack, startRadio: s.startRadio, addToQueue: s.addToQueue,
     account: s.account, shuffle: s.shuffle,
@@ -818,10 +824,15 @@ export default function ApiTrackerView(): JSX.Element {
     likedTrackIds: s.likedTrackIds, toggleLike: s.toggleLike,
     openBulkEditor: s.openBulkEditor,
     currentTrack: s.currentTrack, isPlaying: s.isPlaying,
+    fullEraNames: s.fullEraNames,
   })))
 
-  const canEdit = !!(account?.is_editor || account?.is_administrator)
+  const canEdit = useCanEdit()
   const playingId = currentTrack?.id ?? null
+
+  // Full era names aren't in the offline cache seed for every session — fetch
+  // once so eraLabel() has something to show once the user opts in.
+  useEffect(() => { loadEraFullNames().catch(() => {}) }, [])
 
   const [trackerTab, setTrackerTab] = useState<TrackerTab>('songs')
   const [sheet, setSheet] = useState<SheetKind>(null)
@@ -1251,47 +1262,27 @@ export default function ApiTrackerView(): JSX.Element {
     loadingRef.current = true
     setLoading(true); setError(null); setSongs([]); setHasMore(false); setCount(0)
     const t0 = performance.now()
-    const PAGE_SIZE_SORT = 200 // bigger batches to reduce round-trips
-    const CONCURRENCY = 6
     runLog('tracker-sort', `start search=${JSON.stringify(debouncedSearch)} category=${categoryParam || '-'} era=${eraParam || '-'} multi=${multiFilterActive} fields=${hasFieldFilters}`)
     const matchesAll = (s: JWApiSong): boolean => matchesFilters(s) && matchesSearch(s)
-    const fetchPage = (p: number): Promise<JWApiPaginatedResponse> => apiFetch<JWApiPaginatedResponse>('/songs/', {
-      // field:value tokens are stripped out — only the remaining free text
-      // (if any) still narrows the request server-side; matchesSearch above
-      // applies the field filters across every page fetched here.
-      searchall: parsedSearch.freeText || undefined,
-      category: categoryParam || undefined,
-      era: eraParam || undefined,
-      page: p,
-      page_size: PAGE_SIZE_SORT,
-    })
+    // `all=true` returns the whole (filtered) catalogue as a plain array in
+    // one request — server-side page_size is capped below what we'd need to
+    // paginate reliably, so this avoids under-counting totalPages against it.
     ;(async () => {
       try {
-        const first = await fetchPage(1)
+        const all = await apiFetch<JWApiSong[]>('/songs/', {
+          // field:value tokens are stripped out — only the remaining free text
+          // (if any) still narrows the request server-side; matchesSearch above
+          // applies the field filters across the full result here.
+          searchall: parsedSearch.freeText || undefined,
+          category: categoryParam || undefined,
+          era: eraParam || undefined,
+          all: 'true',
+        })
         if (cancelled) return
-        const all: JWApiSong[] = [...first.results]
-        setSongs(all.filter(matchesAll))
-        setCount(first.count)
-        runLog('tracker-sort', `page 1 loaded, accumulated ${all.length}/${first.count}`)
-
-        const totalPages = Math.ceil(first.count / PAGE_SIZE_SORT)
-        let nextPage = 2
-        const worker = async (): Promise<void> => {
-          while (!cancelled) {
-            const p = nextPage++
-            if (p > totalPages) return
-            const data = await fetchPage(p)
-            if (cancelled) return
-            all.push(...data.results)
-            setSongs(all.filter(matchesAll)) // progressive display while loading
-            runLog('tracker-sort', `page ${p} loaded, accumulated ${all.length}/${first.count}`)
-          }
-        }
-        await Promise.all(Array.from({ length: Math.min(CONCURRENCY, Math.max(totalPages - 1, 0)) }, worker))
-        if (!cancelled) {
-          setCount(all.filter(matchesAll).length)
-          runLog('tracker-sort', `done ${all.length} songs in ${Math.round(performance.now() - t0)}ms`)
-        }
+        const filtered = all.filter(matchesAll)
+        setSongs(filtered)
+        setCount(filtered.length)
+        runLog('tracker-sort', `done ${all.length} songs in ${Math.round(performance.now() - t0)}ms`)
       } catch (e) {
         if (!cancelled) { setError((e as Error).message); runLog('tracker-sort', 'ERROR', e as Error) }
       } finally {
@@ -1732,7 +1723,7 @@ export default function ApiTrackerView(): JSX.Element {
 
           {/* Search */}
           {(trackerTab === 'songs' || trackerTab === 'lyrics') && (
-            <div className="px-4 pt-2.5">
+            <div className="px-4 pt-2.5 pb-2">
               <div className="relative flex items-center">
                 {trackerTab === 'songs'
                   ? <Search size={16} className="absolute left-3.5 text-text-muted pointer-events-none" />
@@ -1907,7 +1898,7 @@ export default function ApiTrackerView(): JSX.Element {
                     {eras.map((era) => (
                       <div key={era.id} className="flex items-center gap-1.5">
                         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${(eraColorMap.get(era.name) ?? DEFAULT_ERA_COLOR).dot}`} />
-                        <span className="text-text-muted text-[11px]">{era.name}</span>
+                        <span className="text-text-muted text-[11px]">{eraLabel(era.name, fullEraNames)}</span>
                       </div>
                     ))}
                   </div>
@@ -2193,7 +2184,7 @@ export default function ApiTrackerView(): JSX.Element {
                   <SheetItem
                     key={era.id}
                     icon={checked ? CheckCircle2 : Circle}
-                    label={era.name}
+                    label={eraLabel(era.name, fullEraNames)}
                     active={checked}
                     onClick={() => { toggleEraFilter(era.name); resetSongs() }}
                   />

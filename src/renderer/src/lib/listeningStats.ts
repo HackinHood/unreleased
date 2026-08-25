@@ -1,9 +1,11 @@
 // Aggregation behind the Wrapped / listening-stats page.
 //
-// The only listening data the app keeps is lib/songPrefs' per-song `playcount`
-// — a running total with no timestamps, so everything here is necessarily
-// all-time. There is no play log to slice by year or month; if period-bounded
-// stats are ever wanted, a timestamped event log has to be recorded first.
+// Everything here derives from lib/listeningPlays' timestamped event log,
+// rolled back up into playcounts for whichever period is selected — including
+// "all time", which is just every event the log still holds. The log starts
+// at whichever build first shipped it (and evicts its oldest rows once it
+// hits its cap), so "all time" can still be a shorter window than the name
+// implies; periodCoverage below reports that gap.
 //
 // Deliberately pure: lib/statsCatalog owns resolving ids to song metadata,
 // this module just joins those against the prefs and ranks them. That keeps
@@ -50,15 +52,6 @@ export interface ListeningStats {
   producers: RankedEntry[]
   /** Credited artists other than Juice WRLD himself — i.e. features. */
   collaborators: RankedEntry[]
-}
-
-/** Songs the user has actually played, most-played first. Rows exist for
- *  songs with only a name/cover override too, so playcount > 0 is the filter
- *  that separates "listened to" from "personalized". */
-export function playedPrefs(prefs: Record<number, SongPreference>): SongPreference[] {
-  return Object.values(prefs)
-    .filter((p) => p.playcount > 0)
-    .sort((a, b) => b.playcount - a.playcount)
 }
 
 // Credit strings are free text ("Nick Mira, Sidepce & Charlie Handsome"), so
@@ -158,41 +151,21 @@ export function periodDays(period: ListeningPeriod): number {
   return period === 'all' ? 0 : Number(period)
 }
 
-/** How the two sources line up for the selected period.
- *
- *  The aggregate counters in lib/songPrefs are absolute and complete — they
- *  are the all-time truth. The timestamped log is the only thing that can
- *  answer "last 7 days", but it starts later than the counters do and gets
- *  evicted from the back once it hits its cap, so a window can ask for more
- *  history than exists. Rather than silently under-reporting, the caller gets
- *  `complete: false` plus the date the log actually starts, and labels the
- *  period accordingly.
- *
- *  `untracked` is the arithmetic that ties the two together: every all-time
- *  play that has no event row, i.e. everything that happened before the log
- *  began (or has since aged out of it). */
+/** Whether the timestamped log actually reaches back far enough to cover the
+ *  selected period — it starts later than "all time" implies and gets evicted
+ *  from the back once it hits its cap, so a window can ask for more history
+ *  than exists. The caller gets `complete: false` plus the date the log
+ *  actually starts, and labels the period accordingly rather than silently
+ *  under-reporting. */
 export interface PeriodCoverage {
   complete: boolean
   start: number | null
-  allTimePlays: number
-  loggedPlays: number
-  untracked: number
 }
 
-export function periodCoverage(
-  songPrefs: Record<number, SongPreference>,
-  events: ListeningPlayEvent[],
-  period: ListeningPeriod,
-): PeriodCoverage {
-  let allTimePlays = 0
-  for (const p of playedPrefs(songPrefs)) allTimePlays += p.playcount
-  const loggedPlays = events.length
+export function periodCoverage(events: ListeningPlayEvent[], period: ListeningPeriod): PeriodCoverage {
   return {
     complete: coversPeriod(events, periodDays(period)),
     start: listeningPlaysCoverageStart(events),
-    allTimePlays,
-    loggedPlays,
-    untracked: Math.max(0, allTimePlays - loggedPlays),
   }
 }
 
@@ -215,11 +188,9 @@ export function eventsForPeriod(events: ListeningPlayEvent[], period: ListeningP
 }
 
 export function prefsForPeriod(
-  songPrefs: Record<number, SongPreference>,
   events: ListeningPlayEvent[],
   period: ListeningPeriod,
 ): SongPreference[] {
-  if (period === 'all') return playedPrefs(songPrefs)
   return prefsFromEvents(eventsForPeriod(events, period))
 }
 

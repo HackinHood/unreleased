@@ -7,6 +7,7 @@ import {
   GitBranch, Info, StickyNote, Quote, Copy, Download, Loader2, LucideIcon
 } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
+import { useCanEdit } from '../hooks/useChannelRoles'
 import { JWApiSong, CATEGORY_LABELS, buildImageUrl, parseDuration, apiFetch, resolvePrefCoverUrl } from '../lib/juicewrldApi'
 import { versionsEnabled, getVersionGroup, SongVersionMeta } from '../lib/versionsApi'
 import { formatDuration } from '../lib/format'
@@ -430,8 +431,12 @@ export default function SongInfoModal({ song, onClose, onEdit }: Props): JSX.Ele
 // Global host for the song-info modal — renders nothing until something sets
 // `infoSongId`, then fetches that song and shows the modal.
 export function GlobalSongInfoHost(): JSX.Element | null {
-  const { infoSongId, setInfoSongId, account } = useStorePick('infoSongId', 'setInfoSongId', 'account')
+  const { infoSongId, setInfoSongId } = useStorePick('infoSongId', 'setInfoSongId')
   const [song, setSong] = useState<JWApiSong | null>(null)
+  // Called unconditionally, before the early return below — infoSongId toggles
+  // between null and a value across this component's lifetime, and a hook
+  // called only on some of those renders breaks React's hook-order rule.
+  const canEdit = useCanEdit()
 
   useEffect(() => {
     if (infoSongId == null) { setSong(null); return }
@@ -441,7 +446,6 @@ export function GlobalSongInfoHost(): JSX.Element | null {
   }, [infoSongId])
 
   if (infoSongId == null || !song) return null
-  const canEdit = !!account && (account.is_editor || account.is_administrator)
   return (
     <SongInfoModal
       song={song}

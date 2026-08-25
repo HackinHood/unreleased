@@ -6,11 +6,11 @@ import { ls } from '../lib/persist'
 import * as userApi from '../lib/userApi'
 import type { AccountUser, PlaylistSummary } from '../lib/userApi'
 import * as preferencesApi from '../lib/preferencesApi'
-import { apiFetch, apiPeek, buildStreamUrl, buildImageUrl, parseDuration, resolvePrefCoverUrl } from '../lib/juicewrldApi'
+import { apiFetch, apiPeek, buildStreamUrl, buildImageUrl, parseDuration, resolvePrefCoverUrl, fetchChannels } from '../lib/juicewrldApi'
 import { peekRotatedCover } from '../lib/coverRotation'
 import { advanceRotatedCover, resetCoverRotation } from '../lib/coverSuggestions'
 import { peekEraCover, setEraCoverRaw } from '../lib/eraCovers'
-import type { JWApiSong } from '../lib/juicewrldApi'
+import type { JWApiSong, JWApiChannel } from '../lib/juicewrldApi'
 import {
   emptySongPref, isEmptySongPref, normalizePrefText, setSongPrefsCache,
 } from '../lib/songPrefs'
@@ -38,7 +38,7 @@ import { HOTKEY_ACTIONS, effectiveBinding } from '../lib/hotkeys'
 import { DEFAULT_NAV_ORDER, DEFAULT_NAV_VISIBILITY, DEFAULT_NAV_CONTROL_ORDER, DEFAULT_NAV_CONTROL_VISIBILITY } from '../lib/navItems'
 import { getLastfmSession } from '../lib/lastfm'
 import * as localLibrary from '../lib/localLibrary'
-import { runWhenIdle } from '../lib/platform'
+import { runWhenIdle, IS_ANDROID } from '../lib/platform'
 import { getOfflineApi } from '../lib/offlineBackend'
 
 // Key used to track songs downloaded individually (song context menu →
@@ -229,6 +229,9 @@ interface AppState {
   // tab), which is what every install had before these existed.
   lyricsColorActive: string | null
   lyricsColorInactive: string | null
+  // Show eras by their full name ("WRLD On Drugs") instead of the API's
+  // abbreviation ("WOD") wherever the Tracker displays one.
+  fullEraNames: boolean
   // Accent-tinted gradient washes on the app shell/sidebar/player and a sheen
   // on accent buttons (index.css `html.gradients` rules; class applied by
   // useThemeEffects). They ride the accent vars, so the Now Playing skin's
@@ -315,6 +318,11 @@ interface AppState {
   apiTrackerEra: string
   apiFilesPath: string
   apiFilesLastPath: string
+
+  channels: JWApiChannel[]
+  activeChannel: string
+  setActiveChannel: (slug: string) => void
+  loadChannels: () => Promise<void>
 
   // Account
   account: AccountUser | null
@@ -490,6 +498,7 @@ interface AppActions {
   setLyricsBlurAmount: (amount: number) => void
   setLyricsColorActive: (color: string | null) => void
   setLyricsColorInactive: (color: string | null) => void
+  setFullEraNames: (enabled: boolean) => void
   setGradientsEnabled: (enabled: boolean) => void
   setPreferOgVersion: (enabled: boolean) => void
   setRotateSuggestedCovers: (enabled: boolean) => void
@@ -1141,6 +1150,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
   lyricsBlurAmount: ls.get<number>('lyricsBlurAmount') ?? 1,
   lyricsColorActive: ls.get<string>('lyricsColorActive') ?? null,
   lyricsColorInactive: ls.get<string>('lyricsColorInactive') ?? null,
+  fullEraNames: ls.get<boolean>('fullEraNames') ?? false,
   gradientsEnabled: ls.get<boolean>('gradientsEnabled') ?? true,
   preferOgVersion: ls.get<boolean>('preferOgVersion') ?? false,
   rotateSuggestedCovers: ls.get<boolean>('rotateSuggestedCovers') ?? false,
@@ -1242,6 +1252,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
   setLyricsBlurAmount: (lyricsBlurAmount) => { set({ lyricsBlurAmount }); ls.set('lyricsBlurAmount', lyricsBlurAmount) },
   setLyricsColorActive: (lyricsColorActive) => { set({ lyricsColorActive }); ls.set('lyricsColorActive', lyricsColorActive) },
   setLyricsColorInactive: (lyricsColorInactive) => { set({ lyricsColorInactive }); ls.set('lyricsColorInactive', lyricsColorInactive) },
+  setFullEraNames: (fullEraNames) => { set({ fullEraNames }); ls.set('fullEraNames', fullEraNames) },
   setGradientsEnabled: (gradientsEnabled) => { set({ gradientsEnabled }); ls.set('gradientsEnabled', gradientsEnabled) },
 
   setHotkeyBinding: (actionId, combo) => {
@@ -1629,6 +1640,20 @@ export const useStore = create<AppStore>((set, get, store) => ({
   setApiFilesLastPath: (path) => set({ apiFilesLastPath: path }),
   setApiFilesPath: (path) => set({ apiFilesPath: path }),
 
+  channels: [],
+  activeChannel: ls.get<string>('activeChannel') || '',
+  setActiveChannel: (slug) => { set({ activeChannel: slug }); ls.set('activeChannel', slug) },
+  loadChannels: async () => {
+    const list = await fetchChannels()
+    if (!list.length) return
+    const current = get().activeChannel
+    const valid = list.some((c) => c.slug === current)
+    const primary = list.find((c) => c.is_primary) ?? list[0]
+    const next = valid ? current : primary.slug
+    set({ channels: list, activeChannel: next })
+    ls.set('activeChannel', next)
+  },
+
   // ── Account ───────────────────────────────────────────────────────────────
   account: null,
   playlists: [],
@@ -1692,6 +1717,16 @@ export const useStore = create<AppStore>((set, get, store) => ({
   loginWithDiscord: async () => {
     const redirectUri = userApi.discordRedirectUri()
     const { authorize_url, state } = await userApi.getDiscordAuthUrl(redirectUri)
+    if (IS_ANDROID) {
+      // No page navigation to hand the redirect back to on Android — open
+      // the authorize page in an in-app browser and pull code/state off the
+      // callback navigation directly (see loginWithDiscordInAppBrowser).
+      const result = await userApi.loginWithDiscordInAppBrowser(authorize_url)
+      if (!result) return
+      if (result.state !== state) throw new Error('Discord OAuth state mismatch')
+      await get().completeDiscordLogin(result.code, result.state)
+      return
+    }
     // Defense-in-depth CSRF check: the server already validates `state`
     // server-side, but stash the issued value so completeDiscordLogin can
     // also reject a mismatched one before ever calling exchange. sessionStorage
@@ -1818,6 +1853,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
           .filter(([path, params]) => apiPeek(path, params) === undefined)
           .map(([path, params]) => apiFetch(path, params)),
       )
+      get().loadChannels().catch(() => {})
     } finally {
       _apiPrefetchInFlight = false
     }

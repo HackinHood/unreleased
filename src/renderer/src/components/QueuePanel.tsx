@@ -1,5 +1,5 @@
 ﻿import { useRef, useState, useEffect } from 'react'
-import { X, GripVertical, ListMusic, Trash2, History, ChevronDown, Radio, Search } from 'lucide-react'
+import { X, GripVertical, ListMusic, Trash2, History, ChevronDown, Radio, Search, RefreshCw } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { formatDuration } from '../lib/format'
@@ -13,8 +13,8 @@ export default function QueuePanel(): JSX.Element {
   const {
     queue, queueIndex, currentTrack, isPlaying, shuffle, queueFilter, queueLoadingMore,
     radioMode, radioNext,
-    setShowQueue, removeFromQueue, clearQueue, reorderQueue, jumpToTrack, _loadMore,
-  } = useStorePick('queue', 'queueIndex', 'currentTrack', 'isPlaying', 'shuffle', 'queueFilter', 'queueLoadingMore', 'radioMode', 'radioNext', 'setShowQueue', 'removeFromQueue', 'clearQueue', 'reorderQueue', 'jumpToTrack', '_loadMore')
+    setShowQueue, removeFromQueue, clearQueue, reorderQueue, jumpToTrack, _loadMore, reshuffleQueue,
+  } = useStorePick('queue', 'queueIndex', 'currentTrack', 'isPlaying', 'shuffle', 'queueFilter', 'queueLoadingMore', 'radioMode', 'radioNext', 'setShowQueue', 'removeFromQueue', 'clearQueue', 'reorderQueue', 'jumpToTrack', '_loadMore', 'reshuffleQueue')
 
   const [panelWidth, dragHandle] = useResizablePanel(300, 240, 480)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
@@ -223,6 +223,13 @@ export default function QueuePanel(): JSX.Element {
                 <Radio size={10} className="text-accent" />
                 <span className="text-accent">Random</span>
                 <span className="opacity-60">· Up Next</span>
+                <button
+                  onClick={reshuffleQueue}
+                  title="Reshuffle"
+                  className="ml-auto p-1 -m-1 rounded text-text-muted hover:text-text-primary transition-colors"
+                >
+                  <RefreshCw size={11} />
+                </button>
               </p>
               {radioNext ? (
                 <QueueRow track={radioNext} isActive={false} isPlaying={false} />
@@ -243,9 +250,20 @@ export default function QueuePanel(): JSX.Element {
                 <span className="opacity-60">
                   · {filteredUpcoming.length}{!query && hasMore ? '+' : ''}
                 </span>
-                {queueLoadingMore && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse ml-auto" />
-                )}
+                <span className="ml-auto flex items-center gap-2">
+                  {queueLoadingMore && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+                  )}
+                  {!query && shuffle && (
+                    <button
+                      onClick={reshuffleQueue}
+                      title="Reshuffle"
+                      className="p-1 -m-1 rounded text-text-muted hover:text-text-primary transition-colors"
+                    >
+                      <RefreshCw size={11} />
+                    </button>
+                  )}
+                </span>
               </p>
 
               {(query ? filteredUpcoming : filteredUpcoming.slice(0, visibleCount)).map(({ track, i }) => (

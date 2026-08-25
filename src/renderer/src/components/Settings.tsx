@@ -385,7 +385,8 @@ export default function Settings(): JSX.Element {
     appFont, setAppFont,
     lyricsFont, setLyricsFont,
     gradientsEnabled, setGradientsEnabled,
-  } = useStorePick('setShowSettings', 'setActiveView', 'account', 'setShowUserAuth', 'logoutAccount', 'loginWithToken', 'theme', 'setTheme', 'customSkins', 'saveCustomSkin', 'deleteCustomSkin', 'accentColor', 'setAccentColor', 'settingsTab', 'setSettingsTab', 'sidebarPosition', 'setSidebarPosition', 'navOrder', 'setNavOrder', 'navVisibility', 'setNavItemVisible', 'audioOutput', 'setAudioOutput', 'crossfadeEnabled', 'crossfadeDuration', 'setCrossfade', 'pauseFadeEnabled', 'setPauseFade', 'preferOgVersion', 'setPreferOgVersion', 'rotateSuggestedCovers', 'setRotateSuggestedCovers', 'downloadFolder', 'mediaOverlayEnabled', 'setMediaOverlayEnabled', 'lyricsOffset', 'setLyricsOffset', 'sleepTimerEnd', 'setSleepTimer', 'libraryFolders', 'addLibraryFolder', 'removeLibraryFolder', 'scanLibrary', 'libraryScanning', 'libraryScanProgress', 'libraryTracks', 'libraryLastScanned', 'libraryAutoRefresh', 'setLibraryAutoRefresh', 'developerMode', 'setDeveloperMode', 'lastfmUser', 'setLastfmUser', 'lastfmEnabled', 'setLastfmEnabled', 'appTextScale', 'setAppTextScale', 'lyricsScale', 'setLyricsScale', 'lyricsAlign', 'setLyricsAlign', 'lyricsBlur', 'setLyricsBlur', 'lyricsBlurAmount', 'setLyricsBlurAmount', 'lyricsColorActive', 'setLyricsColorActive', 'lyricsColorInactive', 'setLyricsColorInactive', 'appFont', 'setAppFont', 'lyricsFont', 'setLyricsFont', 'gradientsEnabled', 'setGradientsEnabled')
+    fullEraNames, setFullEraNames,
+  } = useStorePick('setShowSettings', 'setActiveView', 'account', 'setShowUserAuth', 'logoutAccount', 'loginWithToken', 'theme', 'setTheme', 'customSkins', 'saveCustomSkin', 'deleteCustomSkin', 'accentColor', 'setAccentColor', 'settingsTab', 'setSettingsTab', 'sidebarPosition', 'setSidebarPosition', 'navOrder', 'setNavOrder', 'navVisibility', 'setNavItemVisible', 'audioOutput', 'setAudioOutput', 'crossfadeEnabled', 'crossfadeDuration', 'setCrossfade', 'pauseFadeEnabled', 'setPauseFade', 'preferOgVersion', 'setPreferOgVersion', 'rotateSuggestedCovers', 'setRotateSuggestedCovers', 'downloadFolder', 'mediaOverlayEnabled', 'setMediaOverlayEnabled', 'lyricsOffset', 'setLyricsOffset', 'sleepTimerEnd', 'setSleepTimer', 'libraryFolders', 'addLibraryFolder', 'removeLibraryFolder', 'scanLibrary', 'libraryScanning', 'libraryScanProgress', 'libraryTracks', 'libraryLastScanned', 'libraryAutoRefresh', 'setLibraryAutoRefresh', 'developerMode', 'setDeveloperMode', 'lastfmUser', 'setLastfmUser', 'lastfmEnabled', 'setLastfmEnabled', 'appTextScale', 'setAppTextScale', 'lyricsScale', 'setLyricsScale', 'lyricsAlign', 'setLyricsAlign', 'lyricsBlur', 'setLyricsBlur', 'lyricsBlurAmount', 'setLyricsBlurAmount', 'lyricsColorActive', 'setLyricsColorActive', 'lyricsColorInactive', 'setLyricsColorInactive', 'appFont', 'setAppFont', 'lyricsFont', 'setLyricsFont', 'gradientsEnabled', 'setGradientsEnabled', 'fullEraNames', 'setFullEraNames')
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [customAccent, setCustomAccent] = useState(accentColor)
@@ -1096,6 +1097,13 @@ export default function Settings(): JSX.Element {
                       />
                     </div>
                   </Block>
+                  <Row
+                    icon={BookOpen}
+                    iconColor="#0891b2"
+                    label="Full era names"
+                    sub='Show eras spelled out ("WRLD On Drugs") instead of abbreviated ("WOD")'
+                    labelExtra={<Toggle on={fullEraNames} onClick={() => setFullEraNames(!fullEraNames)} />}
+                  />
                 </SettingsCard>
 
                 <SettingsCard title="Navigation">
@@ -1207,13 +1215,16 @@ export default function Settings(): JSX.Element {
                     // The slider was 80px wide next to the label; on a phone that
                     // is 12 steps across five-eighths of an inch.
                     <div className="flex items-center gap-3 py-2 pl-10 border-b border-[var(--border)] last:border-b-0">
-                      <input
-                        type="range" min={1} max={12} step={1}
-                        value={crossfadeDuration}
-                        onChange={(e) => setCrossfade(true, parseInt(e.target.value))}
-                        aria-label="Crossfade length"
-                        className="flex-1 min-w-0 h-9 accent-[var(--accent)]"
-                      />
+                      <div className="flex-1 min-w-0 progress-track">
+                        <input
+                          type="range" min={1} max={12} step={1}
+                          value={crossfadeDuration}
+                          onChange={(e) => setCrossfade(true, parseInt(e.target.value))}
+                          aria-label="Crossfade length"
+                          className="w-full h-9"
+                          style={{ '--val': `${((crossfadeDuration - 1) / 11) * 100}%` } as React.CSSProperties}
+                        />
+                      </div>
                       <span className="text-text-muted text-xs tabular-nums w-8 text-right shrink-0">{crossfadeDuration}s</span>
                     </div>
                   )}

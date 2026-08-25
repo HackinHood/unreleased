@@ -8,6 +8,7 @@ import {
 import { useStore, useStorePick } from '../store/useStore'
 import * as userApi from '../lib/userApi'
 import type { PlaylistDetail, PlaylistSummary } from '../lib/userApi'
+import { useCanEdit } from '../hooks/useChannelRoles'
 import { Track, LocalPlaylist, LibraryTrack, FollowedPlaylist } from '../types'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { ProgressiveCover } from './ProgressiveCover'
@@ -361,12 +362,12 @@ export default function PlaylistsView(): JSX.Element {
     playlistsSort: sortRaw, setPlaylistsSort: setSortRaw,
     offlinePlaylists, offlineSync, offlineTracks, downloadPlaylistOffline, removePlaylistOffline,
     playlistFolders, createFolder, renameFolder, deleteFolder, movePlaylistsToFolder,
-    appTextScale, currentTrack, sidebarPosition, setHeroBleedTop } = useStorePick('account', 'playlists', 'refreshPlaylists', 'playTrack', 'playCollection', 'addToQueue', 'setShowUserAuth', 'likedTrackIds', 'toggleLike', 'setActiveView', 'setPendingEditorSongId', 'localPlaylists', 'libraryTracks', 'libraryArt', 'loadLibrary', 'deleteLocalPlaylist', 'renameLocalPlaylist', 'updateLocalPlaylist', 'addToLocalPlaylist', 'removeFromLocalPlaylist', 'reorderLocalPlaylist', 'createLocalPlaylist', 'guestPlaylists', 'createGuestPlaylist', 'deleteGuestPlaylist', 'renameGuestPlaylist', 'removeFromGuestPlaylist', 'followedPlaylists', 'followPlaylist', 'unfollowPlaylist', 'updateFollowedPlaylistMeta', 'pendingPlaylistId', 'setPendingPlaylistId', 'playlistsSelectedId', 'setPlaylistsSelectedId', 'playlistsSelectedLocalId', 'setPlaylistsSelectedLocalId', 'playlistsSort', 'setPlaylistsSort', 'offlinePlaylists', 'offlineSync', 'offlineTracks', 'downloadPlaylistOffline', 'removePlaylistOffline', 'playlistFolders', 'createFolder', 'renameFolder', 'deleteFolder', 'movePlaylistsToFolder', 'appTextScale', 'currentTrack', 'sidebarPosition', 'setHeroBleedTop')
+    appTextScale, currentTrack, sidebarPosition, setHeroBleedTop, playNext } = useStorePick('account', 'playlists', 'refreshPlaylists', 'playTrack', 'playCollection', 'addToQueue', 'setShowUserAuth', 'likedTrackIds', 'toggleLike', 'setActiveView', 'setPendingEditorSongId', 'localPlaylists', 'libraryTracks', 'libraryArt', 'loadLibrary', 'deleteLocalPlaylist', 'renameLocalPlaylist', 'updateLocalPlaylist', 'addToLocalPlaylist', 'removeFromLocalPlaylist', 'reorderLocalPlaylist', 'createLocalPlaylist', 'guestPlaylists', 'createGuestPlaylist', 'deleteGuestPlaylist', 'renameGuestPlaylist', 'removeFromGuestPlaylist', 'followedPlaylists', 'followPlaylist', 'unfollowPlaylist', 'updateFollowedPlaylistMeta', 'pendingPlaylistId', 'setPendingPlaylistId', 'playlistsSelectedId', 'setPlaylistsSelectedId', 'playlistsSelectedLocalId', 'setPlaylistsSelectedLocalId', 'playlistsSort', 'setPlaylistsSort', 'offlinePlaylists', 'offlineSync', 'offlineTracks', 'downloadPlaylistOffline', 'removePlaylistOffline', 'playlistFolders', 'createFolder', 'renameFolder', 'deleteFolder', 'movePlaylistsToFolder', 'appTextScale', 'currentTrack', 'sidebarPosition', 'setHeroBleedTop', 'playNext')
   // Cast back to the component's own SortField union — the store keeps the
   // field as a plain string so it doesn't have to import this component's type.
   const sort = sortRaw as SortState
   const setSort = setSortRaw as (s: SortState) => void
-  const canEdit = !!(account?.is_editor || account?.is_administrator)
+  const canEdit = useCanEdit()
 
   const [showLiked, setShowLiked] = useState(false)
   const [detail, setDetail] = useState<PlaylistDetail | null>(null)
@@ -2562,6 +2563,7 @@ export default function PlaylistsView(): JSX.Element {
           canEdit={canEdit}
           onInfo={() => { const sid = trackMenu.songId ?? userApi.trackIdToSongId(trackMenu.track.id); if (sid && sid > 0) openSongInfo(sid) }}
           onPlay={() => playTrack(trackMenu.track, displayTracks.length ? displayTracks : [trackMenu.track])}
+          onPlayNext={() => playNext(trackMenu.track)}
           onAddToQueue={() => addToQueue(trackMenu.track)}
           onSelect={inDetail ? () => toggleTrackSelect(trackMenu.track) : undefined}
           liked={likedTrackIds.includes(trackMenu.track.id)}
