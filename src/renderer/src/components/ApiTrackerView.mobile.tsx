@@ -28,6 +28,7 @@ import { useVirtualWindow } from '../hooks/useVirtualWindow'
 import { runLog } from '../lib/runLog'
 import { formatDuration } from '../lib/format'
 import { registerBackHandler } from '../lib/backHandlers'
+import { loadEraFullNames, eraLabel } from '../lib/eras'
 import { useBackToClose } from '../hooks/useBackToClose'
 
 // ─── Tracker ──────────────────────────────────────────────────────────────────
@@ -244,10 +245,10 @@ function buildMonthGrid(year: number, month: number): (Date | null)[][] {
 }
 
 /** artist · era · category — the one subtitle line every song row carries. */
-function songSubtitle(song: JWApiSong): string {
+function songSubtitle(song: JWApiSong, fullEraNames: boolean): string {
   return [
     song.credited_artists || 'Juice WRLD',
-    song.era?.name,
+    song.era?.name ? eraLabel(song.era.name, fullEraNames) : undefined,
     CATEGORY_LABELS[song.category] ?? song.category,
   ].filter(Boolean).join(' · ')
 }
@@ -302,6 +303,7 @@ const SongRow = memo(function SongRow({
   // the map's other churn from re-rendering the row, and songToTrack picks up
   // the custom cover from the same source on the render this triggers.
   const pref = useStore((s) => s.songPrefs[song.id])
+  const fullEraNames = useStore((s) => s.fullEraNames)
   const track = songToTrack(song)
   const title = pref?.name || song.name
   const canPlay = !!song.path
@@ -329,7 +331,7 @@ const SongRow = memo(function SongRow({
           {title}
           {versionLabel && <span className="text-text-muted font-normal"> ({versionLabel})</span>}
         </p>
-        <p className="text-text-muted text-xs truncate mt-0.5">{songSubtitle(song)}</p>
+        <p className="text-text-muted text-xs truncate mt-0.5">{songSubtitle(song, fullEraNames)}</p>
       </div>
 
       {isCurrent && <EqBars paused={!isPlaying} />}
@@ -372,6 +374,7 @@ const DetailedSongRow = memo(function DetailedSongRow({
   song, onPlay, onMenu, selectMode, selected, onToggleSelect, playingId, isPlaying,
 }: RowProps): JSX.Element {
   const pref = useStore((s) => s.songPrefs[song.id])
+  const fullEraNames = useStore((s) => s.fullEraNames)
   const track = songToTrack(song)
   const title = pref?.name || song.name
   const canPlay = !!song.path
@@ -396,7 +399,7 @@ const DetailedSongRow = memo(function DetailedSongRow({
         </div>
         <div className="flex-1 min-w-0">
           <p className={`text-[15px] leading-snug truncate ${isCurrent ? 'text-accent font-semibold' : 'text-text-primary'}`}>{title}</p>
-          <p className="text-text-muted text-xs truncate mt-0.5">{songSubtitle(song)}</p>
+          <p className="text-text-muted text-xs truncate mt-0.5">{songSubtitle(song, fullEraNames)}</p>
         </div>
         {isCurrent && <EqBars paused={!isPlaying} />}
         <span className="text-text-muted text-[11px] tabular-nums shrink-0">{formatDuration(parseDuration(song.length), '--:--')}</span>
@@ -432,6 +435,7 @@ const SongCard = memo(function SongCard({
   song, coverH, onPlay, onMenu, selectMode, selected, onToggleSelect, playingId, isPlaying,
 }: RowProps & { coverH: number }): JSX.Element {
   const pref = useStore((s) => s.songPrefs[song.id])
+  const fullEraNames = useStore((s) => s.fullEraNames)
   const track = songToTrack(song)
   const title = pref?.name || song.name
   const canPlay = !!song.path
@@ -473,7 +477,7 @@ const SongCard = memo(function SongCard({
           <p className={`text-[13px] font-medium leading-tight truncate ${isCurrent ? 'text-accent' : 'text-text-primary'}`}>{title}</p>
           <p className="text-text-muted text-[11px] truncate mt-0.5">{song.credited_artists || 'Juice WRLD'}</p>
           <p className="text-text-muted text-[11px] truncate mt-0.5 tabular-nums">
-            {formatDuration(parseDuration(song.length), '--:--')}{song.era?.name ? ` · ${song.era.name}` : ''}
+            {formatDuration(parseDuration(song.length), '--:--')}{song.era?.name ? ` · ${eraLabel(song.era.name, fullEraNames)}` : ''}
           </p>
         </div>
         {!selectMode && (
@@ -540,6 +544,7 @@ const LyricResultRow = memo(function LyricResultRow({
   onToggleSelect: (song: JWApiSong) => void
 }): JSX.Element {
   const pref = useStore((s) => s.songPrefs[song.id])
+  const fullEraNames = useStore((s) => s.fullEraNames)
   const track = songToTrack(song)
   const title = pref?.name || song.name
   const canPlay = !!song.path
@@ -563,7 +568,7 @@ const LyricResultRow = memo(function LyricResultRow({
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-text-primary text-[15px] leading-snug truncate">{title}</p>
-        <p className="text-text-muted text-xs truncate mt-0.5">{songSubtitle(song)}</p>
+        <p className="text-text-muted text-xs truncate mt-0.5">{songSubtitle(song, fullEraNames)}</p>
         {snippet ? (
           <p className="mt-1.5 text-xs text-text-secondary italic leading-relaxed line-clamp-2">
             {snippet.before}
@@ -807,7 +812,7 @@ export default function ApiTrackerView(): JSX.Element {
     apiTrackerEra, setApiTrackerEra,
     setActiveView, setApiFilesPath, setPendingEditorSongId,
     playlists, refreshPlaylists, setShowUserAuth, likedTrackIds, toggleLike,
-    openBulkEditor, currentTrack, isPlaying,
+    openBulkEditor, currentTrack, isPlaying, fullEraNames,
   } = useStore(useShallow(s => ({
     playTrack: s.playTrack, startRadio: s.startRadio, addToQueue: s.addToQueue,
     account: s.account, shuffle: s.shuffle,
@@ -819,10 +824,15 @@ export default function ApiTrackerView(): JSX.Element {
     likedTrackIds: s.likedTrackIds, toggleLike: s.toggleLike,
     openBulkEditor: s.openBulkEditor,
     currentTrack: s.currentTrack, isPlaying: s.isPlaying,
+    fullEraNames: s.fullEraNames,
   })))
 
   const canEdit = useCanEdit()
   const playingId = currentTrack?.id ?? null
+
+  // Full era names aren't in the offline cache seed for every session — fetch
+  // once so eraLabel() has something to show once the user opts in.
+  useEffect(() => { loadEraFullNames().catch(() => {}) }, [])
 
   const [trackerTab, setTrackerTab] = useState<TrackerTab>('songs')
   const [sheet, setSheet] = useState<SheetKind>(null)
@@ -1876,7 +1886,7 @@ export default function ApiTrackerView(): JSX.Element {
                     {eras.map((era) => (
                       <div key={era.id} className="flex items-center gap-1.5">
                         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${(eraColorMap.get(era.name) ?? DEFAULT_ERA_COLOR).dot}`} />
-                        <span className="text-text-muted text-[11px]">{era.name}</span>
+                        <span className="text-text-muted text-[11px]">{eraLabel(era.name, fullEraNames)}</span>
                       </div>
                     ))}
                   </div>
@@ -2162,7 +2172,7 @@ export default function ApiTrackerView(): JSX.Element {
                   <SheetItem
                     key={era.id}
                     icon={checked ? CheckCircle2 : Circle}
-                    label={era.name}
+                    label={eraLabel(era.name, fullEraNames)}
                     active={checked}
                     onClick={() => { toggleEraFilter(era.name); resetSongs() }}
                   />

@@ -4,7 +4,7 @@ import {
   Music, Radio, Search, SkipForward, ThumbsUp, ThumbsDown, X, ChevronDown, Play, Pause,
   SkipBack, SkipForward as SkipFwd, Shuffle, Repeat, Repeat1, Volume2, VolumeX,
   MoreHorizontal, Heart, ListMusic, Trash2, Download, History, SlidersHorizontal,
-  Mic2, Layers, ArrowUpDown, Loader2, GripVertical,
+  Mic2, Layers, ArrowUpDown, Loader2, GripVertical, RefreshCw,
 } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import { useShallow } from 'zustand/react/shallow'
@@ -642,7 +642,17 @@ function ArtBackdrop({ artSrc, artError, isDarkSkin, radioFmActive, onError, ext
   extraDim?: boolean
 }): JSX.Element {
   return (
-    <div className="absolute inset-0 overflow-hidden">
+    // bg-black: a guaranteed opaque base underneath every layer below. The
+    // stack above it (blurred cover, gradients with a `via-transparent`
+    // middle, the noise texture) was never meant to be fully opaque on its
+    // own — each layer assumes something solid sits behind it — which is
+    // fine on the main WRLD page (nothing behind it but the app shell) but
+    // left the portaled lyrics screen showing whatever page was still
+    // mounted behind it through the transparent middle. The blurred cover
+    // still paints on top of this exactly as before, so it still reads as
+    // "matches the cover" — this only guarantees there's always something
+    // solid under it.
+    <div className="absolute inset-0 overflow-hidden bg-black">
       {artSrc && !artError ? (
         // The full-res cover, not the ~128px `small=1` degraded variant — see
         // the resolution note below, this is a separate problem from that one.
@@ -949,7 +959,7 @@ const MAX_HISTORY_SHOWN = 10
 // gone — there's no HTML5 drag on touch — replaced by an explicit reorder mode
 // with up/down buttons, the same pattern the Playlists tab uses.
 function QueueSheet({ onClose }: { onClose: () => void }): JSX.Element {
-  const { queue, queueIndex, currentTrack, isPlaying, shuffle, radioMode, playTrack, jumpToTrack, removeFromQueue, clearQueue, reorderQueue } = useStore(useShallow(s => ({
+  const { queue, queueIndex, currentTrack, isPlaying, shuffle, radioMode, playTrack, jumpToTrack, removeFromQueue, clearQueue, reorderQueue, reshuffleQueue } = useStore(useShallow(s => ({
     queue: s.queue,
     queueIndex: s.queueIndex,
     currentTrack: s.currentTrack,
@@ -961,6 +971,7 @@ function QueueSheet({ onClose }: { onClose: () => void }): JSX.Element {
     removeFromQueue: s.removeFromQueue,
     clearQueue: s.clearQueue,
     reorderQueue: s.reorderQueue,
+    reshuffleQueue: s.reshuffleQueue,
   })))
 
   const history = queue.slice(0, queueIndex) // played tracks, oldest first
@@ -986,6 +997,12 @@ function QueueSheet({ onClose }: { onClose: () => void }): JSX.Element {
       title="Playing next"
       header={
         <div className="flex items-center gap-2 px-5 pt-2">
+          {shuffle && upcoming.length > 0 && (
+            <button
+              onClick={reshuffleQueue}
+              className="h-8 px-3 rounded-full text-xs font-semibold bg-surface-overlay text-text-secondary flex items-center gap-1.5"
+            ><RefreshCw size={13} /> Reshuffle</button>
+          )}
           {upcoming.length > 1 && (
             <button
               onClick={() => setReorder(r => !r)}
@@ -1334,7 +1351,14 @@ function LyricsScreen({
   useBackToClose(onClose)
 
   return createPortal(
-    <div className="fixed inset-0 z-[70] flex flex-col animate-sheet-in">
+    // isolate: ArtBackdrop's noise-texture layer uses mix-blend-overlay,
+    // which blends with whatever's painted behind it in the same stacking
+    // context — without a boundary here, that reaches past this portal into
+    // the still-mounted page behind it (this overlay sits on top of it, not
+    // in place of it) and visibly ghosts that page's content through. Seen
+    // as faint text from the Tracker list bleeding through the lyrics
+    // screen's backdrop, reading as "the background is transparent".
+    <div className="fixed inset-0 z-[70] flex flex-col animate-sheet-in isolate">
       {/* Repaints the page's own backdrop instead of an opaque theme colour —
           the text colours below were picked against the artwork, not against
           --surface. */}
