@@ -15,7 +15,7 @@ import {
   apiFetch, apiPeek, songToTrack, parseDuration, buildStreamUrl, CATEGORY_LABELS, CATEGORY_COLORS, JWAPI_BASE,
   JWApiSong, JWApiPaginatedResponse, JWApiStats, JWApiEra, loadAllSongs,
 } from '../lib/juicewrldApi'
-import { fisherYates } from '../store/queueSlice'
+import { fisherYates, type QueueFilter } from '../store/queueSlice'
 import { Track } from '../types'
 import * as userApi from '../lib/userApi'
 import { useCanEdit } from '../hooks/useChannelRoles'
@@ -1835,15 +1835,15 @@ function VersionTitlePromptModal({
 // ─── Main view ────────────────────────────────────────────────────────────────
 export default function ApiTrackerView(): JSX.Element {
   const {
-    playTrack, startRadio, addToQueue, account, shuffle,
+    playTrack, playNext, addToQueue, account,
     apiTrackerCategory, setApiTrackerCategory,
     apiTrackerEra, setApiTrackerEra,
     setActiveView, setApiFilesPath, setPendingEditorSongId,
     playlists, refreshPlaylists, setShowUserAuth, likedTrackIds, toggleLike,
     openBulkEditor, fullEraNames, offlineTracks,
   } = useStore(useShallow(s => ({
-    playTrack: s.playTrack, startRadio: s.startRadio, addToQueue: s.addToQueue,
-    account: s.account, shuffle: s.shuffle,
+    playTrack: s.playTrack, playNext: s.playNext, addToQueue: s.addToQueue,
+    account: s.account,
     apiTrackerCategory: s.apiTrackerCategory, setApiTrackerCategory: s.setApiTrackerCategory,
     apiTrackerEra: s.apiTrackerEra, setApiTrackerEra: s.setApiTrackerEra,
     setActiveView: s.setActiveView, setApiFilesPath: s.setApiFilesPath,
@@ -1996,6 +1996,10 @@ export default function ApiTrackerView(): JSX.Element {
   const hasMoreRef = useRef(false)
   const loadingRef = useRef(true)
   const sentinelVisibleRef = useRef(false)
+  // `page` advances when a request starts. This ref advances only after that
+  // page has actually joined `songs`, so a queue created during an in-flight
+  // request can fetch the first page it is truly missing.
+  const lastLoadedPageRef = useRef(cachedFirstPage ? 1 : 0)
 
   const [viewMode, setViewModeState] = useState<ViewMode>(() => {
     const stored = localStorage.getItem(LS_TRACKER_VIEW)
@@ -2027,6 +2031,7 @@ export default function ApiTrackerView(): JSX.Element {
     setHasMore(false)
     hasMoreRef.current = false
     loadingRef.current = true
+    lastLoadedPageRef.current = 0
   }, [])
 
   const handleSort = (field: OrderField): void => {
@@ -2386,6 +2391,7 @@ export default function ApiTrackerView(): JSX.Element {
       .then((data) => {
         if (!cancelled) {
           setSongs((prev) => page === 1 ? data.results : [...prev, ...data.results])
+          lastLoadedPageRef.current = page
           setCount(data.count)
           const more = data.next !== null
           setHasMore(more)
@@ -2564,23 +2570,50 @@ export default function ApiTrackerView(): JSX.Element {
 
   const handlePlay = useCallback((song: JWApiSong) => {
     const track = songToTrack(song)
-    // If shuffle is already on, start radio mode from this track instead of
-    // loading the visible page into the queue.
-    if (shuffle) {
-      const rf = (!fetchAllMode && hasMore)
-        ? { category: categoryParam, era: eraParam, search: debouncedSearch, total: count }
-        : null
-      startRadio(track, rf)
-      return
+    let sourceSongs = sortedSongs
+    let lazyFilter: QueueFilter | null = null
+
+    if (trackerTab === 'lyrics') {
+      sourceSongs = lyricsResults
+      if (lyricsHasMore) {
+        lazyFilter = {
+          category: '', era: '', search: '', lyrics: debouncedLyricsQuery,
+          page: lyricsPage + 1, hasMore: true, total: lyricsCount,
+        }
+      }
+    } else if (trackerTab === 'calendar') {
+      sourceSongs = selectedStudio
+        ? (calendarByStudio.find(([studio]) => studio === selectedStudio)?.[1] ?? [])
+        : selectedDateKey
+          ? (calendarByDate.get(selectedDateKey) ?? [])
+          : calendarSongs
+    } else if (trackerTab === 'producers') {
+      sourceSongs = selectedProducer
+        ? (producersByName.find(([producer]) => producer === selectedProducer)?.[1] ?? [])
+        : selectedEngineer
+          ? (engineersByName.find(([engineer]) => engineer === selectedEngineer)?.[1] ?? [])
+          : calendarSongs
+    } else if (compactView) {
+      sourceSongs = filteredCompactGroups.flatMap((group) => group.members.map((member) => member.item))
+    } else if (!fetchAllMode && hasMore) {
+      lazyFilter = {
+        category: categoryParam, era: eraParam, search: debouncedSearch,
+        page: lastLoadedPageRef.current + 1, hasMore: true, total: count,
+      }
     }
-    const playable = sortedSongs.filter((s) => !!s.path)
+
+    const playable = [...new Map(
+      sourceSongs.filter((candidate) => !!candidate.path).map((candidate) => [candidate.id, candidate]),
+    ).values()]
     const context = playable.map(songToTrack)
-    const needsLazy = !fetchAllMode && hasMore
-    playTrack(track, context.length > 0 ? context : [track], needsLazy ? {
-      category: categoryParam, era: eraParam, search: debouncedSearch,
-      page: page + 1, hasMore: true, total: count,
-    } : null, 'tracker')
-  }, [playTrack, startRadio, shuffle, sortedSongs, categoryParam, eraParam, debouncedSearch, count, hasMore, fetchAllMode, page])
+    playTrack(track, context.length > 0 ? context : [track], lazyFilter, 'tracker')
+  }, [
+    playTrack, trackerTab, sortedSongs, lyricsResults, lyricsHasMore, debouncedLyricsQuery,
+    lyricsPage, lyricsCount, selectedStudio, selectedDateKey, calendarByStudio, calendarByDate,
+    calendarSongs, selectedProducer, selectedEngineer, producersByName, engineersByName,
+    compactView, filteredCompactGroups, fetchAllMode, hasMore, categoryParam, eraParam,
+    debouncedSearch, count,
+  ])
 
   // Global infoSongId (not local state) so the info panel — and its place in
   // the sandbox — survives switching to another tab, which unmounts this view.
@@ -3633,6 +3666,7 @@ export default function ApiTrackerView(): JSX.Element {
           song={contextMenu.song}
           onClose={() => setContextMenu(null)}
           onInfo={() => handleInfo(contextMenu.song)}
+          onPlayNext={() => playNext(songToTrack(contextMenu.song))}
           onAddToQueue={() => handleQueue(songToTrack(contextMenu.song))}
           onShowInFiles={() => handleShowInFiles(contextMenu.song)}
           canEdit={canEdit}

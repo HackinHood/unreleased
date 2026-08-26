@@ -12,9 +12,10 @@ const MAX_UPCOMING_SHOWN = 60
 export default function QueuePanel(): JSX.Element {
   const {
     queue, queueIndex, currentTrack, isPlaying, shuffle, queueFilter, queueLoadingMore,
+    queueMaterializing, queueMaterializeError,
     radioMode, radioNext,
     setShowQueue, removeFromQueue, clearQueue, reorderQueue, jumpToTrack, _loadMore, reshuffleQueue,
-  } = useStorePick('queue', 'queueIndex', 'currentTrack', 'isPlaying', 'shuffle', 'queueFilter', 'queueLoadingMore', 'radioMode', 'radioNext', 'setShowQueue', 'removeFromQueue', 'clearQueue', 'reorderQueue', 'jumpToTrack', '_loadMore', 'reshuffleQueue')
+  } = useStorePick('queue', 'queueIndex', 'currentTrack', 'isPlaying', 'shuffle', 'queueFilter', 'queueLoadingMore', 'queueMaterializing', 'queueMaterializeError', 'radioMode', 'radioNext', 'setShowQueue', 'removeFromQueue', 'clearQueue', 'reorderQueue', 'jumpToTrack', '_loadMore', 'reshuffleQueue')
 
   const [panelWidth, dragHandle] = useResizablePanel(300, 240, 480)
   const isElectron = navigator.userAgent.includes('Electron')
@@ -41,6 +42,11 @@ export default function QueuePanel(): JSX.Element {
   // working correctly after filtering shrinks the array.
   const upcomingIndexed = upcoming.map((track, i) => ({ track, i }))
   const filteredUpcoming = query ? upcomingIndexed.filter(({ track }) => matchesQuery(track)) : upcomingIndexed
+  const shownUpcoming = filteredUpcoming.slice(0, visibleCount)
+
+  useEffect(() => {
+    setVisibleCount(MAX_UPCOMING_SHOWN)
+  }, [query])
 
   // Drag state (upcoming indices only)
   const [dragIdx, setDragIdx] = useState<number | null>(null)
@@ -138,10 +144,14 @@ export default function QueuePanel(): JSX.Element {
           </div>
         )}
 
+        {queueMaterializeError && (
+          <p className="px-4 pt-2 text-[11px] text-amber-400">{queueMaterializeError}</p>
+        )}
+
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
 
-          {/* ── History ── (collapsible, above now playing) */}
+          {/* ── Earlier queue positions ── (collapsible, above now playing) */}
           {history.length > 0 && (
             <div className="px-4 pt-4 pb-2">
               <button
@@ -150,7 +160,7 @@ export default function QueuePanel(): JSX.Element {
               >
                 <History size={11} />
                 <span className="text-xs uppercase tracking-widest flex-1">
-                  History · {history.length}
+                  Earlier in queue · {history.length}
                 </span>
                 <ChevronDown
                   size={12}
@@ -162,7 +172,7 @@ export default function QueuePanel(): JSX.Element {
                 // absolute queue position history.length - 1 - i.
                 const reversedIndexed = [...history].reverse().map((track, i) => ({ track, i }))
                 const filtered = query ? reversedIndexed.filter(({ track }) => matchesQuery(track)) : reversedIndexed
-                const shown = query ? filtered : filtered.slice(0, MAX_HISTORY_SHOWN)
+                const shown = filtered.slice(0, MAX_HISTORY_SHOWN)
                 return (
                   <div className="opacity-50 space-y-0.5">
                     {shown.map(({ track, i }) => (
@@ -261,7 +271,7 @@ export default function QueuePanel(): JSX.Element {
                 </span>
               </p>
 
-              {(query ? filteredUpcoming : filteredUpcoming.slice(0, visibleCount)).map(({ track, i }) => (
+              {shownUpcoming.map(({ track, i }) => (
                 <div
                   key={`up-${track.id}-${queueIndex + 1 + i}`}
                   draggable={!query}
@@ -287,12 +297,12 @@ export default function QueuePanel(): JSX.Element {
                 </div>
               ))}
 
-              {!query && filteredUpcoming.length > visibleCount && (
+              {filteredUpcoming.length > shownUpcoming.length && (
                 <button
                   onClick={showMoreUpcoming}
                   className="w-full text-text-muted hover:text-text-primary text-xs text-center py-2 rounded-lg hover:bg-surface-overlay transition-colors"
                 >
-                  +{filteredUpcoming.length - visibleCount}{hasMore ? '+' : ''} more
+                  +{filteredUpcoming.length - shownUpcoming.length}{hasMore ? '+' : ''} more
                 </button>
               )}
             </div>
@@ -300,6 +310,11 @@ export default function QueuePanel(): JSX.Element {
             <p className="text-text-muted text-xs text-center py-4 opacity-50">
               No matches
             </p>
+          ) : !radioMode && currentTrack && queueMaterializing ? (
+            <div className="flex items-center justify-center gap-2 py-4 text-text-muted text-xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+              Preparing full shuffle…
+            </div>
           ) : !radioMode && currentTrack ? (
             <p className="text-text-muted text-xs text-center py-4 opacity-50">
               Nothing up next
