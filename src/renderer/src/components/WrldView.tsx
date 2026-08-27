@@ -232,7 +232,8 @@ export default function WrldView(): JSX.Element {
       const res = await fetch(`${JWAPI_BASE}/songs/${songId}/`)
       if (res.ok) {
         const song: JWApiSong = await res.json()
-        playTrack(songToTrack(song))
+        const track = songToTrack(song)
+        playTrack(track, [track])
       }
     } catch {}
     setPlayingAlbumSongId(null)
@@ -346,7 +347,8 @@ export default function WrldView(): JSX.Element {
   const handlePlayVersion = async (songId: number): Promise<void> => {
     try {
       const song = await apiFetch<JWApiSong>(`/songs/${songId}/`)
-      playTrack(songToTrack(song))
+      const track = songToTrack(song)
+      playTrack(track, [track])
     } catch {}
   }
 
@@ -1675,14 +1677,12 @@ const WrldQueuePanel = memo(function WrldQueuePanel({ onClose, variant }: {
   // 'panel' fills the desktop right column in place of the lyrics view.
   variant: 'inline' | 'sheet' | 'panel'
 }): JSX.Element {
-  const { queue, queueIndex, currentTrack, isPlaying, shuffle, radioMode, playTrack, jumpToTrack, removeFromQueue, clearQueue, reorderQueue, reshuffleQueue, onLightBackdrop } = useStore(useShallow(s => ({
+  const { queue, queueIndex, currentTrack, isPlaying, shuffle, jumpToTrack, removeFromQueue, clearQueue, reorderQueue, reshuffleQueue, onLightBackdrop } = useStore(useShallow(s => ({
     queue: s.queue,
     queueIndex: s.queueIndex,
     currentTrack: s.currentTrack,
     isPlaying: s.isPlaying,
     shuffle: s.shuffle,
-    radioMode: s.radioMode,
-    playTrack: s.playTrack,
     jumpToTrack: s.jumpToTrack,
     removeFromQueue: s.removeFromQueue,
     clearQueue: s.clearQueue,
@@ -1816,7 +1816,7 @@ const WrldQueuePanel = memo(function WrldQueuePanel({ onClose, variant }: {
                       track={track}
                       isActive={false}
                       isPlaying={false}
-                      onPlay={() => radioMode ? jumpToTrack(track) : playTrack(track)}
+                      onPlay={() => jumpToTrack(track, history.length - 1 - i)}
                     />
                   ))}
                   {!query && filtered.length > WRLD_MAX_HISTORY_SHOWN && (
@@ -1878,7 +1878,7 @@ const WrldQueuePanel = memo(function WrldQueuePanel({ onClose, variant }: {
                   isActive={false}
                   isPlaying={false}
                   showDrag={!query}
-                  onPlay={() => playTrack(track, queue.slice(queueIndex + 1 + i))}
+                  onPlay={() => jumpToTrack(track, queueIndex + 1 + i)}
                   onRemove={() => removeFromQueue(queueIndex + 1 + i)}
                 />
               </div>
