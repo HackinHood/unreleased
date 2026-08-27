@@ -6,6 +6,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { parseLrc, getCurrentLineIndex, isLrcFormat, downloadSyncedLyrics, splitAdLibs, ADLIB_OPACITY, useLyricsVisible } from '../lib/lyrics'
 import { formatDuration } from '../lib/format'
 import { seekAudio, getAudioDuration, getAudioCurrentTime } from './Player'
+import { runPlayerCommand } from '../lib/windowSync'
 import { buildImageUrl, apiFetch, songToTrack, JWAPI_BASE, playlistCoverUrl, smallCoverUrl } from '../lib/juicewrldApi'
 import { getActiveRadioClient } from '../lib/radioSocketService'
 import { searchRadioLibrary } from '../lib/radioLibrary'
@@ -37,7 +38,6 @@ export default function WrldView(): JSX.Element {
     playTrack,
     isPlaying, setIsPlaying, volume, setVolume,
     shuffle, repeat, toggleShuffle, toggleRepeat,
-    nextTrack, prevTrack,
     showQueue, setShowQueue,
     audioOutput, setAudioOutput,
     wrldThemeBackground,
@@ -69,8 +69,6 @@ export default function WrldView(): JSX.Element {
     repeat: s.repeat,
     toggleShuffle: s.toggleShuffle,
     toggleRepeat: s.toggleRepeat,
-    nextTrack: s.nextTrack,
-    prevTrack: s.prevTrack,
     showQueue: s.showQueue,
     setShowQueue: s.setShowQueue,
     audioOutput: s.audioOutput,
@@ -993,7 +991,7 @@ export default function WrldView(): JSX.Element {
                       <Shuffle size={16} />
                     </button>
                     <button
-                      onClick={() => prevTrack()}
+                      onClick={() => runPlayerCommand('previous')}
                       disabled={noTrack}
                       className="p-2 rounded-full transition-opacity hover:opacity-70"
                       style={{ color: txtPri }}
@@ -1012,7 +1010,7 @@ export default function WrldView(): JSX.Element {
                         : <Play  size={20} fill="currentColor" className="ml-0.5" />}
                     </button>
                     <button
-                      onClick={() => nextTrack()}
+                      onClick={() => runPlayerCommand('next')}
                       disabled={noTrack}
                       className="p-2 rounded-full transition-opacity hover:opacity-70"
                       style={{ color: txtPri }}
@@ -1182,7 +1180,7 @@ export default function WrldView(): JSX.Element {
 
                   {/* Prev */}
                   <button
-                    onClick={() => prevTrack()}
+                    onClick={() => runPlayerCommand('previous')}
                     disabled={noTrack}
                     className="p-2 rounded-full transition-opacity hover:opacity-70"
                     style={{ color: txtPri }}
@@ -1205,7 +1203,7 @@ export default function WrldView(): JSX.Element {
 
                   {/* Next */}
                   <button
-                    onClick={() => nextTrack()}
+                    onClick={() => runPlayerCommand('next')}
                     disabled={noTrack}
                     className="p-2 rounded-full transition-opacity hover:opacity-70"
                     style={{ color: txtPri }}
