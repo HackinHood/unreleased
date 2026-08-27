@@ -1,12 +1,15 @@
 package com.juicewrldapi.player;
 
 import android.app.Activity;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.PackageInstaller;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
-
-import androidx.core.content.FileProvider;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -15,8 +18,10 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
@@ -30,14 +35,17 @@ import java.net.URL;
  *
  * Three things here are non-obvious and are why this is native rather than JS:
  *
- *  - The installer runs in another process, so it cannot read a file:// path
- *    we hand it (FileUriExposedException on API 24+). The APK has to be
- *    exposed through FileProvider as a content:// URI carrying
- *    FLAG_GRANT_READ_URI_PERMISSION.
+ *  - Installing goes through {@link PackageInstaller}'s session API, not the
+ *    old ACTION_VIEW intent. That intent is fire-and-forget: it hands the APK
+ *    to another process and never reports back, so a stalled or silently
+ *    failed install (Play Protect blocking it, not enough storage, a
+ *    truncated download) is indistinguishable from one still in progress and
+ *    the UI can only spin forever. A session commits with a status
+ *    PendingIntent and tells us SUCCESS or FAILURE with a reason.
  *  - REQUEST_INSTALL_PACKAGES in the manifest only grants the *ability to
  *    ask*. On API 26+ the user must additionally allow "install unknown apps"
  *    for this app; canInstall()/openInstallSettings() let the UI check and
- *    route them there instead of firing an intent that silently no-ops.
+ *    route them there instead of committing a session that can only fail.
  *  - GitHub release URLs 302 to objects.githubusercontent.com. Redirects are
  *    followed manually because HttpURLConnection refuses to auto-follow one
  *    that changes protocol, and these can land on a different host/scheme.
@@ -46,6 +54,36 @@ import java.net.URL;
 public class ApkInstallerPlugin extends Plugin {
 
     private static final int MAX_REDIRECTS = 5;
+
+    /** Broadcast the install session reports its status back on. */
+    private static final String ACTION_INSTALL_STATUS =
+            "com.juicewrldapi.player.INSTALL_STATUS";
+
+    private BroadcastReceiver statusReceiver;
+
+    @Override
+    public void load() {
+        statusReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                handleStatus(intent);
+            }
+        };
+        IntentFilter filter = new IntentFilter(ACTION_INSTALL_STATUS);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getContext().registerReceiver(statusReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            getContext().registerReceiver(statusReceiver, filter);
+        }
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        if (statusReceiver != null) {
+            try { getContext().unregisterReceiver(statusReceiver); } catch (Exception ignored) {}
+            statusReceiver = null;
+        }
+    }
 
     /** Whether the OS will let us launch a package install right now. */
     @PluginMethod
@@ -74,13 +112,13 @@ public class ApkInstallerPlugin extends Plugin {
     }
 
     /**
-     * Download `url` and hand it to the package installer.
+     * Download `url`, stage it, and commit an install session.
      *
      * Runs off the caller's thread; emits `downloadProgress` ({percent,
-     * bytes, total}) as it goes, then resolves once the installer has been
-     * launched. It deliberately does NOT report whether the install itself
-     * succeeded — that happens in another process, and if it does succeed
-     * this process is replaced. The UI treats "installer launched" as done.
+     * bytes, total}) as it goes, then resolves once the session is committed.
+     * The install itself finishes asynchronously in the system installer and
+     * its outcome arrives separately as an `installStatus` event ({state,
+     * message}) — see handleStatus.
      */
     @PluginMethod
     public void downloadAndInstall(PluginCall call) {
@@ -95,7 +133,7 @@ public class ApkInstallerPlugin extends Plugin {
         new Thread(() -> {
             try {
                 File apk = download(url, call);
-                launchInstaller(apk);
+                installSession(apk);
                 call.resolve();
             } catch (Exception e) {
                 call.reject(e.getMessage() == null ? "Download failed" : e.getMessage(), e);
@@ -171,24 +209,134 @@ public class ApkInstallerPlugin extends Plugin {
                     }
                 }
             }
+
+            // A connection that drops mid-body leaves a short but perfectly
+            // readable file behind. Staging it anyway only moves the failure
+            // into the installer, where it reads as a broken update rather
+            // than a download worth retrying.
+            if (total > 0 && done != total) {
+                out.delete();
+                throw new Exception("Download was incomplete (" + done + " of " + total
+                        + " bytes) — check your connection and try again.");
+            }
             return out;
         } finally {
             if (conn != null) conn.disconnect();
         }
     }
 
-    private void launchInstaller(File apk) throws Exception {
-        Activity activity = getActivity();
-        if (activity == null) throw new Exception("No activity available");
+    /**
+     * Stage the APK into a PackageInstaller session and commit it.
+     *
+     * Unlike the ACTION_VIEW intent this replaced, the bytes are copied into
+     * the session up front — so a corrupt or unreadable APK fails here, with a
+     * reason — and commit() reports its outcome to ACTION_INSTALL_STATUS.
+     */
+    private void installSession(File apk) throws Exception {
+        PackageInstaller installer = getContext().getPackageManager().getPackageInstaller();
 
-        Uri uri = FileProvider.getUriForFile(
-                getContext(), getContext().getPackageName() + ".fileprovider", apk);
+        PackageInstaller.SessionParams params =
+                new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+        params.setAppPackageName(getContext().getPackageName());
+        // Lets the installer fail fast on a device that's too full instead of
+        // dying partway through the session write.
+        params.setSize(apk.length());
 
-        Intent intent = new Intent(Intent.ACTION_VIEW);
-        intent.setDataAndType(uri, "application/vnd.android.package-archive");
-        // The installer is a separate process and only gets read access to the
-        // APK through this grant flag on the content:// URI.
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
-        activity.startActivity(intent);
+        int sessionId = installer.createSession(params);
+        try (PackageInstaller.Session session = installer.openSession(sessionId)) {
+            try (InputStream in = new FileInputStream(apk);
+                 OutputStream out = session.openWrite("base.apk", 0, apk.length())) {
+                byte[] buf = new byte[65536];
+                int n;
+                while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                session.fsync(out);
+            }
+
+            Intent intent = new Intent(ACTION_INSTALL_STATUS).setPackage(getContext().getPackageName());
+            // MUTABLE: the system fills EXTRA_STATUS and friends into this intent.
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) flags |= PendingIntent.FLAG_MUTABLE;
+            PendingIntent status = PendingIntent.getBroadcast(getContext(), sessionId, intent, flags);
+            session.commit(status.getIntentSender());
+        } catch (Exception e) {
+            // An abandoned session frees its staged copy; leaving it open would
+            // hold the APK's worth of storage until the OS eventually reaps it.
+            try { installer.abandonSession(sessionId); } catch (Exception ignored) {}
+            throw e;
+        }
+    }
+
+    /**
+     * Relay a session status broadcast to the UI.
+     *
+     * STATUS_PENDING_USER_ACTION is the normal first hop: the system wants the
+     * user to confirm and hands us the dialog to launch. Everything else is
+     * terminal. SUCCESS is best-effort — a successful self-update kills this
+     * process, so the UI usually never sees it; the states that matter are the
+     * failures, which previously showed as an install that never finished.
+     */
+    private void handleStatus(Intent intent) {
+        int code = intent.getIntExtra(PackageInstaller.EXTRA_STATUS,
+                PackageInstaller.STATUS_FAILURE);
+        String message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
+
+        if (code == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            Intent confirm = intent.getParcelableExtra(Intent.EXTRA_INTENT);
+            if (confirm == null) {
+                emitStatus("failed", "Android did not return an install prompt.");
+                return;
+            }
+            Activity activity = getActivity();
+            if (activity != null) {
+                activity.startActivity(confirm);
+            } else {
+                confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(confirm);
+            }
+            emitStatus("confirming", null);
+            return;
+        }
+
+        switch (code) {
+            case PackageInstaller.STATUS_SUCCESS:
+                emitStatus("success", null);
+                break;
+            case PackageInstaller.STATUS_FAILURE_ABORTED:
+                emitStatus("cancelled", "Install cancelled.");
+                break;
+            default:
+                emitStatus("failed", describeFailure(code, message));
+        }
+    }
+
+    private static String describeFailure(int code, String message) {
+        String reason;
+        switch (code) {
+            case PackageInstaller.STATUS_FAILURE_BLOCKED:
+                reason = "Android blocked the install — Play Protect or a device policy rejected it.";
+                break;
+            case PackageInstaller.STATUS_FAILURE_CONFLICT:
+                reason = "This update conflicts with the installed app. Uninstall the app and install the APK manually.";
+                break;
+            case PackageInstaller.STATUS_FAILURE_INCOMPATIBLE:
+                reason = "This APK is not compatible with your device.";
+                break;
+            case PackageInstaller.STATUS_FAILURE_INVALID:
+                reason = "The downloaded APK was rejected as invalid. Try the update again.";
+                break;
+            case PackageInstaller.STATUS_FAILURE_STORAGE:
+                reason = "There is not enough storage to install the update.";
+                break;
+            default:
+                reason = "The install failed.";
+        }
+        return message == null || message.isEmpty() ? reason : reason + " (" + message + ")";
+    }
+
+    private void emitStatus(String state, String message) {
+        JSObject s = new JSObject();
+        s.put("state", state);
+        if (message != null) s.put("message", message);
+        notifyListeners("installStatus", s);
     }
 }

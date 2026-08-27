@@ -2,10 +2,8 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <external-path name="my_images" path="." />
     <cache-path name="my_cache_images" path="." />
-    <!-- Downloaded update APKs (ApkInstallerPlugin). The package installer is
-         a different process, so it can only read the file through a content://
-         URI that FileProvider grants it — a file:// path throws
-         FileUriExposedException on API 24+. Scoped to the one subdirectory the
-         plugin writes to rather than all of external-files. -->
-    <external-files-path name="updates" path="updates/" />
+    <!-- ApkInstallerPlugin used to expose its downloaded APK here for the
+         package installer to read. It now streams the APK into a
+         PackageInstaller session instead, which needs no URI grant, so the
+         updates/ entry is gone — don't re-add it for that. -->
 </paths>
