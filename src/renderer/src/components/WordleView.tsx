@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronLeft, Search, X, Check, Music2, BarChart3, Share2, RefreshCw,
-  AlertCircle, Loader2, Volume2, SlidersHorizontal, RotateCcw, Type, Delete,
+  AlertCircle, Loader2, Volume2, SlidersHorizontal, RotateCcw, Type,
 } from 'lucide-react'
 import { useStorePick } from '../store/useStore'
 import { Sheet } from './mobile/Sheet'
@@ -90,56 +90,29 @@ function Row({ length, letters, states, active }: {
   )
 }
 
-/** The keyboard: how a guess is typed, and the tracker for what's already been
- *  ruled out. Both jobs on one control — the board only ever shows the letters
- *  that have been played, and tracking twenty-six of them in your head across a
- *  title three times longer than a Wordle word is the whole difficulty. */
-function Keyboard({ hints, onLetter, onEnter, onBackspace, disabled }: {
-  hints: Map<string, LetterState>
-  onLetter: (letter: string) => void
-  onEnter: () => void
-  onBackspace: () => void
-  disabled: boolean
-}): JSX.Element {
-  const base = 'h-11 rounded-md border flex items-center justify-center text-xs font-bold transition-colors disabled:opacity-40'
+/** A passive readout of what's already been ruled out — the board only ever
+ *  shows the letters that have been played, and tracking twenty-six of them
+ *  in your head across a title three times longer than a Wordle word is the
+ *  whole difficulty. Typing itself happens on the phone's own keyboard now,
+ *  so this row has nothing to click; it's just colour. */
+function LetterTracker({ hints }: { hints: Map<string, LetterState> }): JSX.Element {
   return (
-    <div className="space-y-1.5">
-      {KEY_ROWS.map((row, i) => (
+    <div className="space-y-1">
+      {KEY_ROWS.map((row) => (
         <div key={row} className="flex gap-1 justify-center">
-          {i === KEY_ROWS.length - 1 && (
-            <button
-              onClick={onEnter}
-              disabled={disabled}
-              className={`${base} flex-[1.6] border-accent/40 bg-accent/10 text-text-primary active:bg-accent/20 text-[10px] uppercase tracking-wider`}
-            >
-              Enter
-            </button>
-          )}
           {row.split('').map((letter) => {
             const state = hints.get(letter)
             return (
-              <button
+              <span
                 key={letter}
-                onClick={() => onLetter(letter)}
-                disabled={disabled}
-                className={`${base} flex-1 min-w-0 ${
-                  state ? tileTone(state) : 'border-[var(--border)] bg-[var(--surface-overlay)]/60 text-text-primary active:border-accent/40'
+                className={`h-7 flex-1 min-w-0 rounded border flex items-center justify-center text-[10px] font-bold transition-colors ${
+                  state ? tileTone(state) : 'border-[var(--border)] bg-[var(--surface-overlay)]/40 text-text-muted'
                 }`}
               >
                 {letter}
-              </button>
+              </span>
             )
           })}
-          {i === KEY_ROWS.length - 1 && (
-            <button
-              onClick={onBackspace}
-              disabled={disabled}
-              title="Delete"
-              className={`${base} flex-[1.6] border-[var(--border)] bg-[var(--surface-overlay)]/60 text-text-primary active:border-accent/40`}
-            >
-              <Delete size={15} />
-            </button>
-          )}
         </div>
       ))}
     </div>
@@ -521,20 +494,28 @@ export default function WordleView(): JSX.Element {
   }
 
   // ── Typing ─────────────────────────────────────────────────────────────────
-  // A row can be typed out letter by letter as well as picked from the search
-  // box. It still has to name a real song — the catalogue is this game's
-  // dictionary, and a row of any old letters would be a free look at the
-  // colours for a guess nobody could have meant.
-  const typeLetter = (letter: string): void => {
+  // A row can be typed out on the device's own keyboard as well as picked from
+  // the search box. It still has to name a real song — the catalogue is this
+  // game's dictionary, and a row of any old letters would be a free look at
+  // the colours for a guess nobody could have meant.
+  const draftInputRef = useRef<HTMLInputElement>(null)
+
+  const handleDraftChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     if (finished || !answer) return
     setNotice(null)
-    setDraft((d) => (d.length >= length ? d : d + letter))
+    setDraft(e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, length))
   }
 
-  const backspace = (): void => {
-    setNotice(null)
-    setDraft((d) => d.slice(0, -1))
+  const handleDraftKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === 'Enter') { e.preventDefault(); submitDraft() }
   }
+
+  // Autofocus the native input for each fresh row so the keyboard is already
+  // up — but not while the search dropdown is open, or focusing this field
+  // would yank the keyboard away mid-search.
+  useEffect(() => {
+    if (!finished && !dropdownOpen) draftInputRef.current?.focus()
+  }, [finished, dropdownOpen, guesses.length, answerKey])
 
   const reject = (message: string): void => {
     setNotice(message)
@@ -766,13 +747,27 @@ export default function WordleView(): JSX.Element {
 
                 {!finished && (
                   <>
-                    <Keyboard
-                      hints={hints}
-                      onLetter={typeLetter}
-                      onEnter={submitDraft}
-                      onBackspace={backspace}
+                    {/* The real input: tapping it brings up the phone's own
+                        keyboard, autocorrect and all the rest turned off so it
+                        behaves like a row of tiles rather than a text field. */}
+                    <input
+                      ref={draftInputRef}
+                      value={draft}
+                      onChange={handleDraftChange}
+                      onKeyDown={handleDraftKeyDown}
+                      onClick={() => setDropdownOpen(false)}
                       disabled={finished}
+                      autoCapitalize="characters"
+                      autoCorrect="off"
+                      autoComplete="off"
+                      spellCheck={false}
+                      inputMode="text"
+                      enterKeyHint="done"
+                      placeholder={`type the ${length}-letter title…`}
+                      className="w-full h-12 px-4 rounded-xl bg-[var(--surface-overlay)]/50 border border-accent/40 text-center text-lg font-bold uppercase tracking-[0.3em] text-text-primary placeholder:text-text-muted placeholder:normal-case placeholder:tracking-normal placeholder:text-sm placeholder:font-normal focus:outline-none focus:border-accent disabled:opacity-40"
                     />
+
+                    <LetterTracker hints={hints} />
 
                     {/* Second way in: the catalogue is long and some titles are
                         easier named than spelled. Picking one here submits it

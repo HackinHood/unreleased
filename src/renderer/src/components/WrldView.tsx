@@ -1158,6 +1158,19 @@ const VolumeRow = memo(function VolumeRow({ txtPri, txtTer, trackBg }: { txtPri:
     setVolume(Math.max(0, Math.min(1, (clientX - r.left) / r.width)))
   }
 
+  // Mouse drag: listen on the document so the drag keeps tracking even once
+  // the cursor leaves the (fairly thin) bar while moving fast.
+  const onMouseDown = (e: React.MouseEvent): void => {
+    setFrom(e.clientX)
+    const onMove = (ev: MouseEvent): void => setFrom(ev.clientX)
+    const onUp = (): void => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
+
   return (
     <div className="flex items-center gap-3">
       <button
@@ -1170,7 +1183,8 @@ const VolumeRow = memo(function VolumeRow({ txtPri, txtTer, trackBg }: { txtPri:
         ref={barRef}
         // touch-none, or the browser claims the drag as a scroll and the
         // slider never sees it.
-        className="relative flex-1 h-6 flex items-center touch-none"
+        className="relative flex-1 h-6 flex items-center touch-none cursor-pointer"
+        onMouseDown={onMouseDown}
         onTouchStart={(e) => setFrom(e.touches[0].clientX)}
         onTouchMove={(e) => setFrom(e.touches[0].clientX)}
       >

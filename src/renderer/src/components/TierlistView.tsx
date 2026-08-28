@@ -1,12 +1,15 @@
 // Tier List — rank songs into S/A/B/C/D (or whatever tiers the user builds)
-// by tapping a song, then tapping the row it belongs in. Unlike Heardle/
-// Wordle there's no daily puzzle or score: it's a personal ranking, persisted
-// locally (see lib/tierlist) with no server round-trip.
+// by tapping a song, then tapping the row it belongs in, or by pressing and
+// dragging a song straight onto a row. Unlike Heardle/Wordle there's no daily
+// puzzle or score: it's a personal ranking, persisted locally (see
+// lib/tierlist) with no server round-trip.
 //
-// Desktop also supports HTML5 drag-and-drop; this is a touch surface, so that
-// path is dropped entirely and tap-to-select-then-tap-a-row (which desktop
-// already offers as a fallback) is the only interaction.
-import { useEffect, useMemo, useState } from 'react'
+// Drag is touch-only and hit-tests by finger position rather than HTML5 DnD
+// (dragstart/dragover/drop never fire on touch). Real (non-passive) document
+// listeners are used for the same reason as mobile/useDragReorder: React's
+// JSX onTouchMove is passive, so preventDefault() inside it is silently
+// ignored and the page scrolls out from under the drag.
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronLeft, ChevronUp, ChevronDown, Settings2, Music2, Plus, RotateCcw, Search, X, Check,
 } from 'lucide-react'
@@ -26,13 +29,21 @@ const DEFAULT_CATEGORIES: PoolId[] = ['released', 'unreleased']
 
 // ─── Pieces ───────────────────────────────────────────────────────────────────
 
-function SongChip({ song, selected, onClick }: {
+function SongChip({ song, selected, dragging, onClick, onDragTouchStart }: {
   song: HeardleSong
   selected: boolean
+  dragging?: boolean
   onClick: () => void
+  onDragTouchStart?: (e: React.TouchEvent) => void
 }): JSX.Element {
   return (
-    <div onClick={onClick} title={song.name} className="shrink-0 w-16 cursor-pointer">
+    <div
+      onClick={onClick}
+      onTouchStart={onDragTouchStart}
+      title={song.name}
+      className="shrink-0 w-16 cursor-pointer touch-none"
+      style={{ opacity: dragging ? 0.35 : 1 }}
+    >
       <div
         className={`relative w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${
           selected ? 'border-accent ring-2 ring-accent/50 scale-95' : 'border-[var(--border)]'
@@ -53,14 +64,17 @@ function SongChip({ song, selected, onClick }: {
   )
 }
 
-function TierRow({ tier, songs, isFirst, isLast, selectedSongId, onClickRow, onSelectSong, onMoveUp, onMoveDown, onEdit }: {
+function TierRow({ tier, songs, isFirst, isLast, selectedSongId, dragSongId, isDropTarget, onClickRow, onSelectSong, onDragTouchStart, onMoveUp, onMoveDown, onEdit }: {
   tier: Tier
   songs: HeardleSong[]
   isFirst: boolean
   isLast: boolean
   selectedSongId: number | null
+  dragSongId: number | null
+  isDropTarget: boolean
   onClickRow: () => void
   onSelectSong: (id: number) => void
+  onDragTouchStart: (song: HeardleSong) => (e: React.TouchEvent) => void
   onMoveUp: () => void
   onMoveDown: () => void
   onEdit: () => void
@@ -77,16 +91,19 @@ function TierRow({ tier, songs, isFirst, isLast, selectedSongId, onClickRow, onS
       </button>
       <div
         onClick={onClickRow}
-        className={`flex-1 min-h-[6.5rem] bg-[var(--surface-overlay)]/30 p-1.5 flex flex-wrap gap-1.5 content-start ${
+        data-drop-zone={tier.id}
+        className={`flex-1 min-h-[6.5rem] bg-[var(--surface-overlay)]/30 p-1.5 flex flex-wrap gap-1.5 content-start transition-colors ${
           selectedSongId !== null ? 'cursor-copy' : ''
-        }`}
+        } ${isDropTarget ? 'ring-2 ring-inset ring-accent bg-accent/10' : ''}`}
       >
         {songs.map((s) => (
           <SongChip
             key={s.id}
             song={s}
             selected={selectedSongId === s.id}
+            dragging={dragSongId === s.id}
             onClick={() => onSelectSong(s.id)}
+            onDragTouchStart={onDragTouchStart(s)}
           />
         ))}
       </div>
@@ -216,6 +233,66 @@ export default function TierlistView(): JSX.Element {
     setSelectedSongId(null)
   }
 
+  // ─── Drag-to-place (touch) ──────────────────────────────────────────────
+  // '' is the sentinel drop-zone id for the Unranked pool (assignSong's
+  // null); null means "no drop zone under the finger right now".
+  const DRAG_THRESHOLD = 10
+  const [dragSong, setDragSong] = useState<HeardleSong | null>(null)
+  const [dragMoved, setDragMoved] = useState(false)
+  const [dragPos, setDragPos] = useState({ x: 0, y: 0 })
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const dragStateRef = useRef<{ song: HeardleSong; startX: number; startY: number; moved: boolean } | null>(null)
+  const dropTargetRef = useRef<string | null>(null)
+
+  const onDragTouchStart = (song: HeardleSong) => (e: React.TouchEvent): void => {
+    const t = e.touches[0]
+    dragStateRef.current = { song, startX: t.clientX, startY: t.clientY, moved: false }
+    dropTargetRef.current = null
+    setDragSong(song)
+    setDragPos({ x: t.clientX, y: t.clientY })
+  }
+
+  useEffect(() => {
+    if (!dragSong) return
+    const onMove = (e: TouchEvent): void => {
+      const st = dragStateRef.current
+      if (!st) return
+      const t = e.touches[0]
+      if (!st.moved) {
+        if (Math.hypot(t.clientX - st.startX, t.clientY - st.startY) < DRAG_THRESHOLD) return
+        st.moved = true
+        setDragMoved(true)
+        navigator.vibrate?.(8)
+      }
+      e.preventDefault()
+      setDragPos({ x: t.clientX, y: t.clientY })
+      const el = document.elementFromPoint(t.clientX, t.clientY)
+      const zone = el?.closest<HTMLElement>('[data-drop-zone]')
+      const zoneId = zone ? zone.dataset.dropZone ?? null : null
+      dropTargetRef.current = zoneId
+      setDropTarget(zoneId)
+    }
+    const onEnd = (): void => {
+      const st = dragStateRef.current
+      if (st?.moved && dropTargetRef.current !== null) {
+        assignSong(st.song.id, dropTargetRef.current === '' ? null : dropTargetRef.current)
+      }
+      dragStateRef.current = null
+      dropTargetRef.current = null
+      setDragSong(null)
+      setDragMoved(false)
+      setDropTarget(null)
+    }
+    document.addEventListener('touchmove', onMove, { passive: false })
+    document.addEventListener('touchend', onEnd)
+    document.addEventListener('touchcancel', onEnd)
+    return () => {
+      document.removeEventListener('touchmove', onMove)
+      document.removeEventListener('touchend', onEnd)
+      document.removeEventListener('touchcancel', onEnd)
+    }
+  }, [dragSong])
+
   const clickRow = (tierId: string | null) => (): void => {
     if (selectedSongId !== null) assignSong(selectedSongId, tierId)
   }
@@ -325,7 +402,7 @@ export default function TierlistView(): JSX.Element {
             <p className="text-text-muted text-xs mt-2">
               {selectedSongId !== null
                 ? 'Tap a row to place it — tap the song again to cancel.'
-                : 'Tap a song, then tap the row it belongs in.'}
+                : 'Drag a song onto a row, or tap it then tap the row it belongs in.'}
             </p>
           </div>
 
@@ -344,8 +421,11 @@ export default function TierlistView(): JSX.Element {
                 isFirst={i === 0}
                 isLast={i === tiers.length - 1}
                 selectedSongId={selectedSongId}
+                dragSongId={dragMoved ? dragSong?.id ?? null : null}
+                isDropTarget={dragMoved && dropTarget === tier.id}
                 onClickRow={clickRow(tier.id)}
                 onSelectSong={(id) => setSelectedSongId((cur) => (cur === id ? null : id))}
+                onDragTouchStart={onDragTouchStart}
                 onMoveUp={() => moveTier(i, -1)}
                 onMoveDown={() => moveTier(i, 1)}
                 onEdit={() => setEditingTier(tier)}
@@ -377,7 +457,8 @@ export default function TierlistView(): JSX.Element {
             </div>
             <div
               onClick={clickRow(null)}
-              className={`min-h-[7.5rem] flex flex-wrap gap-1.5 content-start ${selectedSongId !== null ? 'cursor-copy' : ''}`}
+              data-drop-zone=""
+              className={`min-h-[7.5rem] flex flex-wrap gap-1.5 content-start rounded-lg transition-colors ${selectedSongId !== null ? 'cursor-copy' : ''} ${dragMoved && dropTarget === '' ? 'ring-2 ring-inset ring-accent bg-accent/10' : ''}`}
             >
               {poolLoading ? (
                 <span className="text-xs text-text-muted py-4">Loading songs…</span>
@@ -391,7 +472,9 @@ export default function TierlistView(): JSX.Element {
                     key={s.id}
                     song={s}
                     selected={selectedSongId === s.id}
+                    dragging={dragMoved && dragSong?.id === s.id}
                     onClick={() => setSelectedSongId((cur) => (cur === s.id ? null : s.id))}
+                    onDragTouchStart={onDragTouchStart(s)}
                   />
                 ))
               )}
@@ -399,6 +482,21 @@ export default function TierlistView(): JSX.Element {
           </div>
         </div>
       </div>
+
+      {dragMoved && dragSong && (
+        <div
+          className="fixed z-50 pointer-events-none w-16 h-16 rounded-lg overflow-hidden border-2 border-accent shadow-xl"
+          style={{ left: dragPos.x - 32, top: dragPos.y - 32, transform: 'scale(1.08)' }}
+        >
+          {dragSong.imageUrl ? (
+            <img src={smallCoverUrl(dragSong.imageUrl)} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full bg-[var(--surface-overlay)] flex items-center justify-center">
+              <Music2 size={18} className="text-text-muted" />
+            </div>
+          )}
+        </div>
+      )}
 
       {showFilters && (
         <Sheet onClose={() => setShowFilters(false)} title="Song pool">
