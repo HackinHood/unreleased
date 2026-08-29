@@ -187,7 +187,6 @@ function triggerBlobDownload(url: string, filename: string, onBeforeNavigate?: (
   onBeforeNavigate?.()
   if (IS_IOS) {
     window.location.href = url
-    setTimeout(() => URL.revokeObjectURL(url), 60000)
   } else {
     const a = document.createElement('a'); a.href = url; a.download = filename; a.click()
     URL.revokeObjectURL(url)

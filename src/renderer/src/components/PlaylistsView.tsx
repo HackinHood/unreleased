@@ -467,6 +467,11 @@ export default function PlaylistsView(): JSX.Element {
       pendingExpandClick.current = null
     }
   }, [])
+  useEffect(() => {
+    return () => {
+      if (pendingExpandClick.current) clearTimeout(pendingExpandClick.current.timer)
+    }
+  }, [])
   // One column-count measurement per distinct grid container that can host a
   // quick-view panel — see useGridColumnCount above. State (not useRef) so
   // the measuring effect re-fires when the element actually mounts — needed
