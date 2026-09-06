@@ -7,7 +7,7 @@ import { useStore } from '../store/useStore'
 import { useShallow } from 'zustand/react/shallow'
 import * as userApi from '../lib/userApi'
 import type { PlaylistSummary } from '../lib/userApi'
-import { JWAPI_BASE } from '../lib/juicewrldApi'
+import { downloadZipSelection } from '../lib/juicewrldApi'
 import { shareOrigin } from '../lib/platform'
 import { Track } from '../types'
 
@@ -91,21 +91,8 @@ export default function PlaylistContextMenu({ state, onClose }: {
       const d = await userApi.getPlaylist(playlist.id)
       const paths = d.items.map(i => userApi.liteSongToTrack(i.song)).map((t: Track) => t.path).filter(Boolean)
       if (!paths.length) { setZipState('error'); setTimeout(() => setZipState('idle'), 2500); return }
-      const res = await fetch(`${JWAPI_BASE}/files/zip-selection/`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paths }),
-      })
-      if (!res.ok) throw new Error()
-      const contentType = res.headers.get('content-type') || ''
-      if (contentType.includes('zip') || contentType.includes('octet-stream')) {
-        const blob = await res.blob()
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a'); a.href = url; a.download = `${playlist.name}.zip`; a.click()
-        URL.revokeObjectURL(url)
-      } else {
-        const data = await res.json()
-        if (data.download_url) { const a = document.createElement('a'); a.href = data.download_url; a.download = `${playlist.name}.zip`; a.click() }
-      }
-      setZipState('done')
+      const started = await downloadZipSelection(paths, `${playlist.name}.zip`, () => setZipState('done'))
+      if (!started) setZipState('error')
     } catch { setZipState('error') }
     setTimeout(() => setZipState('idle'), 2500)
   }

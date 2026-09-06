@@ -4,6 +4,7 @@ import { cacheGet } from './apiCache'
 import { peekSongPref } from './songPrefs'
 import { peekRotatedCover } from './coverRotation'
 import { peekEraCover } from './eraCovers'
+import { IS_IOS } from './platform'
 
 export const JWAPI_BASE = 'https://juicewrldapi.com/juicewrld'
 
@@ -180,6 +181,38 @@ export function apiPeek<T>(
 export function buildStreamUrl(path: string, channel?: string): string {
   const c = channel ? `&channel=${encodeURIComponent(channel)}` : ''
   return `${JWAPI_BASE}/files/download/?path=${encodeURIComponent(path)}${c}`
+}
+
+function triggerBlobDownload(url: string, filename: string, onBeforeNavigate?: () => void): void {
+  onBeforeNavigate?.()
+  if (IS_IOS) {
+    window.location.href = url
+  } else {
+    const a = document.createElement('a'); a.href = url; a.download = filename; a.click()
+    URL.revokeObjectURL(url)
+  }
+}
+
+export async function downloadZipSelection(paths: string[], filename: string, onBeforeNavigate?: () => void): Promise<boolean> {
+  const res = await fetch(`${JWAPI_BASE}/files/zip-selection/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paths }),
+  })
+  if (!res.ok) throw new Error()
+  const contentType = res.headers.get('content-type') || ''
+  if (contentType.includes('zip') || contentType.includes('octet-stream')) {
+    const blob = await res.blob()
+    const file = new File([blob], filename, { type: blob.type || 'application/zip' })
+    triggerBlobDownload(URL.createObjectURL(file), filename, onBeforeNavigate)
+    return true
+  }
+  const data = await res.json()
+  if (!data.download_url) return false
+  onBeforeNavigate?.()
+  if (IS_IOS) window.location.href = data.download_url
+  else { const a = document.createElement('a'); a.href = data.download_url; a.download = filename; a.click() }
+  return true
 }
 
 export interface JWApiChannel {

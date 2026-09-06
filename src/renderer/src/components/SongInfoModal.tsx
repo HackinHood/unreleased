@@ -221,7 +221,7 @@ export default function SongInfoModal({ song, onClose, onEdit, floating = false,
       minWidth={420} minHeight={480}
     >
       {({ onHandleMouseDown, locked, toggleLock }) => (
-      <div className="select-text bg-surface w-full h-full flex flex-col overflow-hidden">
+      <div className="select-text bg-surface flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* Hero — in a pop-out it doubles as the frameless window's native OS
             drag handle; in-app it's a JS drag handle instead (see
             ModalOverlay) so the modal can be moved around the page. The
@@ -358,7 +358,7 @@ export default function SongInfoModal({ song, onClose, onEdit, floating = false,
         </div>
 
         {/* Scrollable info */}
-        <div className="overflow-y-auto flex-1 px-5 py-4">
+        <div className="overflow-y-auto flex-1 min-h-0 px-5 py-4">
 
           <SongPrefsSection
             songId={displaySong.id}

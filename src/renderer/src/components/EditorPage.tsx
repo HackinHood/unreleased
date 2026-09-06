@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import FilePickerModal from './FilePickerModal'
 import { useStore, useStorePick, IS_FLOAT_WINDOW } from '../store/useStore'
+import { ELECTRON_TITLEBAR_CLEARANCE_X } from '../lib/platform'
 import { attachToMainWindow } from '../lib/windowSync'
 import { apiFetch, JWApiSong, JWApiEra, buildImageUrl, CATEGORY_LABELS } from '../lib/juicewrldApi'
 import * as userApi from '../lib/userApi'
@@ -1061,9 +1062,7 @@ export default function EditorPage({ initialSongId = null }: {
     <div className="flex-1 flex flex-col min-h-0">
 
       {/* Top bar */}
-      {/* 188px clears the window controls (132px) plus the fixed downloads
-          trigger next to them (right: 144px + 36px wide — see DownloadManager) */}
-      <div className="shrink-0 flex items-center gap-3 px-5 py-3 border-b border-[var(--border)]" style={(window as any).electron ? { paddingRight: '188px' } : undefined}>
+      <div className="shrink-0 flex items-center gap-3 px-5 py-3 border-b border-[var(--border)]" style={(window as any).electron ? { paddingRight: ELECTRON_TITLEBAR_CLEARANCE_X } : undefined}>
         {/* Back — only in the in-app editor; the pop-out window has nowhere to go back to */}
         {!IS_FLOAT_WINDOW && (
           <button

@@ -8,6 +8,7 @@ import { Avatar } from './adminShared'
 import { apiFetch, songToTrack, buildStreamUrl, smallCoverUrl, CATEGORY_LABELS } from '../lib/juicewrldApi'
 import type { JWApiSong } from '../lib/juicewrldApi'
 import { eraFullName, loadEraFullNames } from '../lib/eras'
+import { ELECTRON_TITLEBAR_CLEARANCE_Y } from '../lib/platform'
 import {
   MIN_TRIES, MAX_TRIES, POOL_LABELS, DEFAULT_SETTINGS,
   loadPools, loadVersionGroups, filterByEra, poolEras,
@@ -601,8 +602,8 @@ function LeaderboardPanel({ initialMode, signedIn, onClose }: {
 // ─── View ─────────────────────────────────────────────────────────────────────
 
 export default function HeardleView(): JSX.Element {
-  const { setActiveView, playTrack, setIsPlaying, isPlaying, volume, setVolume, account } = useStorePick(
-    'setActiveView', 'playTrack', 'setIsPlaying', 'isPlaying', 'volume', 'setVolume', 'account')
+  const { setActiveView, playTrack, setIsPlaying, isPlaying, volume, setVolume, account, appMenuPosition } = useStorePick(
+    'setActiveView', 'playTrack', 'setIsPlaying', 'isPlaying', 'volume', 'setVolume', 'account', 'appMenuPosition')
   const isElectron = navigator.userAgent.includes('Electron')
 
   const [mode, setMode] = useState<Mode>(() => loadGameMode())
@@ -1269,15 +1270,14 @@ export default function HeardleView(): JSX.Element {
           <ChevronLeft size={22} />
         </button>
       </div>
-      {/* isElectron, not a width breakpoint — the offset clears the frameless
-          window's min/max/close buttons (132px, fixed top-right regardless of
-          window size — see App.tsx's WindowControls), which only exist in the
-          desktop build. Sizing this off viewport width would misalign it the
-          moment the Electron window was resized narrow. */}
+      {/* isElectron, not a width breakpoint — the extra top offset clears the
+          frameless window's min/max/close buttons plus the fixed downloads
+          trigger (see App.tsx's WindowControls/DownloadManager), which only
+          exist in the desktop build and sit right above this corner. */}
       <div
-        className="absolute top-4 z-20 flex items-center gap-1.5"
+        className="absolute right-4 z-20 flex items-center gap-1.5"
         style={{
-          right: isElectron ? 'calc(1rem + 132px)' : '1rem',
+          top: isElectron && appMenuPosition !== 'title-bar' ? ELECTRON_TITLEBAR_CLEARANCE_Y : 16,
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}
       >
