@@ -5,6 +5,7 @@ import { peekSongPref } from './songPrefs'
 import { peekRotatedCover } from './coverRotation'
 import { peekEraCover } from './eraCovers'
 import { IS_IOS } from './platform'
+import { createTtlCache } from './ttlCache'
 
 export const JWAPI_BASE = 'https://juicewrldapi.com/juicewrld'
 
@@ -84,6 +85,7 @@ export interface JWApiFileEntry {
   type: 'file' | 'directory'
   size?: number | null
   modified?: string | null
+  duration?: string | null
 }
 
 // /files/browse/ may return { items: [...] } or a flat array
@@ -152,18 +154,7 @@ export async function apiFetch<T>(
   })
 }
 
-const ALL_SONGS_TTL = 5 * 60_000
-let allSongsCache: { promise: Promise<JWApiSong[]>; ts: number } | null = null
-
-export function loadAllSongs(): Promise<JWApiSong[]> {
-  const now = Date.now()
-  if (!allSongsCache || now - allSongsCache.ts > ALL_SONGS_TTL) {
-    allSongsCache = { promise: apiFetch<JWApiSong[]>('/songs/', { all: 'true' }), ts: now }
-  }
-  const cache = allSongsCache
-  cache.promise.catch(() => { if (allSongsCache === cache) allSongsCache = null })
-  return cache.promise
-}
+export const loadAllSongs = createTtlCache(5 * 60_000, () => apiFetch<JWApiSong[]>('/songs/', { all: 'true' }))
 
 // Synchronous read of the offline cache for a path+params — returns the last
 // successful apiFetch response for that exact key, or undefined. Lets views do

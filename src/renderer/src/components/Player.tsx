@@ -769,10 +769,14 @@ export default function Player(): JSX.Element {
     }
     document.addEventListener('visibilitychange', onVisibility)
     window.addEventListener('online', onOnline)
+    window.addEventListener('pageshow', check)
+    window.addEventListener('focus', check)
     return () => {
       clearInterval(id)
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('online', onOnline)
+      window.removeEventListener('pageshow', check)
+      window.removeEventListener('focus', check)
     }
   }, [isPlaying])
 
