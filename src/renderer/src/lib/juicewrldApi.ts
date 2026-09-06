@@ -4,6 +4,7 @@ import { cacheGet } from './apiCache'
 import { peekSongPref } from './songPrefs'
 import { peekRotatedCover } from './coverRotation'
 import { peekEraCover } from './eraCovers'
+import { createTtlCache } from './ttlCache'
 
 export const JWAPI_BASE = 'https://juicewrldapi.com/juicewrld'
 
@@ -83,6 +84,7 @@ export interface JWApiFileEntry {
   type: 'file' | 'directory'
   size?: number | null
   modified?: string | null
+  duration?: string | null
 }
 
 // /files/browse/ may return { items: [...] } or a flat array
@@ -150,6 +152,9 @@ export async function apiFetch<T>(
     parseError: async (res) => `JW API error ${res.status}`,
   })
 }
+
+export const loadAllSongs = createTtlCache(5 * 60_000, () => apiFetch<JWApiSong[]>('/songs/', { all: 'true' }))
+
 
 // Synchronous read of the offline cache for a path+params — returns the last
 // successful apiFetch response for that exact key, or undefined. Lets views do
