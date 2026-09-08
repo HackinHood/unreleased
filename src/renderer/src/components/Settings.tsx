@@ -31,6 +31,7 @@ import AndroidUpdateSection from './AndroidUpdateSection'
 import EraCoversSection from './EraCoversSection'
 import { isAndroidApp, getInstalledVersion } from '../lib/androidUpdate'
 import { pickDownloadFolder, clearDownloadFolder } from '../lib/fileSave'
+import { CAN_SET_VOLUME } from '../lib/platform'
 
 const ACCENT_PRESETS = [
   '#1db954', '#7c3aed', '#2563eb', '#dc2626',
@@ -1206,6 +1207,13 @@ export default function Settings(): JSX.Element {
                     </Row>
                   )}
                   {/* Playback speed lives in the player bar's Equalizer panel */}
+                  {/* Crossfade and the pause fade both work by ramping the
+                      <audio> element's volume, which iOS/iPadOS WebKit ignores
+                      (see CAN_SET_VOLUME). Hidden rather than shown-disabled:
+                      an untouchable toggle invites the question these rows
+                      can't answer, and the Player falls back to a hard cut on
+                      its own regardless of what the stored setting says. */}
+                  {CAN_SET_VOLUME && (<>
                   <Row icon={Zap} iconColor="#7c3aed" label="Crossfade" sub="Blend the end of a track into the next one">
                     <Toggle on={crossfadeEnabled} onClick={() => setCrossfade(!crossfadeEnabled, crossfadeDuration)} />
                   </Row>
@@ -1231,6 +1239,7 @@ export default function Settings(): JSX.Element {
                   <Row icon={Waves} iconColor="#0ea5e9" label="Smooth fade when pausing">
                     <Toggle on={pauseFadeEnabled} onClick={() => setPauseFade(!pauseFadeEnabled)} />
                   </Row>
+                  </>)}
                   <Row icon={FileText} iconColor="#059669" label="Prefer OG version">
                     <Toggle on={preferOgVersion} onClick={() => setPreferOgVersion(!preferOgVersion)} />
                   </Row>

@@ -31,6 +31,7 @@ import { trackIdToSongId } from '../lib/userApi'
 import { useCanEdit } from '../hooks/useChannelRoles'
 import { toFileUrl } from '../lib/fileTypes'
 import { isAndroidApp } from '../lib/androidUpdate'
+import { CAN_SET_VOLUME } from '../lib/platform'
 import { startMediaSession, updateMediaMetadata, updateMediaPlaybackState, onMediaControlEvent, readLocalArtworkBase64 } from '../lib/mediaControl'
 import { FullTrack } from '../types'
 import SongInfoModal from './SongInfoModal'
@@ -219,6 +220,14 @@ export default function Player(): JSX.Element {
   // Seek drag buffering — only commit audio.currentTime on mouse release
   const [seekDrag, setSeekDrag] = useState<number | null>(null)
 
+  // Crossfade rides on ramping two elements' volumes against each other, so it
+  // needs a writable volume to mean anything. Where it isn't (iOS/iPadOS — see
+  // CAN_SET_VOLUME) both ramps are silently ignored and the "crossfade" is two
+  // tracks playing over each other at full volume for its whole duration, which
+  // is worse than no crossfade. Fall back to a hard cut there; the user's
+  // setting is left alone so it takes effect again on a platform that can.
+  const canCrossfade = crossfadeEnabled && CAN_SET_VOLUME
+
   // Crossfade state (all refs — no re-renders needed)
   const cfActive     = useRef(false)
   const cfTargetIdx  = useRef(-1)
@@ -292,7 +301,7 @@ export default function Player(): JSX.Element {
   // too. Radio's next track lives in radioNext, not the queue — nothing to
   // preload from here.
   useEffect(() => {
-    if (!crossfadeEnabled || radioMode || !isPlaying || queue.length === 0 || cfActive.current) return
+    if (!canCrossfade || radioMode || !isPlaying || queue.length === 0 || cfActive.current) return
     let nextIdx: number
     if (repeat === 'one') nextIdx = queueIndex
     else {
@@ -312,7 +321,7 @@ export default function Player(): JSX.Element {
     // Preloaded slots inherit the current rate too — the loadedmetadata
     // handler re-asserts it once this load settles.
     applyRate(na)
-  }, [queueIndex, queue.length, isPlaying, repeat, crossfadeEnabled, radioMode])
+  }, [queueIndex, queue.length, isPlaying, repeat, canCrossfade, radioMode])
 
   // Route both slots through the shared Web Audio effects chain (EQ, balance,
   // mono, silence detection). Elements keep their own volume/rate handling.
@@ -464,8 +473,12 @@ export default function Player(): JSX.Element {
     // frozen — so skip the fade and apply the end state instantly instead of
     // starting a ramp that would sit stuck at the wrong volume until a
     // throttled timer catches up.
+    // CAN_SET_VOLUME: without a writable volume the ramp changes nothing
+    // audible and only delays the real pause() to the end of the fade, so the
+    // track plays on at full volume for PAUSE_FADE_MS after the user hit
+    // pause. Cut straight to the end state instead.
     const smoothFade = useStore.getState().pauseFadeEnabled && !cfActive.current
-      && document.visibilityState === 'visible'
+      && document.visibilityState === 'visible' && CAN_SET_VOLUME
     // Autoplay policy can leave the effects AudioContext suspended until a
     // gesture — kick it on every play so audio never routes into a dead graph.
     if (isPlaying) resumeEffectsContext()
@@ -823,7 +836,7 @@ export default function Player(): JSX.Element {
       // Leave the track's run-out alone: the ended/crossfade boundary logic
       // must play out normally, and no hop may land inside that window.
       const s = useStore.getState()
-      const endGuard = Math.max(2, s.crossfadeEnabled ? s.crossfadeDuration + 0.5 : 0)
+      const endGuard = Math.max(2, s.crossfadeEnabled && CAN_SET_VOLUME ? s.crossfadeDuration + 0.5 : 0)
       const dur = isFinite(audio.duration) ? audio.duration : 0
       if (dur > 0 && dur - audio.currentTime < endGuard) { reset(); return }
       // Scale the threshold by volume to undo the element-volume scaling.
@@ -1106,7 +1119,7 @@ export default function Player(): JSX.Element {
     // still fire right after the user pauses (it was already in flight),
     // so without this guard a crossfade — and the next song's playback —
     // could kick off even though playback was just paused.
-    if (!abLooping && crossfadeEnabled && crossfadeDuration > 0 && !cfActive.current && useStore.getState().isPlaying && dur > 0) {
+    if (!abLooping && canCrossfade && crossfadeDuration > 0 && !cfActive.current && useStore.getState().isPlaying && dur > 0) {
       const remaining = dur - audio.currentTime
 
       if (remaining > 0 && remaining <= crossfadeDuration) {
@@ -1987,8 +2000,15 @@ export default function Player(): JSX.Element {
           </button>}
 
 
-          {/* Volume: mute + slider + output picker */}
+          {/* Volume: mute + slider + output picker.
+              The mute button and slider are hidden where element volume is
+              read-only (iOS/iPadOS — see CAN_SET_VOLUME): both write
+              audio.volume, which WebKit ignores, so they would sit there
+              moving and muting nothing. The hardware volume buttons are the
+              only real control there. The output picker is unaffected — it
+              routes rather than attenuates. */}
           <div className="flex items-center gap-1.5">
+            {CAN_SET_VOLUME && (<>
             <button onClick={toggleMute} className="text-text-secondary hover:text-text-primary transition-colors" title="Mute">
               {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
             </button>
@@ -2003,6 +2023,7 @@ export default function Player(): JSX.Element {
                 onChange={handleVolumeChange} className="w-full block"
                 style={{ '--val': `${volume * 100}%` } as React.CSSProperties} />
             </div>
+            </>)}
 
             {outputDevices.length > 1 && (
               <button

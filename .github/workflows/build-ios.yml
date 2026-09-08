@@ -1,11 +1,22 @@
 name: Build iOS release
 
-# Mirrors build-android.yml: release_ios.py (not yet written) would publish an
-# ios-v* GitHub release with no assets, and this fires on that publish to
-# attach the .ipa. Also runnable manually via workflow_dispatch for testing
-# before that release script exists.
+# Mirrors build-android.yml. Two ways in:
 #
-# Produces an UNSIGNED .ipa — there's no Apple Developer account behind this
+#   release  - release_ios.py publishes an ios-v* release with no assets, and
+#              this fires on that publish to attach the .ipa.
+#   manual   - workflow_dispatch on any ref (default: the ios branch), which
+#              publishes nothing and just leaves the .ipa on the run.
+#              CURRENTLY UNREACHABLE: GitHub only offers workflow_dispatch for
+#              workflows that exist on the default branch, and this file lives
+#              only on ios while the default branch is app. Every run to date
+#              has been a release run. Wired up anyway so it works the moment
+#              this file lands on app - but until then, the way to get a build
+#              in front of testers without burning a version is a prerelease:
+#              `gh release create ios-v<next>-rc1 --prerelease --target ios`,
+#              which fires `published` the same as a real release and attaches
+#              a raw .ipa that needs no GitHub account to download.
+#
+# Produces an UNSIGNED .ipa - there's no Apple Developer account behind this
 # build. Users install it via AltStore/Sideloadly, which re-signs it locally
 # with their own free Apple ID on install. Don't add signing here without
 # also deciding how a cert/provisioning profile gets into repo secrets.
@@ -15,29 +26,52 @@ on:
     types: [published]
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Release tag to build (e.g. ios-v1.0.0)"
-        required: true
+      ref:
+        description: "Branch, tag or SHA to build"
+        required: false
+        default: ios
 
 jobs:
   ios:
-    if: startsWith(github.event.release.tag_name || inputs.tag, 'ios-v')
+    # Release runs stay gated on the ios-v* prefix so publishing an android or
+    # desktop release never builds an iPhone app. Manual runs are always
+    # allowed - they publish nothing, so there is nothing to guard.
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'ios-v')
     runs-on: macos-latest
     permissions:
       contents: write
 
     steps:
-      - name: Resolve tag
-        id: tag
+      - name: Resolve ref
+        id: target
         run: |
-          tag="${{ github.event.release.tag_name || inputs.tag }}"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "version=${tag#ios-v}" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "ref=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${{ inputs.ref }}" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Checkout release tag
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ steps.tag.outputs.tag }}
+          ref: ${{ steps.target.outputs.ref }}
+
+      # Ordered after checkout so a manual build can read the version out of
+      # the project it actually built.
+      - name: Name the build
+        id: name
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            tag="${{ github.event.release.tag_name }}"
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+            echo "asset=Unreleased-ios-v${tag#ios-v}.ipa" >> "$GITHUB_OUTPUT"
+          else
+            # Short SHA included so two test builds of the same
+            # MARKETING_VERSION are still tellable apart on a tester's phone.
+            v=$(sed -n 's/.*MARKETING_VERSION = \([^;]*\);.*/\1/p' ios/App/App.xcodeproj/project.pbxproj | head -1)
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            echo "asset=Unreleased-ios-v$v-test-$(git rev-parse --short HEAD).ipa" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -87,11 +121,24 @@ jobs:
           (cd "$RUNNER_TEMP" && zip -qr App.ipa Payload)
           mv "$RUNNER_TEMP/App.ipa" .
 
-      - name: Upload IPA to release
+      - name: Name the .ipa
+        run: mv App.ipa "${{ steps.name.outputs.asset }}"
+
+      # Unconditional: it is the only output a manual test build produces, and
+      # on a release run it means a successful build survives even if the
+      # release upload below fails.
+      - name: Attach .ipa to the workflow run
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.name.outputs.asset }}
+          path: ${{ steps.name.outputs.asset }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload .ipa to the release
+        if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          asset="Unreleased-ios-v${{ steps.tag.outputs.version }}.ipa"
-          cp App.ipa "$asset"
-          gh release upload "${{ steps.tag.outputs.tag }}" "$asset" \
+          gh release upload "${{ steps.name.outputs.tag }}" "${{ steps.name.outputs.asset }}" \
             --clobber --repo "${{ github.repository }}"

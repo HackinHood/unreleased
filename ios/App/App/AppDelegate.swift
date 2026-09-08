@@ -1,3 +1,4 @@
+import AVFoundation
 import UIKit
 import Capacitor
 
@@ -7,8 +8,38 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        configureAudioSession()
         return true
+    }
+
+    // Makes the WebView's <audio> elements behave like a music app instead of
+    // a web page: audible with the ringer switch on silent, and still running
+    // once the app is backgrounded or the screen locks. Pairs with the `audio`
+    // entry in Info.plist's UIBackgroundModes — neither half does anything on
+    // its own, and without both the renderer's whole iOS audio strategy is
+    // built on a promise the native side never kept: lib/audioEffects.ts
+    // deliberately refuses to build the Web Audio graph on iOS (forfeiting
+    // EQ / balance / mono / reverb / skip-silence) specifically to protect
+    // background playback that wasn't actually enabled here.
+    //
+    // Category only, never setActive(true): WKWebView activates the session
+    // itself when media starts, so claiming it at launch would cut off
+    // whatever the user was already listening to just for opening the app to
+    // browse. If a device test shows playback still dying on background, an
+    // explicit setActive(true) is the next thing to try — at the cost of that
+    // interruption. Deliberately no .mixWithOthers either: a music player is
+    // meant to take over the output, and mixing forfeits the lock-screen Now
+    // Playing controls the renderer drives via the Web MediaSession API (see
+    // Player.tsx's mediaSession effects).
+    private func configureAudioSession() {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+        } catch {
+            // Non-fatal — leaves the default WebView behaviour (foreground
+            // only, silenced by the ringer switch), which is what shipped
+            // before this existed.
+            print("AVAudioSession setup failed, background audio unavailable: \(error)")
+        }
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
