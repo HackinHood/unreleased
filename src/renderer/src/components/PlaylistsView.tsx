@@ -14,7 +14,7 @@ import { useCanEdit } from '../hooks/useChannelRoles'
 import { Track, LocalPlaylist, LibraryTrack, FollowedPlaylist } from '../types'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { ProgressiveCover } from './ProgressiveCover'
-import { buildImageUrl, buildStreamUrl, apiFetch, JWApiSong, playlistCoverUrl, smallCoverUrl, resolveTitleToSong, CATEGORY_LABELS, CATEGORY_COLORS, apiFileIdToPath, apiFilePathToTrack, downloadZipSelection } from '../lib/juicewrldApi'
+import { buildImageUrl, buildStreamUrl, apiFetch, JWApiSong, playlistCoverUrl, smallCoverUrl, resolveTitleToSong, CATEGORY_LABELS, CATEGORY_COLORS, apiFileIdToPath, apiFilePathToTrack, downloadZipSelection, resolveSessionEditSource } from '../lib/juicewrldApi'
 import { toFileUrl, libraryTrackToTrack as libTrackToTrack } from '../lib/fileTypes'
 import { formatDuration, formatTotalDuration } from '../lib/format'
 import { fisherYates } from '../store/queueSlice'
@@ -1395,7 +1395,10 @@ export default function PlaylistsView(): JSX.Element {
 
   const handleAddAllTo = useCallback(async (targetId: number, srcDetail: PlaylistDetail) => {
     setAddingAll(true)
-    const eligible = srcDetail.items.filter(item => !['recording_session', 'unsurfaced'].includes(item.song.category))
+    const eligible = srcDetail.items.filter(item =>
+      item.song.category !== 'unsurfaced'
+      && (item.song.category !== 'recording_session' || !!resolveSessionEditSource(item.song).path)
+    )
     await Promise.all(eligible.map(item => userApi.addToPlaylist(targetId, item.song.id).catch(() => {})))
     const targetSet = membershipCache.current.get(targetId) ?? new Set<number>()
     srcDetail.items.forEach(i => targetSet.add(i.song.id))
@@ -1410,7 +1413,10 @@ export default function PlaylistsView(): JSX.Element {
     setImportState('loading')
     try {
       const allowedIds = detail.items
-        .filter(item => !['recording_session', 'unsurfaced'].includes(item.song.category))
+        .filter(item =>
+          item.song.category !== 'unsurfaced'
+          && (item.song.category !== 'recording_session' || !!resolveSessionEditSource(item.song).path)
+        )
         .map(item => item.song.id)
 
       // Request 1: create playlist with name + description + song_ids in one shot

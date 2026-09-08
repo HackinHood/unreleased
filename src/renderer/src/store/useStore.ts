@@ -16,6 +16,7 @@ import type { SongPreference, SongPrefMap, SongPrefPatch } from '../lib/songPref
 import { peekRotatedCover } from '../lib/coverRotation'
 import { advanceRotatedCover, resetCoverRotation } from '../lib/coverSuggestions'
 import { peekEraCover, setEraCoverRaw } from '../lib/eraCovers'
+import { setActiveChannelCache } from '../lib/activeChannelState'
 import {
   appendListeningPlay,
   mergeListeningPlays,
@@ -964,6 +965,8 @@ function commitM3uImport(
   return { ok: true, playlistId: playlist.id, name: playlist.name, matched: trackIds.length, total: entries.length, unmatched }
 }
 
+setActiveChannelCache(ls.get<string>('activeChannel') || '')
+
 export const useStore = create<AppStore>((set, get, store) => ({
   // -- Queue slice (all queue + playback logic) -------------------------------
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1839,7 +1842,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
 
   channels: [],
   activeChannel: ls.get<string>('activeChannel') || '',
-  setActiveChannel: (slug) => { set({ activeChannel: slug }); ls.set('activeChannel', slug) },
+  setActiveChannel: (slug) => { set({ activeChannel: slug }); ls.set('activeChannel', slug); setActiveChannelCache(slug) },
   loadChannels: async () => {
     const list = await fetchChannels()
     if (!list.length) return
@@ -1849,6 +1852,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
     const next = valid ? current : primary.slug
     set({ channels: list, activeChannel: next })
     ls.set('activeChannel', next)
+    setActiveChannelCache(next)
   },
 
   // -- Account ---------------------------------------------------------------

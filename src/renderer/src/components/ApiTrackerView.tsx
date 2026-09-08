@@ -15,7 +15,7 @@ import { CompactGroupRow, useExpandedGroups } from './CompactGroupRow'
 import {
   apiFetch, apiPeek, songToTrack, parseDuration, buildStreamUrl, CATEGORY_LABELS, CATEGORY_COLORS,
   JWApiSong, JWApiPaginatedResponse, JWApiStats, JWApiEra, loadAllSongs, downloadZipSelection,
-  parseBrowseEntries, JWApiBrowseResponse,
+  parseBrowseEntries, JWApiBrowseResponse, resolveSessionEditSource,
 } from '../lib/juicewrldApi'
 import { fisherYates } from '../store/queueSlice'
 import { Track } from '../types'
@@ -92,6 +92,14 @@ function getInitialSetFilter(key: string): Set<string> {
     const parsed = raw ? JSON.parse(raw) : []
     return Array.isArray(parsed) ? new Set(parsed) : new Set()
   } catch { return new Set() }
+}
+
+function safeSetLS(key: string, value: string): void {
+  try { localStorage.setItem(key, value) } catch (e) { console.warn(`[ApiTrackerView] failed to save "${key}":`, e) }
+}
+
+function safeRemoveLS(key: string): void {
+  try { localStorage.removeItem(key) } catch (e) { console.warn(`[ApiTrackerView] failed to remove "${key}":`, e) }
 }
 
 // record_dates is free-text and occasionally yields a technically-valid but
@@ -2053,10 +2061,10 @@ export default function ApiTrackerView(): JSX.Element {
   const [orderDir, setOrderDir] = useState<'asc' | 'desc'>(() =>
     localStorage.getItem(LS_TRACKER_ORDER_DIR) === 'desc' ? 'desc' : 'asc')
   useEffect(() => {
-    if (orderField) localStorage.setItem(LS_TRACKER_ORDER_FIELD, orderField)
-    else localStorage.removeItem(LS_TRACKER_ORDER_FIELD)
+    if (orderField) safeSetLS(LS_TRACKER_ORDER_FIELD, orderField)
+    else safeRemoveLS(LS_TRACKER_ORDER_FIELD)
   }, [orderField])
-  useEffect(() => { localStorage.setItem(LS_TRACKER_ORDER_DIR, orderDir) }, [orderDir])
+  useEffect(() => { safeSetLS(LS_TRACKER_ORDER_DIR, orderDir) }, [orderDir])
   // Whether any column is currently driving sort mode — the fetched song set
   // only depends on this and the search/category/era filters, not on *which*
   // column it'll be sorted by (that's applied client-side), so this is what
@@ -2080,11 +2088,8 @@ export default function ApiTrackerView(): JSX.Element {
 
   const linkSessionEdit = useCallback((s: JWApiSong): JWApiSong => {
     if (s.category !== 'recording_session') return s
-    const override = peekSessionEditOverride(s.id)
-    if (override) return { ...s, path: override.path, length: override.duration ?? s.length }
-    if (s.path || !sessionEditLinks) return s
-    const link = sessionEditLinks.get(s.id)
-    return link ? { ...s, path: link.path, length: link.duration ?? s.length } : s
+    const { path, length } = resolveSessionEditSource(s)
+    return path === s.path && length === s.length ? s : { ...s, path, length }
   }, [sessionEditLinks, sessionEditOverrideVersion])
 
   // Reset accumulated songs and go back to page 1
@@ -2144,12 +2149,12 @@ export default function ApiTrackerView(): JSX.Element {
   })
   const multiFilterActive = categoryFilter.size > 1 || eraFilter.size > 1
   useEffect(() => {
-    localStorage.setItem(LS_TRACKER_CATEGORY_FILTER, JSON.stringify([...categoryFilter]))
+    safeSetLS(LS_TRACKER_CATEGORY_FILTER, JSON.stringify([...categoryFilter]))
   }, [categoryFilter])
   useEffect(() => {
-    localStorage.setItem(LS_TRACKER_ERA_FILTER, JSON.stringify([...eraFilter]))
+    safeSetLS(LS_TRACKER_ERA_FILTER, JSON.stringify([...eraFilter]))
   }, [eraFilter])
-  useEffect(() => { localStorage.setItem(LS_TRACKER_LIBRARY_FILTER, libraryFilter) }, [libraryFilter])
+  useEffect(() => { safeSetLS(LS_TRACKER_LIBRARY_FILTER, libraryFilter) }, [libraryFilter])
 
   const songInLibrary = useCallback((song: JWApiSong): boolean => !!offlineTracks[`jw-${song.id}`], [offlineTracks])
   // Single-value form for the fast (server-side-filtered) path — only
@@ -2526,7 +2531,7 @@ export default function ApiTrackerView(): JSX.Element {
     if (!fetchAllMode) return src.map(linkSessionEdit)
     const passesAll = (s: JWApiSong): boolean => matchesFilters(s) && matchesFieldFilters(s, parsedSearch.filters)
     let base = src.filter(passesAll)
-    if (orderField === 'date_added') base = recentlyAddedMap ? base.filter((s) => recentlyAddedMap.has(s.path)) : []
+    if (orderField === 'date_added') base = recentlyAddedMap ? base.filter((s) => recentlyAddedMap.has(linkSessionEdit(s).path)) : []
     return base.map(linkSessionEdit)
   }, [fetchAllMode, songs, rawAllSongs, matchesFilters, parsedSearch.filters, orderField, recentlyAddedMap, linkSessionEdit])
 
@@ -2673,7 +2678,7 @@ export default function ApiTrackerView(): JSX.Element {
           setCount(all.length)
           setHasMore(false)
           hasMoreRef.current = false
-          return new Map(all.map((s) => [s.id, s]))
+          return new Map(all.map((s) => [s.id, linkSessionEdit(s)]))
         } catch (e) {
           setError((e as Error).message)
           return null
@@ -2855,7 +2860,7 @@ export default function ApiTrackerView(): JSX.Element {
       const entry = parseBrowseEntries(data).find((e) => e.path === path)
       duration = entry?.duration ?? null
     } catch (err) { console.error(err) }
-    setSessionEditOverride(song.id, { path, duration })
+    setSessionEditOverride(song.id, { path, duration, channel: activeChannel })
     setSessionEditOverrideVersion((v) => v + 1)
   }, [linkingSessionSong, activeChannel])
 

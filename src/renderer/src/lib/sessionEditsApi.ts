@@ -1,5 +1,6 @@
 import { apiFetch, parseBrowseEntries, normalizeSongTitle, loadAllSongs, JWApiSong, JWApiBrowseResponse, JWApiFileEntry } from './juicewrldApi'
 import { createTtlCache } from './ttlCache'
+import { setSessionEditLinksCache } from './sessionEditLinksMirror'
 
 export interface SessionEditFile {
   name: string
@@ -46,7 +47,13 @@ export function loadSessionEditFiles(channel = ''): Promise<SessionEditFile[]> {
 }
 
 function stripSessionEditSuffix(title: string): string {
-  return title.replace(/\s*\[Session Edit\]\s*$/i, '').replace(/\s*\(Sessions?\)\s*$/i, '')
+  let stripped = title
+  let prev: string
+  do {
+    prev = stripped
+    stripped = stripped.replace(/\s*\[Session Edit\]\s*$/i, '').replace(/\s*\(Sessions?\)\s*$/i, '')
+  } while (stripped !== prev)
+  return stripped
 }
 
 export async function loadSessionEditMatches(): Promise<Map<string, JWApiSong>> {
@@ -104,7 +111,11 @@ const linkCaches = new Map<string, () => Promise<Map<number, SessionEditLink>>>(
 export function loadSessionEditLinks(channel = ''): Promise<Map<number, SessionEditLink>> {
   let cache = linkCaches.get(channel)
   if (!cache) {
-    cache = createTtlCache(5 * 60_000, () => buildLinkMap(channel))
+    cache = createTtlCache(5 * 60_000, async () => {
+      const map = await buildLinkMap(channel)
+      setSessionEditLinksCache(channel, map)
+      return map
+    })
     linkCaches.set(channel, cache)
   }
   return cache()

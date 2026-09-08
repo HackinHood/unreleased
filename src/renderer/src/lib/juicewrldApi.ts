@@ -6,6 +6,9 @@ import { peekRotatedCover } from './coverRotation'
 import { peekEraCover } from './eraCovers'
 import { IS_IOS } from './platform'
 import { createTtlCache } from './ttlCache'
+import { peekSessionEditOverride } from './sessionEditOverrides'
+import { peekActiveChannel } from './activeChannelState'
+import { peekSessionEditLink } from './sessionEditLinksMirror'
 
 export const JWAPI_BASE = 'https://juicewrldapi.com/juicewrld'
 
@@ -570,6 +573,16 @@ export function parseDuration(length: string | null | undefined): number {
 // JWApiSong deliberately keeps the API's own data untouched: the editor views
 // work from that shape, so an editor never sees another user's personal rename
 // in a field they might propose upstream.
+export function resolveSessionEditSource(song: { id: number; category: string; path: string; length: string }): { path: string; length: string; channel: string | undefined } {
+  if (song.category !== 'recording_session') return { path: song.path, length: song.length, channel: undefined }
+  const override = peekSessionEditOverride(song.id)
+  if (override) return { path: override.path, length: override.duration ?? song.length, channel: override.channel }
+  if (song.path) return { path: song.path, length: song.length, channel: peekActiveChannel() }
+  const channel = peekActiveChannel()
+  const link = peekSessionEditLink(song.id, channel)
+  return link ? { path: link.path, length: link.duration ?? song.length, channel } : { path: song.path, length: song.length, channel: undefined }
+}
+
 export function songToTrack(song: JWApiSong): Track {
   const apiTitle = song.name
   const apiImageUrl = buildImageUrl(song.image_url)
@@ -580,10 +593,11 @@ export function songToTrack(song: JWApiSong): Track {
   const coverUrl = resolvePrefCoverUrl(pref?.cover_url)
     ?? peekRotatedCover(song.id)
     ?? (song.category !== 'released' ? resolvePrefCoverUrl(peekEraCover(song.era?.name)) : undefined)
+  const { path: resolvedPath, length: resolvedLength, channel: streamChannel } = resolveSessionEditSource(song)
   return {
     id: `jw-${song.id}`,
-    path: song.path,
-    streamUrl: buildStreamUrl(song.path),
+    path: resolvedPath,
+    streamUrl: buildStreamUrl(resolvedPath, streamChannel),
     imageUrl: coverUrl ?? apiImageUrl,
     title: pref?.name || apiTitle,
     apiTitle,
@@ -594,7 +608,7 @@ export function songToTrack(song: JWApiSong): Track {
     albumArtist: 'Juice WRLD',
     year: null,
     trackNumber: null,
-    duration: parseDuration(song.length),
+    duration: parseDuration(resolvedLength),
     genre: song.category,
     hasAlbumArt: !!song.image_url || !!coverUrl,
   }

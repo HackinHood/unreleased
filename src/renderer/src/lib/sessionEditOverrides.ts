@@ -3,6 +3,7 @@ import { ls } from './persist'
 export interface SessionEditOverride {
   path: string
   duration: string | null
+  channel: string
 }
 
 let _overrides: Record<number, SessionEditOverride> = ls.get<Record<number, SessionEditOverride>>('sessionEditOverrides') ?? {}
