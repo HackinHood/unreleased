@@ -3,7 +3,7 @@ import {
   ListMusic, Play, Loader2, Plus, Trash2, Pencil, ArrowLeft, X, Check, Heart, Shuffle,
   Music2, ListPlus, Archive, FolderInput, MoreVertical, Search, ChevronUp, ChevronDown,
   ImageOff, Globe, Lock, Link, ListEnd, HardDrive, CircleArrowDown, Layers, LayoutGrid, Rows3,
-  Download, Image as ImageIcon, ArrowUpDown, AlignLeft, GripVertical, Rss,
+  Download, Image as ImageIcon, ArrowUpDown, AlignLeft, GripVertical, Rss, FileUp,
 } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import * as userApi from '../lib/userApi'
@@ -353,7 +353,7 @@ const LS_LAYOUT = 'playlists:layout'
 
 export default function PlaylistsView(): JSX.Element {
   const { account, playlists, refreshPlaylists, playTrack, playCollection, addToQueue, setShowUserAuth, likedTrackIds, toggleLike, setActiveView, setPendingEditorSongId,
-    localPlaylists, libraryTracks, libraryArt, loadLibrary, deleteLocalPlaylist, renameLocalPlaylist, updateLocalPlaylist, addToLocalPlaylist, removeFromLocalPlaylist, reorderLocalPlaylist, createLocalPlaylist,
+    localPlaylists, libraryTracks, libraryArt, loadLibrary, deleteLocalPlaylist, renameLocalPlaylist, updateLocalPlaylist, addToLocalPlaylist, removeFromLocalPlaylist, reorderLocalPlaylist, createLocalPlaylist, importM3uFromDevice, exportLocalPlaylistM3u,
     guestPlaylists, createGuestPlaylist, deleteGuestPlaylist, renameGuestPlaylist, removeFromGuestPlaylist,
     followedPlaylists, followPlaylist, unfollowPlaylist, updateFollowedPlaylistMeta,
     pendingPlaylistId, setPendingPlaylistId,
@@ -362,7 +362,7 @@ export default function PlaylistsView(): JSX.Element {
     playlistsSort: sortRaw, setPlaylistsSort: setSortRaw,
     offlinePlaylists, offlineSync, offlineTracks, downloadPlaylistOffline, removePlaylistOffline,
     playlistFolders, createFolder, renameFolder, deleteFolder, movePlaylistsToFolder,
-    appTextScale, currentTrack, sidebarPosition, setHeroBleedTop, playNext } = useStorePick('account', 'playlists', 'refreshPlaylists', 'playTrack', 'playCollection', 'addToQueue', 'setShowUserAuth', 'likedTrackIds', 'toggleLike', 'setActiveView', 'setPendingEditorSongId', 'localPlaylists', 'libraryTracks', 'libraryArt', 'loadLibrary', 'deleteLocalPlaylist', 'renameLocalPlaylist', 'updateLocalPlaylist', 'addToLocalPlaylist', 'removeFromLocalPlaylist', 'reorderLocalPlaylist', 'createLocalPlaylist', 'guestPlaylists', 'createGuestPlaylist', 'deleteGuestPlaylist', 'renameGuestPlaylist', 'removeFromGuestPlaylist', 'followedPlaylists', 'followPlaylist', 'unfollowPlaylist', 'updateFollowedPlaylistMeta', 'pendingPlaylistId', 'setPendingPlaylistId', 'playlistsSelectedId', 'setPlaylistsSelectedId', 'playlistsSelectedLocalId', 'setPlaylistsSelectedLocalId', 'playlistsSort', 'setPlaylistsSort', 'offlinePlaylists', 'offlineSync', 'offlineTracks', 'downloadPlaylistOffline', 'removePlaylistOffline', 'playlistFolders', 'createFolder', 'renameFolder', 'deleteFolder', 'movePlaylistsToFolder', 'appTextScale', 'currentTrack', 'sidebarPosition', 'setHeroBleedTop', 'playNext')
+    appTextScale, currentTrack, sidebarPosition, setHeroBleedTop, playNext } = useStorePick('account', 'playlists', 'refreshPlaylists', 'playTrack', 'playCollection', 'addToQueue', 'setShowUserAuth', 'likedTrackIds', 'toggleLike', 'setActiveView', 'setPendingEditorSongId', 'localPlaylists', 'libraryTracks', 'libraryArt', 'loadLibrary', 'deleteLocalPlaylist', 'renameLocalPlaylist', 'updateLocalPlaylist', 'addToLocalPlaylist', 'removeFromLocalPlaylist', 'reorderLocalPlaylist', 'createLocalPlaylist', 'importM3uFromDevice', 'exportLocalPlaylistM3u', 'guestPlaylists', 'createGuestPlaylist', 'deleteGuestPlaylist', 'renameGuestPlaylist', 'removeFromGuestPlaylist', 'followedPlaylists', 'followPlaylist', 'unfollowPlaylist', 'updateFollowedPlaylistMeta', 'pendingPlaylistId', 'setPendingPlaylistId', 'playlistsSelectedId', 'setPlaylistsSelectedId', 'playlistsSelectedLocalId', 'setPlaylistsSelectedLocalId', 'playlistsSort', 'setPlaylistsSort', 'offlinePlaylists', 'offlineSync', 'offlineTracks', 'downloadPlaylistOffline', 'removePlaylistOffline', 'playlistFolders', 'createFolder', 'renameFolder', 'deleteFolder', 'movePlaylistsToFolder', 'appTextScale', 'currentTrack', 'sidebarPosition', 'setHeroBleedTop', 'playNext')
   // Cast back to the component's own SortField union — the store keeps the
   // field as a plain string so it doesn't have to import this component's type.
   const sort = sortRaw as SortState
@@ -443,6 +443,15 @@ export default function PlaylistsView(): JSX.Element {
   const [addingAll, setAddingAll] = useState(false)
   const [isSharedView, setIsSharedView] = useState(false)
   const [importState, setImportState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+
+  // M3U import/export
+  const [m3uExportState, setM3uExportState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const [m3uImporting, setM3uImporting] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
+  const showToast = useCallback((msg: string): void => {
+    setToast(msg)
+    window.setTimeout(() => setToast((t) => (t === msg ? null : t)), 2400)
+  }, [])
 
   // Song info modal
   const [infoSong, setInfoSong] = useState<JWApiSong | null>(null)
@@ -1044,6 +1053,34 @@ export default function PlaylistsView(): JSX.Element {
     } catch { setZipState('error') }
     setTimeout(() => setZipState('idle'), 3000)
   }, [zipState])
+
+  const handleExportM3u = useCallback(async (id: string) => {
+    if (m3uExportState === 'loading') return
+    setM3uExportState('loading')
+    const res = await exportLocalPlaylistM3u(id)
+    if (res.ok) { setM3uExportState('done'); showToast('Saved to Downloads') }
+    else if (!res.canceled) { setM3uExportState('error'); showToast(res.error || 'Export failed') }
+    else setM3uExportState('idle')
+    setTimeout(() => setM3uExportState('idle'), 3000)
+  }, [m3uExportState, exportLocalPlaylistM3u, showToast])
+
+  const handleImportM3u = useCallback(async () => {
+    if (m3uImporting) return
+    setM3uImporting(true)
+    try {
+      const res = await importM3uFromDevice()
+      if (res.ok) {
+        setLocalSelectedId(res.playlistId)
+        showToast(res.matched === res.total
+          ? `Imported "${res.name}" — ${res.matched} track${res.matched === 1 ? '' : 's'}`
+          : `Imported "${res.name}" — ${res.matched} of ${res.total} matched`)
+      } else if (!res.canceled) {
+        showToast(res.error || 'Import failed')
+      }
+    } finally {
+      setM3uImporting(false)
+    }
+  }, [m3uImporting, importM3uFromDevice, setLocalSelectedId, showToast])
 
   const offlineKey = selectedId != null ? `api-${selectedId}` : null
   const offlineEntry = offlineKey ? offlinePlaylists[offlineKey] : undefined
@@ -2231,6 +2268,17 @@ export default function PlaylistsView(): JSX.Element {
             )}
           </>
         )}
+        {isLocal && localPl && (
+          <>
+            <SheetDivider />
+            <SheetItem
+              icon={m3uExportState === 'loading' ? Loader2 : FileUp}
+              label={m3uExportState === 'error' ? 'Export failed' : m3uExportState === 'done' ? 'Saved to Downloads' : 'Export as M3U'}
+              disabled={m3uExportState === 'loading' || tracks.length === 0}
+              onClick={() => { const id = localPl.id; closeSheet(); handleExportM3u(id) }}
+            />
+          </>
+        )}
         {!isLocal && (
           <>
             <SheetDivider />
@@ -2440,6 +2488,13 @@ export default function PlaylistsView(): JSX.Element {
               })
             }}
           />
+          <SheetItem
+            icon={m3uImporting ? Loader2 : FileUp}
+            label="Import M3U"
+            sub="Match a playlist file to songs already in your library"
+            disabled={m3uImporting}
+            onClick={() => { closeSheet(); handleImportM3u() }}
+          />
         </Sheet>
       )}
 
@@ -2583,6 +2638,16 @@ export default function PlaylistsView(): JSX.Element {
         onClose={() => setInfoSong(null)}
         onEdit={canEdit ? (songId) => { setInfoSong(null); setPendingEditorSongId(songId); setActiveView('editor') } : undefined}
       />
+
+      {/* Toast — lifted clear of the player and nav bar, same treatment as
+          ApiFilesView's, for M3U import/export results. */}
+      {toast && (
+        <div className="fixed left-1/2 -translate-x-1/2 z-[90] px-4 py-2.5 rounded-full bg-surface-overlay border border-[var(--border)] shadow-lg flex items-center gap-2 text-text-primary text-[13px] font-medium"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 84px)' }}
+        >
+          {toast}
+        </div>
+      )}
     </div>
   )
 }

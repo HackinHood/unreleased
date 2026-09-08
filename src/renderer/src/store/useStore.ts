@@ -39,6 +39,8 @@ import { DEFAULT_NAV_ORDER, DEFAULT_NAV_VISIBILITY, DEFAULT_NAV_CONTROL_ORDER, D
 import { getLastfmSession } from '../lib/lastfm'
 import * as localLibrary from '../lib/localLibrary'
 import { runWhenIdle, IS_ANDROID } from '../lib/platform'
+import { saveFile } from '../lib/fileSave'
+import { parseM3u, serializeM3u, pickM3uFile, nameFromFilename } from '../lib/m3u'
 import { getOfflineApi } from '../lib/offlineBackend'
 
 // Key used to track songs downloaded individually (song context menu →
@@ -679,6 +681,10 @@ interface AppActions {
   // file paths to the scanned library. The file is opened/parsed in the UI
   // first so the user can choose local-vs-API import before anything is created.
   importM3uEntriesLocal: (name: string, entries: { path: string; title: string | null; duration?: number | null }[]) => { ok: true; playlistId: string; name: string; matched: number; total: number; unmatched: string[] } | { ok: false; canceled?: boolean; error?: string }
+  // Opens the native file picker, parses the chosen .m3u/.m3u8 and commits it —
+  // the picker+parse counterpart to importM3uEntriesLocal above, which takes
+  // already-parsed entries.
+  importM3uFromDevice: () => Promise<{ ok: true; playlistId: string; name: string; matched: number; total: number; unmatched: string[] } | { ok: false; canceled?: boolean; error?: string }>
   exportLocalPlaylistM3u: (id: string) => Promise<{ ok: true; path: string } | { ok: false; canceled?: boolean; error?: string }>
   loadLibrary: (force?: boolean) => Promise<void>
 
@@ -2138,7 +2144,29 @@ export const useStore = create<AppStore>((set, get, store) => ({
     localLibrary.savePlaylists(next)
   },
   importM3uEntriesLocal: (name, entries) => commitM3uImport(get, set, { name, entries }),
-  exportLocalPlaylistM3u: async () => ({ ok: false as const, error: 'Not supported on Android' }),
+  importM3uFromDevice: async () => {
+    const picked = await pickM3uFile()
+    if (!picked) return { ok: false as const, canceled: true }
+    const entries = parseM3u(picked.text)
+    return commitM3uImport(get, set, { name: nameFromFilename(picked.name), entries })
+  },
+  exportLocalPlaylistM3u: async (id) => {
+    const pl = get().localPlaylists.find((p) => p.id === id)
+    if (!pl) return { ok: false as const, error: 'Playlist not found' }
+    const byId = new Map(get().libraryTracks.map((t) => [t.id, t]))
+    const tracks = pl.trackIds
+      .map((tid) => byId.get(tid))
+      .filter((t): t is LibraryTrack => !!t)
+      .map((t) => ({ path: t.filePath, title: t.title, artist: t.artist, duration: t.duration }))
+    const safeName = (pl.name || 'playlist').replace(/[\\/:*?"<>|]/g, '_').trim() || 'playlist'
+    const filename = `${safeName}.m3u8`
+    try {
+      await saveFile(filename, new Blob([serializeM3u(tracks)], { type: 'audio/x-mpegurl' }))
+      return { ok: true as const, path: filename }
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : 'Export failed' }
+    }
+  },
 
   createGuestPlaylist: (name) => {
     const id = `gp-${Date.now()}`
