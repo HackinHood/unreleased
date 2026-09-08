@@ -123,7 +123,6 @@ interface AppState {
   // actually came from instead of a hardcoded destination.
   previousView: ViewType | null
   showNowPlaying: boolean
-  showSettings: boolean
   // Which Settings tab to show on next open (deep-link from the app menu, e.g.
   // "Keyboard shortcuts" → the Shortcuts tab). Settings applies it then clears
   // it back to null. Synced so it also reaches the pop-out Settings window.
@@ -952,7 +951,6 @@ export const useStore = create<AppStore>((set, get, store) => ({
   activeView: 'api-tracker',
   previousView: null,
   showNowPlaying: false,
-  showSettings: false,
   settingsTab: null,
   showDiagnostics: false,
   showQueue: false,
@@ -1007,6 +1005,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
       'tierlist': '/tierlist',
       'stats': '/stats',
       'download': '/download',
+      'settings': '/settings',
     }
     window.history.pushState({ view }, '', paths[view] ?? '/tracker')
     set((s) => ({ activeView: view, previousView: view === s.activeView ? s.previousView : s.activeView }))
@@ -1020,21 +1019,25 @@ export const useStore = create<AppStore>((set, get, store) => ({
   setRadioFmUpNext: (radioFmUpNext) => set({ radioFmUpNext }),
   setRadioFmQueuePreview: (radioFmQueuePreview) => set({ radioFmQueuePreview }),
   setRadioFmMatchedSong: (radioFmMatchedSong) => set({ radioFmMatchedSong }),
-  setShowSettings: (showSettings) => {
-    // Settings docks into the sandbox notch (see Modal.tsx) and stays
-    // mounted once opened — collapsing the notch just hides it. Re-opening
-    // while it's already mounted (showSettings already true) wouldn't
-    // re-trigger the dock/expand in ModalOverlay's mount effect, so expand
-    // the notch here too or the button would look like it's doing nothing.
-    if (showSettings) useSandboxStore.getState().expand()
-    set({ showSettings })
+  setShowSettings: (show) => {
+    const s = get()
+    if (show) { s.setActiveView('settings'); return }
+    // "Close" means go back to whatever was showing before Settings opened —
+    // there's no other view underneath anymore now that Settings is a real
+    // page in the same activeView slot as everything else, not an overlay
+    // sitting on top of it.
+    const fallback = s.previousView && s.previousView !== 'settings' ? s.previousView : 'api-tracker'
+    s.setActiveView(fallback)
   },
   setSettingsTab: (settingsTab) => set({ settingsTab }),
   openSettings: (tab) => {
     if (tab) set({ settingsTab: tab })
     get().setShowSettings(true)
   },
-  toggleSettings: () => set((s) => ({ showSettings: !s.showSettings })),
+  toggleSettings: () => {
+    const s = get()
+    s.setShowSettings(s.activeView !== 'settings')
+  },
   openProfile: () => {
     // Which profile view depends on the account's roles, not on the caller —
     // staffProfileView is the same helper the sidebar/bottom-nav tabs label

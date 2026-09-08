@@ -60,6 +60,8 @@ export default function EqualizerPanel(): JSX.Element {
   // Output devices — same enumeration the player bar's picker uses.
   const [outputDevices, setOutputDevices] = useState<MediaDeviceInfo[]>([])
   useEffect(() => {
+    // Absent in some iOS Safari contexts — see Player.tsx's equivalent effect.
+    if (!navigator.mediaDevices) return
     const enumerate = async (): Promise<void> => {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices()

@@ -362,11 +362,14 @@ export default function WrldView(): JSX.Element {
         </div>
 
         {/* ── Cover ──────────────────────────────────────────────────────── */}
-        {/* max-h caps it on short screens; the image is object-cover, so the
-            box going slightly non-square there crops rather than distorts. */}
+        {/* Width is the min of the 340px cap, 44vh (so short screens shrink
+            the whole box instead of clipping it), and the available 100% —
+            aspect-square then derives a height that always matches. Capping
+            height alone (without width following) used to leave this a
+            visible rectangle on short viewports instead of a smaller square. */}
         <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 px-8 py-4">
           <div
-            className="w-full max-w-[340px] max-h-[44vh] aspect-square rounded-3xl overflow-hidden shadow-[0_28px_70px_rgba(0,0,0,0.65)] transition-transform duration-500 ease-out"
+            className="w-[min(340px,44vh,100%)] aspect-square rounded-3xl overflow-hidden shadow-[0_28px_70px_rgba(0,0,0,0.65)] transition-transform duration-500 ease-out"
             style={{ transform: isPlaying || radioFmActive ? 'scale(1)' : 'scale(0.92)' }}
           >
             {artSrc && !artError ? (

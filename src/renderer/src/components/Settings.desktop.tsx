@@ -23,7 +23,7 @@ import { formatBytes } from '../lib/format'
 import type { ViewType } from '../types'
 import ReportForm from './ReportForm'
 import LegalModal, { type LegalDoc } from './LegalModal'
-import { ModalOverlay, LockToggle, useSandboxStore } from './Modal'
+import { useSandboxStore } from './Modal'
 import EraCoversSection from './EraCoversSection'
 
 const ACCENT_PRESETS = [
@@ -364,7 +364,10 @@ export default function Settings(): JSX.Element {
   }
 
   const closeSettings = (): void => setShowSettings(false)
-  const openMainView = (view: ViewType): void => { setShowSettings(false); setActiveView(view) }
+  // setActiveView alone leaves Settings now that it's a real page in the same
+  // slot as every other view — no separate close step, and no extra history
+  // entry from one.
+  const openMainView = (view: ViewType): void => setActiveView(view)
 
   // ── Last.fm connect flow (desktop token auth): fetch a token, send the user
   // to last.fm to approve it, then poll getSession until approval lands (it
@@ -491,14 +494,7 @@ export default function Settings(): JSX.Element {
   }
 
   return (
-    <ModalOverlay
-      onClose={closeSettings}
-      zIndexClassName="z-50"
-      panelClassName="bg-surface border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-[760px] h-[600px] max-h-[85vh]"
-      minWidth={520} minHeight={420}
-    >
-      {({ onHandleMouseDown, locked, toggleLock, canLock }) => (
-      <>
+    <>
       {/* Custom-skin editor (portals to <body>, so placement here is fine) */}
       {editingSkinId && (
         <SkinEditorModal
@@ -508,16 +504,12 @@ export default function Settings(): JSX.Element {
         />
       )}
       <div className="bg-surface w-full h-full flex flex-col overflow-hidden">
-        <div
-          className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] shrink-0 select-none cursor-grab active:cursor-grabbing"
-          onMouseDown={onHandleMouseDown}
-        >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] shrink-0 select-none">
           <div className="flex items-center gap-2" >
             <h2 className="text-text-primary font-black text-xl tracking-tight">Settings</h2>
           </div>
           <div className="flex items-center gap-3" >
-            {canLock && <LockToggle locked={locked} onClick={toggleLock} />}
-            <button onClick={closeSettings} className="text-text-muted hover:text-text-primary transition-colors">
+            <button onClick={closeSettings} title="Back" className="text-text-muted hover:text-text-primary transition-colors">
               <X size={20} />
             </button>
           </div>
@@ -1639,8 +1631,6 @@ export default function Settings(): JSX.Element {
       </div>
 
       {legalDoc && <LegalModal initialDoc={legalDoc} onClose={() => setLegalDoc(null)} />}
-      </>
-      )}
-    </ModalOverlay>
+    </>
   )
 }

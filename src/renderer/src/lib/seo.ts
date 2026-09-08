@@ -85,6 +85,7 @@ const ROUTES: Record<ViewType, SeoEntry> = {
   liked: { path: '/liked', title: 'Liked songs', description: 'Your liked Juice WRLD songs.', noindex: true },
   playlists: { path: '/playlists', title: 'Playlists', description: 'Your playlists and folders.', noindex: true },
   stats: { path: '/stats', title: 'Listening stats', description: 'Your all-time listening stats.', noindex: true },
+  settings: { path: '/settings', title: 'Settings', description: 'App settings and preferences.', noindex: true },
   editor: { path: '/editor', title: 'Editor', description: 'Catalog editing tools.', noindex: true },
   contributor: { path: '/contributor', title: 'Contributor', description: 'Contributor tools.', noindex: true },
   admin: { path: '/admin', title: 'Admin', description: 'Administration.', noindex: true },

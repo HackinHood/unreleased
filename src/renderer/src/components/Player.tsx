@@ -1415,6 +1415,11 @@ export default function Player(): JSX.Element {
   const [pickerPos, setPickerPos] = useState({ bottom: 0, right: 0 })
 
   useEffect(() => {
+    // Absent in some iOS Safari contexts — accessing it directly (rather
+    // than optional-chaining) threw synchronously on mount there, crashing
+    // the whole player on every load ("undefined is not an object
+    // (evaluating 'navigator.mediaDevices.addEventListener')").
+    if (!navigator.mediaDevices) return
     const enumerate = async (): Promise<void> => {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices()

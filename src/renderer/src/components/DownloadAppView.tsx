@@ -143,11 +143,15 @@ function AssetButton({ asset, label, primary }: { asset: ReleaseAsset; label: st
         : 'flex items-center gap-2 w-full px-4 py-2 rounded-xl text-xs font-semibold border border-[var(--border)] text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors'}
     >
       <Download size={primary ? 15 : 13} className="shrink-0" />
-      {/* Label left, size pinned right on the same line — a centered inline
-          run of both wrapped unpredictably (mid-word breaks, different
-          heights) once label length varied across buttons. */}
-      <span className="flex-1 min-w-0 truncate text-left">{label}</span>
-      <span className={`shrink-0 ${primary ? 'font-medium text-white/70' : 'text-text-muted'}`}>{fmtMB(asset.size)}</span>
+      {/* Label on its own row, size below it — squeezing both onto one line
+          either truncated the label (not enough room next to the size) or
+          wrapped unpredictably (mid-word breaks, different heights) once
+          label length varied across buttons. Stacking keeps every button
+          the same shape regardless of how long its label is. */}
+      <span className="flex-1 min-w-0 text-left leading-tight">
+        <span className="block truncate">{label}</span>
+        <span className={`block text-[11px] font-normal ${primary ? 'text-white/70' : 'text-text-muted'}`}>{fmtMB(asset.size)}</span>
+      </span>
     </a>
   )
 }
@@ -174,7 +178,11 @@ function PlatformCard({ icon, name, requirement, detected, children }: {
         </div>
         <div className="min-w-0">
           <p className="text-text-primary text-sm font-semibold">{name}</p>
-          <p className="text-text-muted text-[11px]">{requirement}</p>
+          {/* min-h reserves room for 2 lines — some requirement strings
+              ("macOS · Apple Silicon & Intel") wrap while shorter ones don't,
+              which was pushing each card's buttons down by a different
+              amount and left them misaligned across the row. */}
+          <p className="text-text-muted text-[11px] leading-snug min-h-[28px]">{requirement}</p>
         </div>
       </div>
       <div className="mt-3.5 space-y-2">

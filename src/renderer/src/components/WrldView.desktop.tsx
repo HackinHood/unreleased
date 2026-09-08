@@ -106,6 +106,8 @@ export default function WrldView(): JSX.Element {
   const [pickerPos, setPickerPos] = useState({ bottom: 0, right: 0 })
 
   useEffect(() => {
+    // Absent in some iOS Safari contexts — see Player.tsx's equivalent effect.
+    if (!navigator.mediaDevices) return
     const enumerate = async (): Promise<void> => {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices()

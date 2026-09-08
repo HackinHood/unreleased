@@ -588,9 +588,11 @@ export default function WordleView(): JSX.Element {
     if (e.metaKey || e.ctrlKey || e.altKey) return
     // App-level overlays sit over this view without unmounting it — read them
     // at event time so a keypress meant for one of them isn't swallowed by a
-    // board nobody can see.
+    // board nobody can see. Settings used to be one of these too, but it's a
+    // real page now (see App.tsx) — navigating to it unmounts this component
+    // entirely, so there's nothing left here to guard against.
     const app = useStore.getState()
-    if (app.showSettings || app.showUserAuth || app.showDiagnostics) return
+    if (app.showUserAuth || app.showDiagnostics) return
     const el = e.target as HTMLElement | null
     const tag = el?.tagName
     // Typing into the search box (or anywhere else that takes text) is not

@@ -28,8 +28,9 @@ const MAX_TABS = 6
 interface Tab { view: ViewType; icon: ReactNode; label: string }
 
 export default function BottomNav(): JSX.Element {
-  const { activeView, setActiveView, toggleSettings, showSettings, setShowSettings, navVisibility, navOrder, sidebarPosition } =
-    useStorePick('activeView', 'setActiveView', 'toggleSettings', 'showSettings', 'setShowSettings', 'navVisibility', 'navOrder', 'sidebarPosition')
+  const { activeView, setActiveView, toggleSettings, navVisibility, navOrder, sidebarPosition } =
+    useStorePick('activeView', 'setActiveView', 'toggleSettings', 'navVisibility', 'navOrder', 'sidebarPosition')
+  const showSettings = activeView === 'settings'
   const atTop = sidebarPosition === 'top'
 
   // Shared with the side menu: orderedNavItems sanitizes the saved order,
@@ -53,23 +54,15 @@ export default function BottomNav(): JSX.Element {
   const overflow = allTabs.length > MAX_TABS - 1
   const tabs = overflow ? allTabs.slice(0, MAX_TABS - 2) : allTabs
   const moreTabs = overflow ? allTabs.slice(MAX_TABS - 2) : []
-  // Settings is an overlay, not a view — activeView still points at whatever
-  // was showing underneath it. Without checking showSettings here, that tab
-  // stayed lit accent-colored the whole time Settings was open on top of it,
-  // while the Settings button itself (hardcoded to tabCls(false) below) never
-  // showed as current at all — neither end of the swap reflected reality.
-  const moreActive = !showSettings && moreTabs.some((t) => navTabFor(activeView) === t.view)
+  const moreActive = moreTabs.some((t) => navTabFor(activeView) === t.view)
   const [moreOpen, setMoreOpen] = useState(false)
   useBackToClose(() => setMoreOpen(false), moreOpen)
 
   // Shared by both the direct tabs and the "More" sheet's rows.
   const navigateTo = (view: ViewType): void => {
     // Re-tapping the already-active Playlists tab dispatches a back event
-    // instead of going through setActiveView (it's a no-op there — same
-    // view), so it needs its own close-Settings call to match every other
-    // tab's behavior.
+    // instead of going through setActiveView (it's a no-op there — same view).
     if (activeView === view && view === 'playlists') {
-      setShowSettings(false)
       window.dispatchEvent(new CustomEvent('playlists:back'))
     } else {
       // A tab holding several views (Games: Heardle/Wordle) reopens on
@@ -116,7 +109,7 @@ export default function BottomNav(): JSX.Element {
         : { borderTop: '1px solid var(--border)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
       {tabs.map((tab) => {
-        const active = !showSettings && navTabFor(activeView) === tab.view
+        const active = navTabFor(activeView) === tab.view
         return (
           <button key={tab.view} onClick={() => navigateTo(tab.view)} className={tabCls(active)}>
             {marker(active)}

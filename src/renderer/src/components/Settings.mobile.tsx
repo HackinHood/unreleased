@@ -479,7 +479,10 @@ export default function Settings(): JSX.Element {
   // desktop build off their defaults.
 
   const closeSettings = (): void => setShowSettings(false)
-  const openMainView = (view: ViewType): void => { setShowSettings(false); setActiveView(view) }
+  // setActiveView alone leaves Settings now that it's a real page in the same
+  // slot as every other view — no separate close step, and no extra history
+  // entry from one.
+  const openMainView = (view: ViewType): void => setActiveView(view)
 
   // ── Last.fm connect flow (desktop token auth): fetch a token, send the user
   // to last.fm to approve it, then poll getSession until approval lands (it
@@ -898,7 +901,7 @@ export default function Settings(): JSX.Element {
                     {showStaffProfile(account) && (
                       <SettingsCard>
                         <button
-                          onClick={() => { setShowSettings(false); openProfile() }}
+                          onClick={() => openProfile()}
                           className="w-full flex items-center gap-3 py-3 min-h-[52px] active:opacity-70"
                         >
                           <ShieldCheck size={18} className="text-accent shrink-0" />

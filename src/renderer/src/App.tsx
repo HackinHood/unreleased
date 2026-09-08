@@ -24,6 +24,7 @@ function getViewFromPath(pathname: string): ViewType {
   if (pathname === '/tierlist') return 'tierlist'
   if (pathname === '/stats') return 'stats'
   if (pathname === '/download') return 'download'
+  if (pathname === '/settings') return 'settings'
   if (pathname.startsWith('/shared/')) return 'shared-playlist'
   if (pathname === '/auth/discord/callback') return 'api-tracker'
   return 'not-found'
@@ -77,8 +78,8 @@ const Settings = lazyView(() => import('./components/Settings'))
 const DiagnosticsModal = lazyView(() => import('./components/DiagnosticsModal'))
 
 export default function App(): JSX.Element {
-  const { showNowPlaying, showQueue, showSettings, setShowSettings, showDiagnostics, setShowDiagnostics, showUploadManager, setShowUploadManager, activeView, sidebarPosition, loadAccount, completeDiscordLogin, showUserAuth, setShowUserAuth, prefetchApiData, refreshPlaylists, heroBleedTop } = useStorePick(
-    'showNowPlaying', 'showQueue', 'showSettings', 'setShowSettings', 'showDiagnostics', 'setShowDiagnostics', 'showUploadManager', 'setShowUploadManager', 'activeView', 'sidebarPosition', 'loadAccount', 'completeDiscordLogin', 'showUserAuth', 'setShowUserAuth', 'prefetchApiData', 'refreshPlaylists', 'heroBleedTop')
+  const { showNowPlaying, showQueue, showDiagnostics, setShowDiagnostics, showUploadManager, setShowUploadManager, activeView, sidebarPosition, loadAccount, completeDiscordLogin, showUserAuth, setShowUserAuth, prefetchApiData, refreshPlaylists, heroBleedTop } = useStorePick(
+    'showNowPlaying', 'showQueue', 'showDiagnostics', 'setShowDiagnostics', 'showUploadManager', 'setShowUploadManager', 'activeView', 'sidebarPosition', 'loadAccount', 'completeDiscordLogin', 'showUserAuth', 'setShowUserAuth', 'prefetchApiData', 'refreshPlaylists', 'heroBleedTop')
   const isMobile = useIsMobile()
   useThemeEffects()
   // Seed auth token from env in local dev only — import.meta.env.DEV is false in production
@@ -163,13 +164,13 @@ export default function App(): JSX.Element {
           // wants a hero image to bleed full-bleed behind its own header (WRLD,
           // Playlists' detail screens) raises heroBleedTop and paints that
           // strip itself instead — see the store field's doc comment.
-          style={sidebarPosition !== 'top' && !((activeView === 'wrld' || heroBleedTop) && !showSettings)
+          style={sidebarPosition !== 'top' && !(activeView === 'wrld' || heroBleedTop)
             ? { paddingTop: 'env(safe-area-inset-top, 0px)' } : undefined}
         >
           <div className="flex-1 overflow-hidden flex">
             <ErrorBoundary>
             <Suspense fallback={null}>
-            {isMobile && showSettings ? <Settings />
+            {activeView === 'settings' ? <Settings />
               : activeView === 'api-tracker' ? <ApiTrackerView />
               : activeView === 'api-files' ? <ApiFilesView />
               : activeView === 'editor' ? <EditorPage />
@@ -210,13 +211,7 @@ export default function App(): JSX.Element {
           boundary: the chrome keeps a compact inline notice, the invisible
           background workers fail silently, and the modals/overlays show a
           centered, dismissible card. */}
-      {/* TEMPORARY: default fallback removed so a real crash shows the full
-          error message + stack (see ErrorBoundary.tsx) instead of the generic
-          "Player crashed" text — there's no client-side crash reporting in
-          production, so this is how we get the actual error from a user's
-          session. Restore the static fallback below once the iOS crash is
-          diagnosed. */}
-      <ErrorBoundary>
+      <ErrorBoundary fallback={<div className="h-20 shrink-0 border-t border-[var(--border)] flex items-center justify-center text-text-muted text-xs">Player crashed — reload the app to restore playback controls.</div>}>
         <Player />
       </ErrorBoundary>
       <ErrorBoundary fallback={null}><RadioFmPlayer /></ErrorBoundary>
@@ -224,14 +219,6 @@ export default function App(): JSX.Element {
       <ErrorBoundary fallback={null}><LastfmScrobbler /></ErrorBoundary>
       <ErrorBoundary fallback={null}><NewsNotifier /></ErrorBoundary>
       <ErrorBoundary fallback={null}><BottomNav /></ErrorBoundary>
-      {/* Mobile renders Settings in the content slot above (a page, not a
-          dialog — see Settings.mobile.tsx) so the player bar and bottom nav
-          stay usable underneath it. Desktop keeps the modal-overlay form. */}
-      {showSettings && !isMobile && (
-        <ErrorBoundary variant="overlay" onDismiss={() => setShowSettings(false)}>
-          <Suspense fallback={null}><Settings /></Suspense>
-        </ErrorBoundary>
-      )}
       {showDiagnostics && (
         <ErrorBoundary variant="overlay" onDismiss={() => setShowDiagnostics(false)}>
           <Suspense fallback={null}><DiagnosticsModal /></Suspense>
