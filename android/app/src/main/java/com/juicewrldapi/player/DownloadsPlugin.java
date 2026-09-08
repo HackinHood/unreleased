@@ -11,7 +11,6 @@ import android.os.Build;
 import android.os.Environment;
 import android.provider.DocumentsContract;
 import android.provider.MediaStore;
-import android.provider.OpenableColumns;
 import android.util.Base64;
 
 import androidx.activity.result.ActivityResult;
@@ -23,12 +22,9 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 
 /**
  * Saves an in-memory file built in JS (a playlist ZIP, a synced-lyrics
@@ -213,65 +209,6 @@ public class DownloadsPlugin extends Plugin {
             } catch (SecurityException ignored) { }
         }
         call.resolve();
-    }
-
-    // ── M3U file picking ────────────────────────────────────────────────────
-    // A single read, not a persisted grant — the text comes back to JS
-    // immediately and the plugin never touches this URI again, so there's
-    // nothing here worth surviving a restart for (contrast pickFolder above).
-
-    @PluginMethod
-    public void pickM3u(PluginCall call) {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        // Providers are as unreliable about .m3u/.m3u8 mime types as they are
-        // about audio ones (see LocalLibraryPlugin's isAudio comment) — most
-        // report application/octet-stream or don't recognise the extension at
-        // all, so filtering by mime type would hide the exact files a user is
-        // trying to pick. "*/*" leaves the choice to them.
-        intent.setType("*/*");
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        startActivityForResult(call, intent, "m3uPicked");
-    }
-
-    @ActivityCallback
-    private void m3uPicked(PluginCall call, ActivityResult result) {
-        if (call == null) return;
-        JSObject ret = new JSObject();
-        Intent data = result.getData();
-        if (result.getResultCode() != Activity.RESULT_OK || data == null || data.getData() == null) {
-            ret.put("canceled", true);
-            call.resolve(ret);
-            return;
-        }
-        Uri uri = data.getData();
-        try {
-            ret.put("name", displayName(uri));
-            ret.put("text", readText(uri));
-            call.resolve(ret);
-        } catch (Exception e) {
-            call.reject(e.getMessage() == null ? "Could not read the file" : e.getMessage(), e);
-        }
-    }
-
-    private String displayName(Uri uri) {
-        String[] projection = { OpenableColumns.DISPLAY_NAME };
-        try (Cursor c = getContext().getContentResolver().query(uri, projection, null, null, null)) {
-            if (c != null && c.moveToFirst() && !c.isNull(0)) return c.getString(0);
-        } catch (Exception ignored) { }
-        String tail = uri.getLastPathSegment();
-        return tail == null ? "playlist.m3u" : tail;
-    }
-
-    private String readText(Uri uri) throws Exception {
-        try (InputStream in = getContext().getContentResolver().openInputStream(uri)) {
-            if (in == null) throw new Exception("Could not open the file for reading");
-            ByteArrayOutputStream buf = new ByteArrayOutputStream();
-            byte[] chunk = new byte[8192];
-            int read;
-            while ((read = in.read(chunk)) != -1) buf.write(chunk, 0, read);
-            return new String(buf.toByteArray(), StandardCharsets.UTF_8);
-        }
     }
 
     /**

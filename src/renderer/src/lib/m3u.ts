@@ -1,6 +1,6 @@
 // M3U parsing/serialization — the JS-side counterpart to desktop's parseM3u
 // in electron/main.js, plus the native file picker that reads one in on
-// Android (DownloadsPlugin.pickM3u).
+// Android (LocalLibraryPlugin.pickTextFile).
 //
 // Unlike desktop, there's no real filesystem here: library tracks are
 // identified by content:// URIs (see lib/localLibrary.ts), and a relative
@@ -60,14 +60,17 @@ export function serializeM3u(tracks: { path: string; title?: string | null; arti
 }
 
 // ── Native file picker ──────────────────────────────────────────────────────
+// Reuses LocalLibraryPlugin's pickTextFile (a general "pick a file, read it
+// as text" method) rather than adding a picker to the Downloads plugin, which
+// only ever writes.
 
-interface M3uPickerPlugin {
-  pickM3u(): Promise<{ canceled?: boolean; name?: string; text?: string }>
+interface TextFilePickerPlugin {
+  pickTextFile(): Promise<{ canceled?: boolean; name?: string; text?: string }>
 }
 
-function androidPlugin(): M3uPickerPlugin | null {
-  const cap = (window as unknown as { Capacitor?: { Plugins?: { Downloads?: M3uPickerPlugin } } }).Capacitor
-  return cap?.Plugins?.Downloads ?? null
+function androidPlugin(): TextFilePickerPlugin | null {
+  const cap = (window as unknown as { Capacitor?: { Plugins?: { LocalLibrary?: TextFilePickerPlugin } } }).Capacitor
+  return cap?.Plugins?.LocalLibrary ?? null
 }
 
 /** Opens the system file picker and reads the chosen file as text. Resolves
@@ -75,7 +78,7 @@ function androidPlugin(): M3uPickerPlugin | null {
 export async function pickM3uFile(): Promise<{ name: string; text: string } | null> {
   const plugin = androidPlugin()
   if (!plugin) return null
-  const res = await plugin.pickM3u()
+  const res = await plugin.pickTextFile()
   if (res.canceled || res.text == null) return null
   return { name: res.name || 'playlist.m3u', text: res.text }
 }

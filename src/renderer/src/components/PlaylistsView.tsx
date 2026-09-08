@@ -32,6 +32,7 @@ import { Sheet, SheetItem, SheetDivider } from './mobile/Sheet'
 import { useLongPress } from './mobile/useLongPress'
 import { useDragReorder } from './mobile/useDragReorder'
 import { registerBackHandler } from '../lib/backHandlers'
+import { useToast, Toast } from '../hooks/useToast'
 import { allFolderedKeys, folderOfPlaylist, parsePlaylistKey } from '../lib/playlistFolders'
 import type { PlaylistFolder } from '../lib/playlistFolders'
 import { Folder, FolderPlus, FolderOpen, FolderMinus } from 'lucide-react'
@@ -447,11 +448,7 @@ export default function PlaylistsView(): JSX.Element {
   // M3U import/export
   const [m3uExportState, setM3uExportState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [m3uImporting, setM3uImporting] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
-  const showToast = useCallback((msg: string): void => {
-    setToast(msg)
-    window.setTimeout(() => setToast((t) => (t === msg ? null : t)), 2400)
-  }, [])
+  const { toast, showToast } = useToast(2400)
 
   // Song info modal
   const [infoSong, setInfoSong] = useState<JWApiSong | null>(null)
@@ -1060,7 +1057,7 @@ export default function PlaylistsView(): JSX.Element {
     const res = await exportLocalPlaylistM3u(id)
     if (res.ok) { setM3uExportState('done'); showToast('Saved to Downloads') }
     else if (!res.canceled) { setM3uExportState('error'); showToast(res.error || 'Export failed') }
-    else setM3uExportState('idle')
+    else { setM3uExportState('idle'); return }
     setTimeout(() => setM3uExportState('idle'), 3000)
   }, [m3uExportState, exportLocalPlaylistM3u, showToast])
 
@@ -2275,7 +2272,7 @@ export default function PlaylistsView(): JSX.Element {
               icon={m3uExportState === 'loading' ? Loader2 : FileUp}
               label={m3uExportState === 'error' ? 'Export failed' : m3uExportState === 'done' ? 'Saved to Downloads' : 'Export as M3U'}
               disabled={m3uExportState === 'loading' || tracks.length === 0}
-              onClick={() => { const id = localPl.id; closeSheet(); handleExportM3u(id) }}
+              onClick={() => { closeSheet(); handleExportM3u(localPl.id) }}
             />
           </>
         )}
@@ -2639,15 +2636,7 @@ export default function PlaylistsView(): JSX.Element {
         onEdit={canEdit ? (songId) => { setInfoSong(null); setPendingEditorSongId(songId); setActiveView('editor') } : undefined}
       />
 
-      {/* Toast — lifted clear of the player and nav bar, same treatment as
-          ApiFilesView's, for M3U import/export results. */}
-      {toast && (
-        <div className="fixed left-1/2 -translate-x-1/2 z-[90] px-4 py-2.5 rounded-full bg-surface-overlay border border-[var(--border)] shadow-lg flex items-center gap-2 text-text-primary text-[13px] font-medium"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 84px)' }}
-        >
-          {toast}
-        </div>
-      )}
+      <Toast text={toast} />
     </div>
   )
 }

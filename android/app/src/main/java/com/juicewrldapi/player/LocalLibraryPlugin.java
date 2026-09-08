@@ -30,6 +30,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -163,6 +164,70 @@ public class LocalLibraryPlugin extends Plugin {
         }
         ret.put("uris", uris);
         call.resolve(ret);
+    }
+
+    /**
+     * Opens the system file picker for a single arbitrary file and reads it
+     * back as text — used for importing an .m3u/.m3u8 playlist. Unlike
+     * pickFiles above, this is a one-off read: no persisted grant, since the
+     * text comes back to JS immediately and the plugin never touches the URI
+     * again.
+     */
+    @PluginMethod
+    public void pickTextFile(PluginCall call) {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        // Providers are as unreliable about .m3u/.m3u8 mime types as they are
+        // about audio ones (see isAudio's comment below) — most report
+        // application/octet-stream or don't recognise the extension at all,
+        // so filtering by mime type would hide the exact file a user is
+        // trying to pick. "*/*" leaves the choice to them.
+        intent.setType("*/*");
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivityForResult(call, intent, "textFilePicked");
+    }
+
+    @ActivityCallback
+    private void textFilePicked(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        JSObject ret = new JSObject();
+        Intent data = result.getData();
+        if (result.getResultCode() != Activity.RESULT_OK || data == null || data.getData() == null) {
+            ret.put("canceled", true);
+            call.resolve(ret);
+            return;
+        }
+        Uri uri = data.getData();
+        try {
+            String[] meta = queryDocumentMeta(uri);
+            String name = meta != null && meta[0] != null ? meta[0] : fallbackName(uri);
+            long size = meta != null ? Long.parseLong(meta[1]) : 0;
+            ret.put("name", name);
+            ret.put("text", readText(uri, size));
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject(e.getMessage() == null ? "Could not read the file" : e.getMessage(), e);
+        }
+    }
+
+    private String fallbackName(Uri uri) {
+        String tail = uri.getLastPathSegment();
+        return tail == null ? "file.txt" : tail;
+    }
+
+    /** Reads a document's full contents as UTF-8 text. `sizeHint` (from
+     *  queryDocumentMeta, 0 if unknown) sizes the buffer up front so a normal
+     *  playlist file doesn't grow it via repeated doubling. */
+    private String readText(Uri uri, long sizeHint) throws Exception {
+        try (InputStream in = getContext().getContentResolver().openInputStream(uri)) {
+            if (in == null) throw new Exception("Could not open the file for reading");
+            ByteArrayOutputStream buf = new ByteArrayOutputStream(
+                    sizeHint > 0 && sizeHint < Integer.MAX_VALUE ? (int) sizeHint : 8192);
+            byte[] chunk = new byte[8192];
+            int read;
+            while ((read = in.read(chunk)) != -1) buf.write(chunk, 0, read);
+            return new String(buf.toByteArray(), StandardCharsets.UTF_8);
+        }
     }
 
     /**

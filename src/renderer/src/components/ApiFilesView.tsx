@@ -27,6 +27,7 @@ import {
 import { getFileExt, getMediaType } from '../lib/fileTypes'
 import { formatBytes } from '../lib/format'
 import { registerBackHandler } from '../lib/backHandlers'
+import { useToast, Toast } from '../hooks/useToast'
 import { Track } from '../types'
 import { ProgressiveCover } from './ProgressiveCover'
 import { Sheet, SheetItem, SheetDivider } from './mobile/Sheet'
@@ -217,7 +218,6 @@ export default function ApiFilesView(): JSX.Element {
   const [playing, setPlaying] = useState<string | null>(null)
   const [lightboxItems, setLightboxItems] = useState<LightboxItem[]>([])
   const [lightboxIndex, setLightboxIndex] = useState(-1)
-  const [toast, setToast] = useState<string | null>(null)
   const [infoSong, setInfoSong] = useState<JWApiSong | null>(null)
 
   // Sheets. `sheetEntry` is the row the actions sheet was opened for;
@@ -271,10 +271,7 @@ export default function ApiFilesView(): JSX.Element {
 
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  const showToast = (msg: string): void => {
-    setToast(msg)
-    window.setTimeout(() => setToast((t) => (t === msg ? null : t)), 1800)
-  }
+  const { toast, showToast } = useToast()
 
   // ── Navigation ─────────────────────────────────────────────────────────────
 
@@ -1077,14 +1074,7 @@ export default function ApiFilesView(): JSX.Element {
 
       {/* Toasts — lifted clear of the player and nav bar, whose height the
           BottomNav publishes as a CSS var. */}
-      {toast && (
-        <div
-          className="fixed left-1/2 -translate-x-1/2 z-[75] flex items-center gap-2 px-4 py-2.5 rounded-full bg-surface-highest text-text-primary text-[13px] shadow-2xl animate-slide-up"
-          style={{ bottom: 'calc(var(--bottom-nav-height, 0px) + 92px)' }}
-        >
-          <Check size={14} className="text-accent" /> {toast}
-        </div>
-      )}
+      <Toast text={toast} />
       {!selectMode && zipStatus !== 'idle' && (
         <div
           className="fixed left-1/2 -translate-x-1/2 z-[75] flex items-center gap-2 px-4 py-2.5 rounded-full bg-surface-highest text-text-primary text-[13px] shadow-2xl animate-slide-up"
