@@ -23,7 +23,7 @@ function CardPlayOverlay({ onPlay }: { onPlay: () => void }): JSX.Element {
 
 export default function PlaylistCard({
   name, subtitle, cover, badge, selected, selectMode,
-  onClick, onContextMenu, onMenuButton, onPlay,
+  onClick, onDoubleClick, onContextMenu, onMenuButton, onPlay,
   draggable, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop, isDragging, isDropTarget,
 }: {
   name: string
@@ -34,6 +34,9 @@ export default function PlaylistCard({
   selected: boolean
   selectMode: boolean
   onClick: (e: React.MouseEvent) => void
+  /** Skips the inline quick-view panel and jumps straight to the playlist's
+   *  full page. */
+  onDoubleClick?: (e: React.MouseEvent) => void
   onContextMenu: (e: React.MouseEvent) => void
   /** The always-visible "⋯" button (distinct from right-click). */
   onMenuButton: (e: React.MouseEvent) => void
@@ -56,6 +59,7 @@ export default function PlaylistCard({
     <div
       className={`group text-left relative cursor-pointer transition-opacity ${isDragging ? 'opacity-40' : ''}`}
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
       draggable={draggable}
       onDragStart={onDragStart}

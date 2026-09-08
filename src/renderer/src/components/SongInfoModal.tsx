@@ -194,7 +194,7 @@ export default function SongInfoModal({ song, onClose, onEdit }: Props): JSX.Ele
       panelClassName="bg-surface border border-[var(--border)] rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-lg max-h-[92svh] md:max-h-[86vh]"
       minWidth={420} minHeight={480}
     >
-      {({ onHandleMouseDown, locked, toggleLock }) => (
+      {({ onHandleMouseDown, locked, toggleLock, canLock }) => (
       <div
         className="select-text bg-surface w-full h-full flex flex-col overflow-hidden"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
@@ -209,13 +209,15 @@ export default function SongInfoModal({ song, onClose, onEdit }: Props): JSX.Ele
           )}
           <div className="absolute inset-0 bg-gradient-to-b from-transparent to-surface" />
           <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5">
-            <LockToggle
-              locked={locked}
-              onClick={toggleLock}
-              className={`w-7 h-7 flex items-center justify-center rounded-full transition-colors ${
-                locked ? 'bg-accent/80 text-white' : 'bg-black/40 text-white/70 hover:text-white'
-              }`}
-            />
+            {canLock && (
+              <LockToggle
+                locked={locked}
+                onClick={toggleLock}
+                className={`w-7 h-7 flex items-center justify-center rounded-full transition-colors ${
+                  locked ? 'bg-accent/80 text-white' : 'bg-black/40 text-white/70 hover:text-white'
+                }`}
+              />
+            )}
             {onEdit && (
               <button
                 onClick={() => { onEdit(displaySong.id); onClose() }}

@@ -238,6 +238,12 @@ export function ModalOverlay({
     onHandleMouseDown: (e: ReactMouseEvent) => void
     locked: boolean
     toggleLock: () => void
+    /** False when this panel isn't actually docked in the sandbox (floating
+     *  pop-out, standalone modal, or the user turned docking off in
+     *  Settings) — locking only means something when something else could
+     *  cover this panel, so callers should hide their LockToggle button
+     *  entirely rather than show one that's always unlocked and does nothing. */
+    canLock: boolean
   }) => ReactNode
 }): JSX.Element | null {
   const id = useId()
@@ -369,7 +375,7 @@ export function ModalOverlay({
     // OS window, nothing docked in the sandbox can cover it.
     return createPortal(
       <div className={`fixed inset-0 ${zIndexClassName} flex`}>
-        {children({ onHandleMouseDown: () => {}, locked: false, toggleLock: () => {} })}
+        {children({ onHandleMouseDown: () => {}, locked: false, toggleLock: () => {}, canLock: false })}
       </div>,
       document.body,
     )
@@ -389,7 +395,7 @@ export function ModalOverlay({
         onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
       >
         <div className={`relative overflow-hidden ${panelClassName}`}>
-          {children({ onHandleMouseDown: () => {}, locked: false, toggleLock: () => {} })}
+          {children({ onHandleMouseDown: () => {}, locked: false, toggleLock: () => {}, canLock: false })}
         </div>
       </div>,
       document.body,
@@ -412,7 +418,7 @@ export function ModalOverlay({
           width/height/maxWidth/maxHeight via inline-style specificity, while
           its border/radius/shadow/bg/overflow-hidden keep applying either way. */}
       <div ref={panelRef} className={`relative overflow-hidden ${panelClassName}`} style={panelStyle}>
-        {children({ onHandleMouseDown, locked, toggleLock })}
+        {children({ onHandleMouseDown, locked, toggleLock, canLock: true })}
         <ResizeHandle onMouseDown={onResizeHandleMouseDown} />
       </div>
     </div>,

@@ -737,7 +737,7 @@ function BulkEditor<T>({ spec, onClose }: { spec: BulkSpec<T>; onClose: () => vo
       panelClassName="bg-surface border border-[var(--border)] rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-2xl max-h-[92svh]"
       minWidth={420} minHeight={420}
     >
-      {({ onHandleMouseDown, locked, toggleLock }) => (
+      {({ onHandleMouseDown, locked, toggleLock, canLock }) => (
       <div className="bg-surface w-full h-full flex flex-col">
 
         <div
@@ -751,7 +751,7 @@ function BulkEditor<T>({ spec, onClose }: { spec: BulkSpec<T>; onClose: () => vo
             <p className="text-text-muted text-xs mt-0.5">{spec.subtitle}</p>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <LockToggle locked={locked} onClick={toggleLock} />
+            {canLock && <LockToggle locked={locked} onClick={toggleLock} />}
             <button
               onClick={attemptClose}
               disabled={status === 'submitting'}

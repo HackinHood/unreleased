@@ -93,7 +93,7 @@ export default function SkinEditorModal({
       panelClassName="rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl w-full max-w-lg max-h-[85vh]"
       minWidth={420} minHeight={420}
     >
-      {({ onHandleMouseDown, locked, toggleLock }) => (
+      {({ onHandleMouseDown, locked, toggleLock, canLock }) => (
       <div className="w-full h-full flex flex-col overflow-hidden">
         {/* Header */}
         <div
@@ -106,13 +106,15 @@ export default function SkinEditorModal({
             placeholder="Skin name"
             className="flex-1 min-w-0 bg-transparent text-text-primary text-base font-semibold outline-none placeholder:text-text-muted"
           />
-          <LockToggle
-            locked={locked}
-            onClick={toggleLock}
-            className={`w-6 h-6 flex items-center justify-center rounded-lg transition-colors ${
-              locked ? 'text-accent' : 'text-text-muted hover:text-text-primary hover:bg-[var(--surface-overlay)]'
-            }`}
-          />
+          {canLock && (
+            <LockToggle
+              locked={locked}
+              onClick={toggleLock}
+              className={`w-6 h-6 flex items-center justify-center rounded-lg transition-colors ${
+                locked ? 'text-accent' : 'text-text-muted hover:text-text-primary hover:bg-[var(--surface-overlay)]'
+              }`}
+            />
+          )}
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-[var(--surface-overlay)] transition-colors"

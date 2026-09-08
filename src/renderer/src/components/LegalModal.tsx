@@ -300,7 +300,7 @@ export default function LegalModal({ initialDoc = 'terms', onClose }: { initialD
       panelClassName="bg-surface border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-[520px] h-[640px] max-h-[85vh]"
       minWidth={420} minHeight={420}
     >
-      {({ onHandleMouseDown, locked, toggleLock }) => (
+      {({ onHandleMouseDown, locked, toggleLock, canLock }) => (
         <div className="w-full h-full flex flex-col overflow-hidden">
           <div
             className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] shrink-0 cursor-grab active:cursor-grabbing"
@@ -313,7 +313,7 @@ export default function LegalModal({ initialDoc = 'terms', onClose }: { initialD
               </h2>
             </div>
             <div className="flex items-center gap-1">
-              <LockToggle locked={locked} onClick={toggleLock} />
+              {canLock && <LockToggle locked={locked} onClick={toggleLock} />}
               <button onClick={onClose} className="text-text-muted hover:text-text-primary transition-colors">
                 <X size={20} />
               </button>

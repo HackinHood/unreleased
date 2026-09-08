@@ -139,12 +139,15 @@ function AssetButton({ asset, label, primary }: { asset: ReleaseAsset; label: st
     <a
       href={asset.browser_download_url}
       className={primary
-        ? 'flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-bold bg-accent text-white hover:bg-accent/90 transition-colors'
-        : 'flex items-center justify-center gap-2 w-full py-2 rounded-xl text-xs font-semibold border border-[var(--border)] text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors'}
+        ? 'flex items-center gap-2 w-full px-4 py-2.5 rounded-xl text-sm font-bold bg-accent text-white hover:bg-accent/90 transition-colors'
+        : 'flex items-center gap-2 w-full px-4 py-2 rounded-xl text-xs font-semibold border border-[var(--border)] text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors'}
     >
-      <Download size={primary ? 15 : 13} />
-      <span>{label}</span>
-      <span className={primary ? 'font-medium text-white/70' : 'text-text-muted'}>· {fmtMB(asset.size)}</span>
+      <Download size={primary ? 15 : 13} className="shrink-0" />
+      {/* Label left, size pinned right on the same line — a centered inline
+          run of both wrapped unpredictably (mid-word breaks, different
+          heights) once label length varied across buttons. */}
+      <span className="flex-1 min-w-0 truncate text-left">{label}</span>
+      <span className={`shrink-0 ${primary ? 'font-medium text-white/70' : 'text-text-muted'}`}>{fmtMB(asset.size)}</span>
     </a>
   )
 }
@@ -356,7 +359,7 @@ export default function DownloadAppView(): JSX.Element {
                   {winWeb && <p className="text-text-muted text-[11px] leading-snug">The web installer is a small stub that fetches the app during setup.</p>}
                 </>
               ) : (
-                <a href={LATEST_URL} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-bold bg-accent text-white hover:bg-accent/90 transition-colors">
+                <a href={LATEST_URL} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl text-sm font-bold bg-accent text-white hover:bg-accent/90 transition-colors">
                   <Download size={15} /> Get from GitHub
                 </a>
               )}
@@ -371,7 +374,7 @@ export default function DownloadAppView(): JSX.Element {
                   <p className="text-text-muted text-[11px] leading-snug">Mark it executable (<code className="text-text-secondary">chmod +x</code>), then run — no install step.</p>
                 </>
               ) : (
-                <a href={LATEST_URL} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-bold bg-accent text-white hover:bg-accent/90 transition-colors">
+                <a href={LATEST_URL} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl text-sm font-bold bg-accent text-white hover:bg-accent/90 transition-colors">
                   <Download size={15} /> Get from GitHub
                 </a>
               )}
@@ -391,7 +394,7 @@ export default function DownloadAppView(): JSX.Element {
                   )}
                 </>
               ) : (
-                <a href={`${REPO_URL}/releases`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-bold bg-accent text-white hover:bg-accent/90 transition-colors">
+                <a href={`${REPO_URL}/releases`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl text-sm font-bold bg-accent text-white hover:bg-accent/90 transition-colors">
                   <Download size={15} /> Get from GitHub
                 </a>
               )}
@@ -408,7 +411,7 @@ export default function DownloadAppView(): JSX.Element {
                   </p>
                 </>
               ) : (
-                <a href={`${REPO_URL}/releases`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-bold bg-accent text-white hover:bg-accent/90 transition-colors">
+                <a href={`${REPO_URL}/releases`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl text-sm font-bold bg-accent text-white hover:bg-accent/90 transition-colors">
                   <Download size={15} /> Get from GitHub
                 </a>
               )}
@@ -425,7 +428,7 @@ export default function DownloadAppView(): JSX.Element {
                   </p>
                 </>
               ) : (
-                <a href={`${REPO_URL}/releases`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-bold bg-accent text-white hover:bg-accent/90 transition-colors">
+                <a href={`${REPO_URL}/releases`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl text-sm font-bold bg-accent text-white hover:bg-accent/90 transition-colors">
                   <Download size={15} /> Get from GitHub
                 </a>
               )}

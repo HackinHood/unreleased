@@ -1553,6 +1553,7 @@ export default function PlaylistsView(): JSX.Element {
             if (plSelectMode) { togglePlaylistSelect(plKey); return }
             toggleExpanded(plKey, !inFolder)
           }}
+          onDoubleClick={() => { if (!plSelectMode) { setExpandedKey(null); setSelectedId(p.id) } }}
           onContextMenu={e => {
             e.preventDefault(); e.stopPropagation()
             if (plSelectMode) {
@@ -1608,6 +1609,7 @@ export default function PlaylistsView(): JSX.Element {
             if (plSelectMode) { togglePlaylistSelect(plKey); return }
             toggleExpanded(plKey, !inFolder)
           }}
+          onDoubleClick={() => { if (!plSelectMode) { setExpandedKey(null); setLocalSelectedId(lp.id) } }}
           onContextMenu={e => {
             e.preventDefault(); e.stopPropagation()
             if (plSelectMode) {
@@ -2997,7 +2999,7 @@ export default function PlaylistsView(): JSX.Element {
             {
               key: 'liked',
               tile: (
-                <button key="liked" onClick={() => toggleExpanded('liked')} className="group text-left cursor-pointer">
+                <button key="liked" onClick={() => toggleExpanded('liked')} onDoubleClick={() => { setExpandedKey(null); setShowLiked(true) }} className="group text-left cursor-pointer">
                   <div className="aspect-square rounded-2xl bg-gradient-to-br from-accent/50 to-accent/10 flex items-center justify-center mb-2.5 shadow-md group-hover:shadow-xl group-hover:-translate-y-1 transition-all duration-200">
                     <Heart size={44} className="text-accent" fill="currentColor" />
                   </div>

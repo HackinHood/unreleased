@@ -1,9 +1,8 @@
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Settings, ShieldCheck, MoreHorizontal } from 'lucide-react'
+import { Settings, MoreHorizontal } from 'lucide-react'
 import { useStorePick } from '../store/useStore'
 import { ViewType } from '../types'
-import { showStaffProfile, staffProfileView, staffProfileLabel } from '../lib/userApi'
 import { orderedNavItems, isNavItemVisible, navTabFor, tabEntryView } from '../lib/navItems'
 import { useBackToClose } from '../hooks/useBackToClose'
 
@@ -29,9 +28,8 @@ const MAX_TABS = 6
 interface Tab { view: ViewType; icon: ReactNode; label: string }
 
 export default function BottomNav(): JSX.Element {
-  const { activeView, setActiveView, toggleSettings, showSettings, setShowSettings, account, navVisibility, navOrder, sidebarPosition } =
-    useStorePick('activeView', 'setActiveView', 'toggleSettings', 'showSettings', 'setShowSettings', 'account', 'navVisibility', 'navOrder', 'sidebarPosition')
-  const profileView = staffProfileView(account)
+  const { activeView, setActiveView, toggleSettings, showSettings, setShowSettings, navVisibility, navOrder, sidebarPosition } =
+    useStorePick('activeView', 'setActiveView', 'toggleSettings', 'showSettings', 'setShowSettings', 'navVisibility', 'navOrder', 'sidebarPosition')
   const atTop = sidebarPosition === 'top'
 
   // Shared with the side menu: orderedNavItems sanitizes the saved order,
@@ -46,25 +44,12 @@ export default function BottomNav(): JSX.Element {
       icon: <span className="[&_svg]:w-6 [&_svg]:h-6 [&_img]:w-7 [&_img]:h-7 flex items-center justify-center">{item.icon}</span>,
     }))
 
-  // The staff profile isn't in NAV_ITEMS (it's a role-gated extra with no
-  // desktop side-menu row), so it stays special-cased here and reads its
-  // toggle out of the same map under its view id.
-  const navShown = (view: ViewType): boolean => navVisibility[view] ?? true
-  const extraTabs: Tab[] = []
-  if (showStaffProfile(account) && navShown(profileView)) {
-    extraTabs.push({
-      view: profileView,
-      icon: <ShieldCheck size={24} />,
-      label: staffProfileLabel(account),
-    })
-  }
-
   // Settings has a guaranteed slot (it's the only route into Settings on
   // mobile), so the rest compete for the remaining MAX_TABS - 1 spots. Only
   // when that's not enough does "More" claim one of those spots for itself —
   // with few enough items enabled, every tab still shows directly and no
   // "More" button appears at all.
-  const allTabs = [...navItemTabs, ...extraTabs]
+  const allTabs = navItemTabs
   const overflow = allTabs.length > MAX_TABS - 1
   const tabs = overflow ? allTabs.slice(0, MAX_TABS - 2) : allTabs
   const moreTabs = overflow ? allTabs.slice(MAX_TABS - 2) : []

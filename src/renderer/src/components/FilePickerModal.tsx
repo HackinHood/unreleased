@@ -232,7 +232,7 @@ export default function FilePickerModal({ kind = 'image', songTitle, altTitles =
       panelClassName="bg-surface border border-[var(--border)] rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-lg h-[85svh] md:h-[600px] max-h-[92svh] md:max-h-[86vh]"
       minWidth={420} minHeight={420}
     >
-      {({ onHandleMouseDown, locked, toggleLock }) => (
+      {({ onHandleMouseDown, locked, toggleLock, canLock }) => (
       <div
         className="select-text bg-surface w-full h-full flex flex-col overflow-hidden"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
@@ -247,7 +247,7 @@ export default function FilePickerModal({ kind = 'image', songTitle, altTitles =
               {title ?? (isAudio ? 'Choose an audio file from API files' : kind === 'any' ? 'Choose a file from API files' : 'Choose a cover from API files')}
             </h2>
             <div className="flex items-center gap-1">
-              <LockToggle locked={locked} onClick={toggleLock} />
+              {canLock && <LockToggle locked={locked} onClick={toggleLock} />}
               <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-overlay transition-colors" title="Close">
                 <X size={15} className="text-text-muted" />
               </button>

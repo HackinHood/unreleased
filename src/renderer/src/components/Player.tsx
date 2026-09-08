@@ -86,6 +86,11 @@ export function getAudioCurrentTime(): number { return _getAudioCurrentTime?.() 
 const LYRICS_CACHE_TTL_MS = 2 * 60 * 1000
 const lyricsCache = new Map<number, { lyrics: string | null; syncedLyrics: string | null; ts: number }>()
 export function invalidateLyricsCache(songId: number): void { lyricsCache.delete(songId) }
+// Module-level, not a ref: dedupes the /songs/{id}/ fetch below across a
+// synchronous double-invoke of its effect (React StrictMode's dev-only
+// mount→cleanup→mount), where both invocations' closures still see the same
+// pre-update `currentTrackFull` state.
+let lyricsFetchInFlight: number | null = null
 
 export default function Player(): JSX.Element {
   const {
@@ -378,7 +383,8 @@ export default function Player(): JSX.Element {
       const cached = lyricsCache.get(songId)
       if (cached && Date.now() - cached.ts < LYRICS_CACHE_TTL_MS) {
         setCurrentTrackFull({ ...synthetic, lyrics: cached.lyrics, syncedLyrics: cached.syncedLyrics })
-      } else {
+      } else if (lyricsFetchInFlight !== songId) {
+        lyricsFetchInFlight = songId
         apiFetch<JWApiSong>(`/songs/${songId}/`)
           .then((song) => {
             const syncedLyrics = song.synced_lyrics || null

@@ -79,6 +79,7 @@ const SETTINGS_SEARCH_INDEX: { tab: Tab; label: string; sub?: string; devOnly?: 
   { tab: 'appearance', label: 'Blur inactive lyrics', sub: 'Soften every synced line except the one playing' },
   { tab: 'appearance', label: 'Lyric colors', sub: 'Current line and other lines' },
   { tab: 'appearance', label: 'Full era names', sub: 'Show eras spelled out instead of abbreviated' },
+  { tab: 'appearance', label: 'Sandbox', sub: 'Dock modals into a collapsible pill instead of a centered popup' },
   { tab: 'appearance', label: 'Navigation position', sub: 'Where the nav menu sits — left, right, top, bottom' },
   { tab: 'appearance', label: 'Menu items', sub: 'Reorder or hide sidebar tabs' },
   { tab: 'appearance', label: 'Menu controls', sub: 'Reorder or hide the buttons at the foot of the menu' },
@@ -496,7 +497,7 @@ export default function Settings(): JSX.Element {
       panelClassName="bg-surface border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-[760px] h-[600px] max-h-[85vh]"
       minWidth={520} minHeight={420}
     >
-      {({ onHandleMouseDown, locked, toggleLock }) => (
+      {({ onHandleMouseDown, locked, toggleLock, canLock }) => (
       <>
       {/* Custom-skin editor (portals to <body>, so placement here is fine) */}
       {editingSkinId && (
@@ -515,7 +516,7 @@ export default function Settings(): JSX.Element {
             <h2 className="text-text-primary font-black text-xl tracking-tight">Settings</h2>
           </div>
           <div className="flex items-center gap-3" >
-            <LockToggle locked={locked} onClick={toggleLock} />
+            {canLock && <LockToggle locked={locked} onClick={toggleLock} />}
             <button onClick={closeSettings} className="text-text-muted hover:text-text-primary transition-colors">
               <X size={20} />
             </button>

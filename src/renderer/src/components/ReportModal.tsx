@@ -23,7 +23,7 @@ export default function ReportModal(): JSX.Element | null {
       panelClassName="bg-surface border border-[var(--border)] rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-md max-h-[92svh]"
       minWidth={380} minHeight={380}
     >
-      {({ onHandleMouseDown, locked, toggleLock }) => (
+      {({ onHandleMouseDown, locked, toggleLock, canLock }) => (
       <div className="bg-surface w-full h-full overflow-y-auto">
         <div
           className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] sticky top-0 bg-surface cursor-grab active:cursor-grabbing"
@@ -33,7 +33,7 @@ export default function ReportModal(): JSX.Element | null {
             <Icon size={15} className="text-accent" /> {title}
           </h2>
           <div className="flex items-center gap-1">
-            <LockToggle locked={locked} onClick={toggleLock} />
+            {canLock && <LockToggle locked={locked} onClick={toggleLock} />}
             <button onClick={closeReport} className="text-text-muted hover:text-text-primary transition-colors">
               <X size={18} />
             </button>
