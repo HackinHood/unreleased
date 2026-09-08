@@ -1036,7 +1036,7 @@ export default function EditorPage({ initialSongId = null }: {
     <div className="flex-1 flex flex-col min-h-0">
 
       {/* App bar — matches Settings' header shape */}
-      <div className="shrink-0 flex items-center gap-1 px-2">
+      <div className="shrink-0 flex items-center gap-1 px-2 pt-2">
         <button
           onClick={() => setActiveView(backView)}
           aria-label="Back"

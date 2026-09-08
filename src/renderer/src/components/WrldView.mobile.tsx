@@ -311,6 +311,49 @@ export default function WrldView(): JSX.Element {
   // page (a reload lands here), hence the fallback.
   const collapse = (): void => setActiveView(previousView && previousView !== 'wrld' ? previousView : 'api-tracker')
 
+  // Cover size — measured, not CSS-derived (see the comment by coverRowRef's
+  // use below for why). Biggest square that fits the row, capped at 420px.
+  const coverRowRef = useRef<HTMLDivElement>(null)
+  const [coverSize, setCoverSize] = useState(280)
+  useLayoutEffect(() => {
+    const el = coverRowRef.current
+    if (!el) return
+    const measure = (): void => {
+      const r = el.getBoundingClientRect()
+      setCoverSize(Math.max(0, Math.min(r.width, r.height, 420)))
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // Swipe-down-to-dismiss, same as the chevron — only armed from the header/
+  // cover area so it doesn't fight the progress bar or volume slider's own
+  // drag handling. Touch events keep targeting the element the touch started
+  // on even once the finger moves past its bounds, so this stays live for
+  // the whole gesture.
+  const dragStartY = useRef<number | null>(null)
+  const [dragY, setDragY] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const DISMISS_THRESHOLD = 110
+  const onDragStart = (e: React.TouchEvent): void => {
+    if (e.touches.length !== 1) return
+    dragStartY.current = e.touches[0].clientY
+    setDragging(true)
+  }
+  const onDragMove = (e: React.TouchEvent): void => {
+    if (dragStartY.current == null) return
+    const dy = e.touches[0].clientY - dragStartY.current
+    if (dy > 0) setDragY(dy)
+  }
+  const onDragEnd = (): void => {
+    if (dragY > DISMISS_THRESHOLD) collapse()
+    setDragY(0)
+    setDragging(false)
+    dragStartY.current = null
+  }
+
   const voteActive = !!radioFmVote?.active && !voteDismissed
 
   // App.tsx skips its usual safe-area-inset-top padding for this view
@@ -323,7 +366,23 @@ export default function WrldView(): JSX.Element {
   const ownsTopInset = sidebarPosition !== 'top'
 
   return (
-    <div className="relative flex-1 h-full w-full overflow-hidden flex flex-col">
+    <div
+      // Transform lives here, on the whole sheet (backdrop included) — not
+      // just the inner content — so dragging down actually reveals whatever
+      // App.tsx is rendering behind this overlay (see bgView there), Spotify-
+      // curtain style, instead of leaving the opaque backdrop covering it
+      // while only the text/controls slide.
+      className="relative flex-1 h-full w-full overflow-hidden flex flex-col"
+      onTouchStart={onDragStart}
+      onTouchMove={onDragMove}
+      onTouchEnd={onDragEnd}
+      onTouchCancel={onDragEnd}
+      style={{
+        transform: dragY ? `translateY(${dragY}px)` : undefined,
+        borderRadius: dragY ? Math.min(dragY, 32) : 0,
+        transition: dragging ? 'none' : 'transform 0.25s ease-out, border-radius 0.25s ease-out',
+      }}
+    >
       <ArtBackdrop
         artSrc={artSrc} artError={artError} isDarkSkin={isDarkSkin}
         radioFmActive={radioFmActive} onError={() => setArtError(true)}
@@ -362,33 +421,39 @@ export default function WrldView(): JSX.Element {
         </div>
 
         {/* ── Cover ──────────────────────────────────────────────────────── */}
-        {/* Width is the min of the 340px cap, 44vh (so short screens shrink
-            the whole box instead of clipping it), and the available 100% —
-            aspect-square then derives a height that always matches. Capping
-            height alone (without width following) used to leave this a
-            visible rectangle on short viewports instead of a smaller square. */}
-        <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 px-8 py-4">
-          <div
-            className="w-[min(340px,44vh,100%)] aspect-square rounded-3xl overflow-hidden shadow-[0_28px_70px_rgba(0,0,0,0.65)] transition-transform duration-500 ease-out"
-            style={{ transform: isPlaying || radioFmActive ? 'scale(1)' : 'scale(0.92)' }}
-          >
-            {artSrc && !artError ? (
-              <ProgressiveCover src={artSrc} alt="Album art" className="w-full h-full object-cover" onError={() => setArtError(true)} />
-            ) : radioFmActive ? (
-              <div className="w-full h-full bg-gradient-to-br from-red-900/60 to-black flex flex-col items-center justify-center gap-3">
-                <Radio className="text-red-400 opacity-70 w-14 h-14" />
-                <span className="text-red-300/70 text-xl font-bold tracking-widest">999 FM</span>
-              </div>
-            ) : (
-              <div className="w-full h-full bg-white/10 flex items-center justify-center">
-                <Music className="text-white/20 w-14 h-14" />
-              </div>
-            )}
+        {/* CSS-only attempts (width-driven, height-driven, stretch+aspect-
+            ratio) all broke on real iOS Safari — either clipped to a
+            rectangle or, worse, left width at min-content while height
+            stretched to the row's full height (a tall thin pill). Measuring
+            the row and setting an explicit equal width/height is the only
+            approach that's actually correct everywhere. */}
+        <div className="flex-1 min-h-0 flex flex-col items-center px-8 py-2 gap-2">
+          <div ref={coverRowRef} className="flex-1 min-h-0 w-full flex items-center justify-center">
+            <div
+              className="rounded-3xl overflow-hidden shadow-[0_28px_70px_rgba(0,0,0,0.65)] transition-transform duration-500 ease-out"
+              style={{
+                width: coverSize, height: coverSize,
+                transform: isPlaying || radioFmActive ? 'scale(1)' : 'scale(0.92)',
+              }}
+            >
+              {artSrc && !artError ? (
+                <ProgressiveCover src={artSrc} alt="Album art" className="w-full h-full object-cover" onError={() => setArtError(true)} />
+              ) : radioFmActive ? (
+                <div className="w-full h-full bg-gradient-to-br from-red-900/60 to-black flex flex-col items-center justify-center gap-3">
+                  <Radio className="text-red-400 opacity-70 w-14 h-14" />
+                  <span className="text-red-300/70 text-xl font-bold tracking-widest">999 FM</span>
+                </div>
+              ) : (
+                <div className="w-full h-full bg-white/10 flex items-center justify-center">
+                  <Music className="text-white/20 w-14 h-14" />
+                </div>
+              )}
+            </div>
           </div>
           {/* Fixed-height slot even when empty, so the cover above doesn't
               jump vertically switching between a track with synced lyrics and
               one without. */}
-          <div className="h-6 w-full flex items-center justify-center">
+          <div className="h-6 w-full shrink-0 flex items-center justify-center">
             <MiniLyricLine
               rawLyrics={rawLyrics} isSynced={isSynced} syncedLines={syncedLines}
               onOpen={() => setLyricsOpen(true)}
@@ -399,15 +464,15 @@ export default function WrldView(): JSX.Element {
 
         {/* ── Controls ───────────────────────────────────────────────────── */}
         <div
-          className="shrink-0 px-6 flex flex-col gap-3.5"
-          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
+          className="shrink-0 px-6 flex flex-col gap-2.5"
+          style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))' }}
         >
           {/* Title block */}
           <div className="min-w-0">
-            <p className="font-bold text-[19px] leading-tight truncate" style={{ color: txtPri }}>
+            <p className="font-bold text-base leading-tight truncate" style={{ color: txtPri }}>
               {displayTitle || (radioFmActive ? 'Tuning in…' : 'Not playing')}
             </p>
-            <p className="text-sm mt-1 truncate" style={{ color: txtSec }}>
+            <p className="text-xs mt-0.5 truncate" style={{ color: txtSec }}>
               {[displayArtist, displayAlbum].filter(Boolean).join(' · ') || ' '}
             </p>
           </div>
@@ -430,12 +495,12 @@ export default function WrldView(): JSX.Element {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => { setVoteDismissed(false); getActiveRadioClient()?.proposeSkip() }}
-                  className="flex-1 h-12 rounded-full bg-white/10 text-white text-[15px] font-semibold flex items-center justify-center gap-2 active:bg-white/20"
-                ><SkipForward size={17} /> Vote to skip</button>
+                  className="flex-1 h-11 rounded-full bg-white/10 text-white text-sm font-semibold flex items-center justify-center gap-2 active:bg-white/20"
+                ><SkipForward size={16} /> Vote to skip</button>
                 <button
                   onClick={() => setSheet('radio')}
-                  className="flex-1 h-12 rounded-full bg-white/10 text-white text-[15px] font-semibold flex items-center justify-center gap-2 active:bg-white/20"
-                ><Search size={17} /> Suggest</button>
+                  className="flex-1 h-11 rounded-full bg-white/10 text-white text-sm font-semibold flex items-center justify-center gap-2 active:bg-white/20"
+                ><Search size={16} /> Suggest</button>
               </div>
             )
           ) : (
@@ -445,41 +510,41 @@ export default function WrldView(): JSX.Element {
                 disabled={noTrack}
                 aria-label={shuffle ? 'Shuffle on' : 'Shuffle off'}
                 aria-pressed={shuffle}
-                className="w-11 h-11 flex items-center justify-center rounded-full active:bg-white/10"
+                className="w-10 h-10 flex items-center justify-center rounded-full active:bg-white/10"
                 style={{ color: shuffle ? txtPri : txtTer, opacity: shuffle ? 1 : 0.7 }}
-              ><Shuffle size={19} /></button>
+              ><Shuffle size={17} /></button>
               <button
                 onClick={() => prevTrack()}
                 disabled={noTrack}
                 aria-label="Previous"
-                className="w-14 h-14 flex items-center justify-center rounded-full active:bg-white/10"
+                className="w-12 h-12 flex items-center justify-center rounded-full active:bg-white/10"
                 style={{ color: txtPri }}
-              ><SkipBack size={28} fill="currentColor" /></button>
+              ><SkipBack size={24} fill="currentColor" /></button>
               <button
                 onClick={() => setIsPlaying(!isPlaying)}
                 disabled={noTrack}
                 aria-label={isPlaying ? 'Pause' : 'Play'}
-                className="w-[66px] h-[66px] rounded-full flex items-center justify-center shadow-xl active:scale-95 transition-transform"
+                className="w-14 h-14 rounded-full flex items-center justify-center shadow-xl active:scale-95 transition-transform"
                 style={{ background: txtPri, color: textIsDark ? 'white' : 'black' }}
               >
                 {isPlaying
-                  ? <Pause size={28} fill="currentColor" />
-                  : <Play size={28} fill="currentColor" className="ml-1" />}
+                  ? <Pause size={24} fill="currentColor" />
+                  : <Play size={24} fill="currentColor" className="ml-1" />}
               </button>
               <button
                 onClick={() => nextTrack()}
                 disabled={noTrack}
                 aria-label="Next"
-                className="w-14 h-14 flex items-center justify-center rounded-full active:bg-white/10"
+                className="w-12 h-12 flex items-center justify-center rounded-full active:bg-white/10"
                 style={{ color: txtPri }}
-              ><SkipFwd size={28} fill="currentColor" /></button>
+              ><SkipFwd size={24} fill="currentColor" /></button>
               <button
                 onClick={toggleRepeat}
                 disabled={noTrack}
                 aria-label={repeat === 'none' ? 'No repeat' : repeat === 'all' ? 'Repeat all' : 'Repeat one'}
-                className="w-11 h-11 flex items-center justify-center rounded-full active:bg-white/10"
+                className="w-10 h-10 flex items-center justify-center rounded-full active:bg-white/10"
                 style={{ color: repeat !== 'none' ? txtPri : txtTer, opacity: repeat !== 'none' ? 1 : 0.7 }}
-              >{repeat === 'one' ? <Repeat1 size={19} /> : <Repeat size={19} />}</button>
+              >{repeat === 'one' ? <Repeat1 size={17} /> : <Repeat size={17} />}</button>
             </div>
           )}
 
@@ -488,7 +553,7 @@ export default function WrldView(): JSX.Element {
           {/* Everything that used to occupy a second column now hangs off
               these — each opens a sheet over the player rather than replacing
               it, so what's playing never leaves the screen. */}
-          <div className="flex items-center justify-center gap-2 pt-0.5">
+          <div className="flex items-center justify-center gap-2">
             <ActionChip icon={Mic2} label="Lyrics" onClick={() => setLyricsOpen(true)} light={textIsDark} />
             {radioFmActive
               ? <ActionChip icon={Radio} label="Radio" onClick={() => setSheet('radio')} light={textIsDark} />
@@ -745,10 +810,10 @@ function ActionChip({ icon: Icon, label, onClick, active, light }: {
   return (
     <button
       onClick={onClick}
-      className="h-10 px-3.5 rounded-full flex items-center gap-2 text-[13px] font-medium bg-white/10 active:bg-white/20 transition-colors"
+      className="h-9 px-3 rounded-full flex items-center gap-1.5 text-xs font-medium bg-white/10 active:bg-white/20 transition-colors"
       style={{ color: active ? 'var(--accent)' : (light ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.8)') }}
     >
-      <Icon size={16} /> {label}
+      <Icon size={15} /> {label}
     </button>
   )
 }

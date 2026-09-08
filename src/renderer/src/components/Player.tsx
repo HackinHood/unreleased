@@ -1552,12 +1552,11 @@ export default function Player(): JSX.Element {
           </div>
         </div>
         )}
-        {/* Track row */}
-        <div className="flex items-center px-3 py-2 gap-3 h-14">
-          <button
-            className="w-10 h-10 rounded bg-surface-overlay shrink-0 overflow-hidden"
-            onClick={() => setActiveView('wrld')}
-          >
+        {/* Track row — whole row opens WRLD, not just the cover; the
+            transport buttons stopPropagation so tapping them doesn't also
+            navigate. */}
+        <div className="flex items-center px-3 py-2 gap-3 h-14" onClick={() => setActiveView('wrld')}>
+          <div className="w-10 h-10 rounded bg-surface-overlay shrink-0 overflow-hidden">
             {radioFmActive ? (
               radioFmMatchedSong?.imageUrl
                 ? <img src={radioFmMatchedSong.imageUrl} alt="" className="w-full h-full object-cover" />
@@ -1574,7 +1573,7 @@ export default function Player(): JSX.Element {
                 </svg>
               </div>
             )}
-          </button>
+          </div>
           <div className="flex-1 min-w-0">
             <p
               className="text-sm font-medium text-text-primary truncate"
@@ -1590,7 +1589,7 @@ export default function Player(): JSX.Element {
                 : (currentTrack?.artist || '')}
             </p>
           </div>
-          <div className="flex items-center gap-0.5 shrink-0">
+          <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
             {!radioFmActive && (
               <button onClick={toggleShuffle} className={`p-1.5 transition-colors ${shuffle ? 'text-accent' : 'text-text-secondary hover:text-text-primary'}`}>
                 <Shuffle size={15} />

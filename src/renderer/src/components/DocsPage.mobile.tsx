@@ -2276,7 +2276,7 @@ export default function DocsPage(): JSX.Element {
   return (
     <div className="flex-1 flex flex-col min-h-0 min-w-0">
       {/* App bar — same shape as the other pushed pages' */}
-      <div className="shrink-0 flex items-center gap-1 px-2">
+      <div className="shrink-0 flex items-center gap-1 px-2 pt-2">
         <button
           onClick={() => setActiveView(backView)}
           aria-label="Back"

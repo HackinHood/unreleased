@@ -748,7 +748,7 @@ export default function Settings(): JSX.Element {
 
       {/* App bar — same shape as the other tabs', and no background of its own
           so the shell's (optionally accent-gradient) backdrop runs unbroken. */}
-      <div className="shrink-0 flex items-center gap-1 px-2">
+      <div className="shrink-0 flex items-center gap-1 px-2 pt-2">
         {inSection && (
           <button
             onClick={() => setInSection(false)}

@@ -37,8 +37,11 @@ export default function BottomNav(): JSX.Element {
   // isNavItemVisible drops anything toggled off.
   // NAV_ITEMS icons are sized for the 18px side menu; scale them up to a
   // touch-appropriate 24 without forking the definitions.
+  // WRLD excluded here only — tapping the mini player already opens it, so a
+  // second entry point in the tab bar is redundant on mobile. Desktop's
+  // Sidebar has no now-playing bar to tap, so it keeps its own WRLD row.
   const navItemTabs: Tab[] = orderedNavItems(navOrder)
-    .filter((i) => isNavItemVisible(i, navVisibility, false))
+    .filter((i) => i.view !== 'wrld' && isNavItemVisible(i, navVisibility, false))
     .map((item) => ({
       view: item.view,
       label: item.label,
@@ -103,7 +106,10 @@ export default function BottomNav(): JSX.Element {
   return (
     <nav
       ref={navRef}
-      className="md:hidden flex items-stretch bg-sidebar shrink-0"
+      // Hidden on WRLD (mobile) — that tab wants full-screen immersion, and
+      // its own layout already reclaims the freed space (see
+      // --bottom-nav-height, published below and read there).
+      className={`md:hidden ${activeView === 'wrld' ? 'hidden' : 'flex'} items-stretch bg-sidebar shrink-0`}
       style={atTop
         ? { borderBottom: '1px solid var(--border)', paddingTop: 'env(safe-area-inset-top, 0px)' }
         : { borderTop: '1px solid var(--border)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}

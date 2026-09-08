@@ -34,6 +34,11 @@ function applyVars(vars: Skin['vars']): void {
   for (const key of SKIN_OPTIONAL_VAR_KEYS) {
     if (vars[key] == null) root.style.removeProperty(key)
   }
+  // Keeps the phone status bar / browser chrome tinted to match the app
+  // instead of the static dark gray baked into index.html — otherwise it
+  // stayed plain black regardless of skin or the per-track dynamic palette.
+  const themeColor = document.querySelector('meta[name="theme-color"]')
+  if (themeColor && vars['--surface']) themeColor.setAttribute('content', vars['--surface'])
 }
 
 function applyAccentVars(accent: string): void {

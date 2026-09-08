@@ -78,8 +78,13 @@ const Settings = lazyView(() => import('./components/Settings'))
 const DiagnosticsModal = lazyView(() => import('./components/DiagnosticsModal'))
 
 export default function App(): JSX.Element {
-  const { showNowPlaying, showQueue, showDiagnostics, setShowDiagnostics, showUploadManager, setShowUploadManager, activeView, sidebarPosition, loadAccount, completeDiscordLogin, showUserAuth, setShowUserAuth, prefetchApiData, refreshPlaylists, heroBleedTop } = useStorePick(
-    'showNowPlaying', 'showQueue', 'showDiagnostics', 'setShowDiagnostics', 'showUploadManager', 'setShowUploadManager', 'activeView', 'sidebarPosition', 'loadAccount', 'completeDiscordLogin', 'showUserAuth', 'setShowUserAuth', 'prefetchApiData', 'refreshPlaylists', 'heroBleedTop')
+  const { showNowPlaying, showQueue, showDiagnostics, setShowDiagnostics, showUploadManager, setShowUploadManager, activeView, previousView, sidebarPosition, loadAccount, completeDiscordLogin, showUserAuth, setShowUserAuth, prefetchApiData, refreshPlaylists, heroBleedTop } = useStorePick(
+    'showNowPlaying', 'showQueue', 'showDiagnostics', 'setShowDiagnostics', 'showUploadManager', 'setShowUploadManager', 'activeView', 'previousView', 'sidebarPosition', 'loadAccount', 'completeDiscordLogin', 'showUserAuth', 'setShowUserAuth', 'prefetchApiData', 'refreshPlaylists', 'heroBleedTop')
+  // What renders behind WRLD — WRLD is a full-screen overlay on top of
+  // wherever you were (Spotify-style "now playing" sheet), not a real nav
+  // destination, so dragging it down should reveal that page like a curtain
+  // instead of empty space. Everywhere else this is just activeView itself.
+  const bgView = activeView === 'wrld' ? (previousView ?? 'api-tracker') : activeView
   const isMobile = useIsMobile()
   useThemeEffects()
   // Seed auth token from env in local dev only — import.meta.env.DEV is false in production
@@ -170,30 +175,42 @@ export default function App(): JSX.Element {
           <div className="flex-1 overflow-hidden flex">
             <ErrorBoundary>
             <Suspense fallback={null}>
-            {activeView === 'settings' ? <Settings />
-              : activeView === 'api-tracker' ? <ApiTrackerView />
-              : activeView === 'api-files' ? <ApiFilesView />
-              : activeView === 'editor' ? <EditorPage />
-              : activeView === 'contributor' ? <ContributorPage />
-              : activeView === 'contributor-profile' ? <ContributorProfileView />
-              : activeView === 'admin' ? <AdminPage />
-              : activeView === 'liked' ? <LikedSongsView />
-              : activeView === 'playlists' ? <PlaylistsView />
-              : activeView === 'shared-playlist' ? <SharedPlaylistView />
-              : activeView === 'editor-profile' ? <EditorProfileView />
-              : activeView === 'docs' ? <DocsPage />
-              : activeView === 'wrld' ? <WrldView />
-              : activeView === 'news' ? <NewsView />
-              : activeView === 'heardle' ? <HeardleView />
-              : activeView === 'wordle' ? <WordleView />
-              : activeView === 'tierlist' ? <TierlistView />
-              : activeView === 'stats' ? <StatsView />
-              : activeView === 'download' ? <DownloadAppView />
-              : activeView === 'albums-admin' ? <AlbumsAdminView />
-              : activeView === 'not-found' ? <NotFoundView />
+            {bgView === 'settings' ? <Settings />
+              : bgView === 'api-tracker' ? <ApiTrackerView />
+              : bgView === 'api-files' ? <ApiFilesView />
+              : bgView === 'editor' ? <EditorPage />
+              : bgView === 'contributor' ? <ContributorPage />
+              : bgView === 'contributor-profile' ? <ContributorProfileView />
+              : bgView === 'admin' ? <AdminPage />
+              : bgView === 'liked' ? <LikedSongsView />
+              : bgView === 'playlists' ? <PlaylistsView />
+              : bgView === 'shared-playlist' ? <SharedPlaylistView />
+              : bgView === 'editor-profile' ? <EditorProfileView />
+              : bgView === 'docs' ? <DocsPage />
+              : bgView === 'news' ? <NewsView />
+              : bgView === 'heardle' ? <HeardleView />
+              : bgView === 'wordle' ? <WordleView />
+              : bgView === 'tierlist' ? <TierlistView />
+              : bgView === 'stats' ? <StatsView />
+              : bgView === 'download' ? <DownloadAppView />
+              : bgView === 'albums-admin' ? <AlbumsAdminView />
+              : bgView === 'not-found' ? <NotFoundView />
               : <ApiTrackerView />}
             </Suspense>
           </ErrorBoundary>
+            {/* WRLD is a full-screen overlay on top of bgView above, not a
+                slot in that ternary — so bgView (whatever you had open before)
+                stays mounted and visible underneath while WRLD drags down,
+                curtain-style, instead of revealing empty space. */}
+            {activeView === 'wrld' && (
+              <ErrorBoundary>
+                <Suspense fallback={null}>
+                  <div className="absolute inset-0 z-30">
+                    <WrldView />
+                  </div>
+                </Suspense>
+              </ErrorBoundary>
+            )}
             {/* Desktop only — on mobile the WRLD tab is the only "now playing"
                 screen (the mini player expands straight into it), so this
                 would only ever be a redundant second one. Nothing on mobile
