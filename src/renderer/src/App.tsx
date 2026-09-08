@@ -48,7 +48,7 @@ import { GlobalSongInfoHost } from './components/SongInfoModal'
 import Player from './components/Player'
 import NowPlaying from './components/NowPlaying'
 import QueuePanel from './components/QueuePanel'
-import DownloadManager from './components/DownloadManager'
+import UploadManager from './components/UploadManager'
 import ErrorBoundary from './components/ErrorBoundary'
 import SandboxNotch from './components/SandboxNotch'
 
@@ -77,8 +77,8 @@ const Settings = lazyView(() => import('./components/Settings'))
 const DiagnosticsModal = lazyView(() => import('./components/DiagnosticsModal'))
 
 export default function App(): JSX.Element {
-  const { showNowPlaying, showQueue, showSettings, setShowSettings, showDiagnostics, setShowDiagnostics, activeView, sidebarPosition, loadAccount, completeDiscordLogin, showUserAuth, setShowUserAuth, prefetchApiData, refreshPlaylists, heroBleedTop } = useStorePick(
-    'showNowPlaying', 'showQueue', 'showSettings', 'setShowSettings', 'showDiagnostics', 'setShowDiagnostics', 'activeView', 'sidebarPosition', 'loadAccount', 'completeDiscordLogin', 'showUserAuth', 'setShowUserAuth', 'prefetchApiData', 'refreshPlaylists', 'heroBleedTop')
+  const { showNowPlaying, showQueue, showSettings, setShowSettings, showDiagnostics, setShowDiagnostics, showUploadManager, setShowUploadManager, activeView, sidebarPosition, loadAccount, completeDiscordLogin, showUserAuth, setShowUserAuth, prefetchApiData, refreshPlaylists, heroBleedTop } = useStorePick(
+    'showNowPlaying', 'showQueue', 'showSettings', 'setShowSettings', 'showDiagnostics', 'setShowDiagnostics', 'showUploadManager', 'setShowUploadManager', 'activeView', 'sidebarPosition', 'loadAccount', 'completeDiscordLogin', 'showUserAuth', 'setShowUserAuth', 'prefetchApiData', 'refreshPlaylists', 'heroBleedTop')
   const isMobile = useIsMobile()
   useThemeEffects()
   // Seed auth token from env in local dev only — import.meta.env.DEV is false in production
@@ -210,7 +210,13 @@ export default function App(): JSX.Element {
           boundary: the chrome keeps a compact inline notice, the invisible
           background workers fail silently, and the modals/overlays show a
           centered, dismissible card. */}
-      <ErrorBoundary fallback={<div className="h-20 shrink-0 border-t border-[var(--border)] flex items-center justify-center text-text-muted text-xs">Player crashed — reload the app to restore playback controls.</div>}>
+      {/* TEMPORARY: default fallback removed so a real crash shows the full
+          error message + stack (see ErrorBoundary.tsx) instead of the generic
+          "Player crashed" text — there's no client-side crash reporting in
+          production, so this is how we get the actual error from a user's
+          session. Restore the static fallback below once the iOS crash is
+          diagnosed. */}
+      <ErrorBoundary>
         <Player />
       </ErrorBoundary>
       <ErrorBoundary fallback={null}><RadioFmPlayer /></ErrorBoundary>
@@ -231,6 +237,11 @@ export default function App(): JSX.Element {
           <Suspense fallback={null}><DiagnosticsModal /></Suspense>
         </ErrorBoundary>
       )}
+      {showUploadManager && (
+        <ErrorBoundary variant="overlay" onDismiss={() => setShowUploadManager(false)}>
+          <UploadManager />
+        </ErrorBoundary>
+      )}
       {showUserAuth && (
         <ErrorBoundary variant="overlay" onDismiss={() => setShowUserAuth(false)}>
           <UserAuthModal onClose={() => setShowUserAuth(false)} />
@@ -241,7 +252,6 @@ export default function App(): JSX.Element {
       <ErrorBoundary fallback={null}><InstallPrompt /></ErrorBoundary>
       <ErrorBoundary fallback={null}><CookieNotice /></ErrorBoundary>
       <ErrorBoundary variant="overlay"><GlobalSongInfoHost /></ErrorBoundary>
-      <ErrorBoundary fallback={null}><DownloadManager /></ErrorBoundary>
       <ErrorBoundary fallback={null}><SandboxNotch /></ErrorBoundary>
     </div>
   )

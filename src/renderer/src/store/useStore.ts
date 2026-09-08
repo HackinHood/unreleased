@@ -44,13 +44,13 @@ import { runWhenIdle } from '../lib/platform'
 // Lightweight localStorage persistence helper — see lib/persist.ts (it lives
 // there so queueSlice can share it without importing this module back).
 
-// ─── Download item (in-session) ────────────────────────────────
+// ─── Upload item (in-session) ────────────────────────────────
 
-export interface DownloadItem {
+export interface UploadItem {
   id: string
   filename: string
   // Comp file proposal uploads (see lib/compUploads) — the only kind of
-  // transfer left in the Downloads panel.
+  // transfer in the Uploads panel.
   type: 'upload'
   state: 'downloading' | 'done' | 'error' | 'cancelled'
   percent: number
@@ -400,9 +400,9 @@ interface AppState {
   // Local-only (localStorage), so this list is per-device.
   followedPlaylists: FollowedPlaylist[]
 
-  // Downloads (comp upload progress — see lib/compUploads)
-  downloads: DownloadItem[]
-  showDownloadManager: boolean
+  // Uploads (comp upload progress — see lib/compUploads)
+  uploads: UploadItem[]
+  showUploadManager: boolean
 }
 
 interface AppActions {
@@ -670,11 +670,11 @@ interface AppActions {
   unfollowPlaylist: (id: number) => void
   updateFollowedPlaylistMeta: (id: number, meta: { name: string; trackCount: number; coverUrl: string | null }) => void
 
-  addDownload: (item: DownloadItem) => void
-  updateDownload: (id: string, updates: Partial<DownloadItem>) => void
-  removeDownload: (id: string) => void
-  clearCompletedDownloads: () => void
-  setShowDownloadManager: (show: boolean) => void
+  addUpload: (item: UploadItem) => void
+  updateUpload: (id: string, updates: Partial<UploadItem>) => void
+  removeUpload: (id: string) => void
+  clearCompletedUploads: () => void
+  setShowUploadManager: (show: boolean) => void
 }
 
 export type AppStore = QueueSlice & AppState & AppActions
@@ -2199,19 +2199,19 @@ export const useStore = create<AppStore>((set, get, store) => ({
     ls.set('followedPlaylists', next)
   },
 
-  // ── Downloads ─────────────────────────────────────────────────────────────
-  downloads: [],
-  showDownloadManager: false,
+  // ── Uploads ────────────────────────────────────────────────────────────────
+  uploads: [],
+  showUploadManager: false,
 
-  addDownload: (item) => set((s) => ({ downloads: [item, ...s.downloads] })),
-  updateDownload: (id, updates) => set((s) => ({
-    downloads: s.downloads.map((d) => d.id === id ? { ...d, ...updates } : d),
+  addUpload: (item) => set((s) => ({ uploads: [item, ...s.uploads] })),
+  updateUpload: (id, updates) => set((s) => ({
+    uploads: s.uploads.map((d) => d.id === id ? { ...d, ...updates } : d),
   })),
-  removeDownload: (id) => set((s) => ({ downloads: s.downloads.filter((d) => d.id !== id) })),
-  clearCompletedDownloads: () => set((s) => ({
-    downloads: s.downloads.filter((d) => d.state === 'downloading'),
+  removeUpload: (id) => set((s) => ({ uploads: s.uploads.filter((d) => d.id !== id) })),
+  clearCompletedUploads: () => set((s) => ({
+    uploads: s.uploads.filter((d) => d.state === 'downloading'),
   })),
-  setShowDownloadManager: (show) => set({ showDownloadManager: show }),
+  setShowUploadManager: (show) => set({ showUploadManager: show }),
 }))
 
 // Dev-only console handle for driving store state while debugging (e.g.

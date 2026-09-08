@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Share, Plus, Download, Smartphone, BatteryCharging } from 'lucide-react'
-import { IS_IOS, IS_MOBILE, IS_ELECTRON, isStandalonePWA } from '../lib/platform'
+import { IS_IOS, IS_MOBILE, isStandalonePWA } from '../lib/platform'
 
 // One-time nudge that tells mobile users the app can be installed to their home
 // screen, and how. Two paths:
@@ -9,8 +9,8 @@ import { IS_IOS, IS_MOBILE, IS_ELECTRON, isStandalonePWA } from '../lib/platform
 //     real one-tap Install button that triggers the native prompt.
 //   • iOS Safari never fires that event (no programmatic install), so there we
 //     show the manual Share → "Add to Home Screen" steps instead.
-// Hidden when already installed (standalone), in the Electron app, on desktop,
-// or once the user has dismissed it.
+// Hidden when already installed (standalone), on desktop, or once the user
+// has dismissed it.
 
 const DISMISS_KEY = 'pwa:install-dismissed'
 const SHOW_DELAY_MS = 4000
@@ -72,7 +72,7 @@ export default function InstallPrompt(): JSX.Element | null {
   const [visible, setVisible] = useState(false)
   const [hasPrompt, setHasPrompt] = useState(!!deferredPrompt)
 
-  const eligible = IS_MOBILE && !IS_ELECTRON && !isStandalonePWA() && !dismissed()
+  const eligible = IS_MOBILE && !isStandalonePWA() && !dismissed()
 
   // iOS: schedule the instructions after a short delay. Android: subscribe for
   // the install event (the button is pointless until it arrives).

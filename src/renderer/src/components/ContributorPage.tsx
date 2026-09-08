@@ -100,8 +100,8 @@ function ApplyPanel({ onSubmitted, rejection, channel }: { onSubmitted: () => vo
 }
 
 export default function ContributorPage(): JSX.Element {
-  const { account, setActiveView, previousView, pendingCompProposal, setPendingCompProposal, downloads, activeChannel, channels } = useStorePick('account', 'setActiveView', 'previousView', 'pendingCompProposal', 'setPendingCompProposal', 'downloads', 'activeChannel', 'channels')
-  const activeUploads = downloads.filter((d) => d.type === 'upload' && d.state === 'downloading')
+  const { account, setActiveView, previousView, pendingCompProposal, setPendingCompProposal, uploads, activeChannel, channels } = useStorePick('account', 'setActiveView', 'previousView', 'pendingCompProposal', 'setPendingCompProposal', 'uploads', 'activeChannel', 'channels')
+  const activeUploads = uploads.filter((d) => d.type === 'upload' && d.state === 'downloading')
   const [application, setApplication] = useState<EditorApplication | null | undefined>(undefined)
   const [proposals, setProposals] = useState<CompFileProposal[]>([])
   const [loading, setLoading] = useState(true)

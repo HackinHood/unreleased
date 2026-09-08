@@ -28,11 +28,11 @@ export function getMediaType(name: string): FileMediaType {
   return 'other'
 }
 
-// Dev mode serves the renderer from http://localhost:3018 (see the
-// electron:dev script), and Chromium refuses to load `file://` media from a
-// non-file-origin page ("Not allowed to load local resource"). Routing
-// through the app's `local-media://` custom protocol (registered in
-// electron/main.js) sidesteps that in both dev and the packaged file:// build.
+// `local-media://` is a custom protocol the desktop app registers to stream
+// local files by absolute path. Unreachable in the web build — libraryTracks
+// only gets populated via scanLibrary(), which no-ops without window.electron
+// (see useStore.ts) — kept only so the shared Track/LibraryTrack conversion
+// stays platform-agnostic.
 export function toFileUrl(absPath: string): string {
   const url = new URL('local-media://play/')
   url.searchParams.set('p', absPath)

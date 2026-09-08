@@ -3,7 +3,7 @@
   "version": "2.0.9",
   "description": "A music player for Juice WRLD",
   "scripts": {
-    "dev": "vite --port 3018 --strictPort --host",
+    "dev": "vite --port 5173 --strictPort --host",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview"
   },

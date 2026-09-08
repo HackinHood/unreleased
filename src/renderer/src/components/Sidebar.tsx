@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { Settings, LogIn, LogOut, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Download, ArrowLeft, Info, Check, EyeOff } from 'lucide-react'
+import { Settings, LogIn, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Download, Upload, ArrowLeft, Info, Check, EyeOff } from 'lucide-react'
 import logo from '../assets/logo.png'
 import { useStore, useStorePick } from '../store/useStore'
 import { ViewType } from '../types'
@@ -12,7 +12,7 @@ const LS_COLLAPSED = 'sidebar:collapsed'
 const LS_PLAYLISTS_EXPANDED = 'sidebar:playlistsExpanded'
 
 export default function Sidebar(): JSX.Element {
-  const { activeView, setActiveView, openProfile, openSettings, setShowDiagnostics, developerMode, account, logoutAccount, setShowUserAuth, playlists, setPendingPlaylistId, sidebarPosition, navOrder, setNavOrder, navVisibility, setNavItemVisible, navControlOrder, navControlVisibility } = useStorePick('activeView', 'setActiveView', 'openProfile', 'openSettings', 'setShowDiagnostics', 'developerMode', 'account', 'logoutAccount', 'setShowUserAuth', 'playlists', 'setPendingPlaylistId', 'sidebarPosition', 'navOrder', 'setNavOrder', 'navVisibility', 'setNavItemVisible', 'navControlOrder', 'navControlVisibility')
+  const { activeView, setActiveView, openProfile, openSettings, setShowDiagnostics, developerMode, account, setShowUserAuth, playlists, setPendingPlaylistId, sidebarPosition, navOrder, setNavOrder, navVisibility, setNavItemVisible, navControlOrder, navControlVisibility, uploads, showUploadManager, setShowUploadManager } = useStorePick('activeView', 'setActiveView', 'openProfile', 'openSettings', 'setShowDiagnostics', 'developerMode', 'account', 'setShowUserAuth', 'playlists', 'setPendingPlaylistId', 'sidebarPosition', 'navOrder', 'setNavOrder', 'navVisibility', 'setNavItemVisible', 'navControlOrder', 'navControlVisibility', 'uploads', 'showUploadManager', 'setShowUploadManager')
 
   const [collapsed, setCollapsed] = useState<boolean>(
     () => localStorage.getItem(LS_COLLAPSED) === 'true'
@@ -171,6 +171,7 @@ export default function Sidebar(): JSX.Element {
 
   // Full-width control row for the vertical (left/right) side menu.
   const profileView = staffProfileView(account)
+  const activeUploadCount = uploads.filter((u) => u.state === 'downloading').length
 
   const renderControl = (id: NavControlId): JSX.Element | null => {
     switch (id) {
@@ -187,12 +188,18 @@ export default function Sidebar(): JSX.Element {
             <span aria-hidden={collapsed} className={labelCls}>{tokenCopied ? 'Token copied!' : (account.display_name || account.discord_username)}</span>
           </button>
         )
-      case 'logout':
-        if (!account) return null
+      case 'uploads':
         return (
-          <button key="logout" onClick={() => logoutAccount()} title={collapsed ? 'Log out' : undefined} className={rowCls}>
-            <span className={iconWrap}><LogOut size={18} /></span>
-            <span aria-hidden={collapsed} className={labelCls}>Log out</span>
+          <button key="uploads" onClick={() => setShowUploadManager(!showUploadManager)} title={collapsed ? 'Uploads' : undefined} className={rowCls}>
+            <span className={`${iconWrap} relative`}>
+              <Upload size={18} className={activeUploadCount > 0 ? 'animate-pulse text-accent' : ''} />
+              {activeUploadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] rounded-full bg-accent text-white text-[9px] font-bold flex items-center justify-center px-0.5 leading-none">
+                  {activeUploadCount}
+                </span>
+              )}
+            </span>
+            <span aria-hidden={collapsed} className={labelCls}>Uploads</span>
           </button>
         )
       case 'diagnostics':
@@ -233,9 +240,17 @@ export default function Sidebar(): JSX.Element {
             {tokenCopied && <span className="absolute inset-0 rounded-full bg-black/60 flex items-center justify-center"><Check size={12} className="text-emerald-400" /></span>}
           </button>
         )
-      case 'logout':
-        if (!account) return null
-        return <button key="logout" onClick={() => logoutAccount()} title="Log out" className={barIconBtn}><LogOut size={16} /></button>
+      case 'uploads':
+        return (
+          <button key="uploads" onClick={() => setShowUploadManager(!showUploadManager)} title="Uploads" className={`${barIconBtn} relative`}>
+            <Upload size={18} className={activeUploadCount > 0 ? 'animate-pulse text-accent' : ''} />
+            {activeUploadCount > 0 && (
+              <span className="absolute top-0.5 right-0.5 min-w-[13px] h-[13px] rounded-full bg-accent text-white text-[8px] font-bold flex items-center justify-center px-0.5 leading-none">
+                {activeUploadCount}
+              </span>
+            )}
+          </button>
+        )
       case 'diagnostics':
         return <button key="diagnostics" onClick={() => setShowDiagnostics(true)} title="Diagnostics" className={barIconBtn}><Info size={18} /></button>
       case 'download':

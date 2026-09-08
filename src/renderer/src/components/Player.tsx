@@ -407,9 +407,15 @@ export default function Player(): JSX.Element {
       return
     }
 
+    const fileUrl = resolvePlaybackUrl(currentTrack)
+    // Reassigning `.src` restarts the fetch even when the URL is unchanged —
+    // guard against a redundant re-run of this effect (e.g. React StrictMode's
+    // deliberate double-invoke in dev) firing a second network request for
+    // the same track.
+    if (audio.src === fileUrl) return
+
     cancelCF()
     cancelPauseFade()
-    const fileUrl = resolvePlaybackUrl(currentTrack)
     audio.src = fileUrl
     audio.volume = volumeRef.current
     applyRate(audio)
