@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { Loader2, Trophy, FileEdit, Pencil, Trash2, RefreshCw, Plus, X, Check, AlertCircle, ChevronDown, ChevronUp, Search, Flag, ShieldCheck, FolderOpen, Copy } from 'lucide-react'
+import { Loader2, Trophy, FileEdit, Pencil, Trash2, RefreshCw, Plus, X, Check, AlertCircle, ChevronDown, ChevronUp, Search, Flag, ShieldCheck, FolderOpen, Copy, Disc3 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getMyProposals, getLeaderboard, withdrawProposal, createProposal, resubmitProposal, SongEditProposal, ProposalStatus, getMyCompProposals, CompFileProposal, isChannelContributor, isChannelManager } from '../lib/userApi'
 import { isPrimaryChannelSlug } from '../hooks/useChannelRoles'
@@ -11,6 +11,7 @@ import ReportsTab from './ReportsTab'
 import FilePickerModal from './FilePickerModal'
 import { BasicRow, BasicSelect, SyncedLyricsTable, cleanDate } from './EditorPage'
 import AdminPage from './AdminPage'
+import AlbumsAdminView from './AlbumsAdminView'
 import CompProposalList, { CompFilterBar, filterCompProposals, type CompFilterTab } from './CompProposalList'
 
 const CATEGORIES = [
@@ -431,7 +432,7 @@ export default function EditorProfileView(): JSX.Element {
   // tab visible (and then erroring) on a channel they don't actually manage.
   const isManager = isChannelManager(account, activeChannel, isPrimary)
   const managerOnly = isManager && !isAdmin
-  const [profileTab, setProfileTab] = useState<'proposals' | 'reports' | 'admin' | 'comp'>(managerOnly ? 'admin' : 'proposals')
+  const [profileTab, setProfileTab] = useState<'proposals' | 'reports' | 'admin' | 'comp' | 'albums'>(managerOnly ? 'admin' : 'proposals')
   const [reportStatus, setReportStatus] = useState<SongReportStatus | ''>('pending')
   const [reports, setReports] = useState<SongReportRow[]>([])
   const [loadingReports, setLoadingReports] = useState(false)
@@ -616,6 +617,7 @@ export default function EditorProfileView(): JSX.Element {
             ...(canReviewReports ? [{ id: 'reports' as const, label: 'Reports', icon: <Flag size={13} /> }] : []),
             ...(isAdmin ? [{ id: 'admin' as const, label: 'Admin', icon: <ShieldCheck size={13} /> }]
               : isManager ? [{ id: 'admin' as const, label: 'Manager', icon: <ShieldCheck size={13} /> }] : []),
+            ...(canReviewReports ? [{ id: 'albums' as const, label: 'Albums', icon: <Disc3 size={13} /> }] : []),
           ]).map(t => (
             <button key={t.id} onClick={() => setProfileTab(t.id)}
               className={`shrink-0 flex items-center gap-1.5 h-9 px-3.5 rounded-full text-xs font-semibold transition-colors ${
@@ -630,6 +632,8 @@ export default function EditorProfileView(): JSX.Element {
 
       {profileTab === 'admin' && (isAdmin || isManager) ? (
         <AdminPage embedded />
+      ) : profileTab === 'albums' && canReviewReports ? (
+        <AlbumsAdminView />
       ) : profileTab === 'comp' && isContributor ? (
         <div className="flex-1 overflow-y-auto p-3">
           <div className="flex items-center gap-2 flex-wrap mb-2">
