@@ -116,6 +116,8 @@ function AddSongModal({ onClose, onSubmitted, channel }: { onClose: () => void; 
   const [relDate,  setRelDate]  = useState('')
   const [instrumentals,     setInstrumentals]     = useState('')
   const [instrumentalNames, setInstrumentalNames] = useState('')
+  const [sessionTitles,   setSessionTitles]   = useState('')
+  const [sessionTracking, setSessionTracking] = useState('')
   const [addInfo,  setAddInfo]  = useState('')
   const [notes,    setNotes]    = useState('')
   const [dateLeaked, setDateLeaked] = useState('')
@@ -164,6 +166,8 @@ function AddSongModal({ onClose, onSubmitted, channel }: { onClose: () => void; 
     setDateLeaked(cleanDate(s.date_leaked))
     setInstrumentals(s.instrumentals || '')
     setInstrumentalNames(s.instrumental_names || '')
+    setSessionTitles(s.session_titles || '')
+    setSessionTracking(s.session_tracking || '')
     setFileNames(s.file_names || '')
     setAddInfo(s.additional_information || '')
     setNotes(s.notes || '')
@@ -191,6 +195,8 @@ function AddSongModal({ onClose, onSubmitted, channel }: { onClose: () => void; 
   if (previewDate) proposed.preview_date    = previewDate
   if (instrumentals)     proposed.instrumentals      = instrumentals
   if (instrumentalNames) proposed.instrumental_names = instrumentalNames
+  if (cat === 'recording_session' && sessionTitles)   proposed.session_titles   = sessionTitles
+  if (cat === 'recording_session' && sessionTracking) proposed.session_tracking = sessionTracking
   // "Additional info" maps to additional_information — distinct from `notes`,
   // which previously had this textarea's value submitted under the wrong key.
   if (addInfo) proposed.additional_information = addInfo
@@ -263,6 +269,12 @@ function AddSongModal({ onClose, onSubmitted, channel }: { onClose: () => void; 
               </div>
               <BasicRow label="Recording locations" value={location} onChange={setLocation} rows={2} placeholder="Studio / city" suggest="recording_locations" />
               <BasicRow label="Record dates" value={recDate} onChange={setRecDate} rows={2} placeholder="YYYY-MM-DD" mono />
+              {cat === 'recording_session' && (
+                <div className="grid grid-cols-2 gap-1.5">
+                  <BasicRow label="Session titles" value={sessionTitles} onChange={setSessionTitles} rows={2} />
+                  <BasicRow label="Session tracking" value={sessionTracking} onChange={setSessionTracking} rows={2} />
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-1.5">
                 <BasicRow label="Length" value={songLength} onChange={setSongLength} placeholder="3:59" mono />
                 <BasicRow label="Bitrate" value={bitrate} onChange={setBitrate} placeholder="320 kbps" mono />
