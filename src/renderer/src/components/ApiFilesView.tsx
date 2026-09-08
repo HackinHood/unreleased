@@ -4,7 +4,7 @@ import {
   ImageIcon, Video, Download, ArrowUp, ArrowDown, Link, Check, Info, ListPlus,
   Heart, X, Pencil, PackageOpen, Search, Filter, MoreVertical, Clipboard, Plus,
   ListMusic, Replace, Trash2, LayoutGrid, LayoutList, FileQuestion, Home,
-  CheckCircle2, Circle, SlidersHorizontal,
+  CheckCircle2, Circle, SlidersHorizontal, FileText, Eye,
 } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import * as userApi from '../lib/userApi'
@@ -32,6 +32,7 @@ import { Track } from '../types'
 import { ProgressiveCover } from './ProgressiveCover'
 import { Sheet, SheetItem, SheetDivider } from './mobile/Sheet'
 import MediaLightbox, { LightboxItem } from './MediaLightbox'
+import TextFileViewer, { TextFileSource } from './TextFileViewer'
 import SongInfoModal from './SongInfoModal'
 
 // ─── Files ────────────────────────────────────────────────────────────────────
@@ -53,7 +54,7 @@ type ViewMode = 'list' | 'grid'
 type SortBy = 'name' | 'type' | 'size'
 type SortDir = 'asc' | 'desc'
 type ZipStatus = 'idle' | 'starting' | 'zipping' | 'done' | 'error'
-type MediaFilter = 'all' | 'audio' | 'image' | 'video'
+type MediaFilter = 'all' | 'audio' | 'image' | 'video' | 'text'
 /** Which bottom sheet is up (at most one at a time). */
 type SheetKind = 'actions' | 'sort' | 'path' | null
 
@@ -66,11 +67,17 @@ const LONG_PRESS_MS = 420
 /** Finger slop before a long-press is treated as a scroll instead. */
 const LONG_PRESS_SLOP = 10
 
+// The in-app text viewer caps at this many bytes — matches the desktop
+// build's local-file reader, which reads off disk in the main process and
+// applies the same cap there.
+const TEXT_VIEW_MAX = 2 * 1024 * 1024
+
 const MEDIA_FILTERS: { key: MediaFilter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'audio', label: 'Audio' },
   { key: 'image', label: 'Images' },
   { key: 'video', label: 'Videos' },
+  { key: 'text', label: 'Text' },
 ]
 
 const SORT_LABELS: Record<SortBy, string> = { name: 'Name', type: 'Type', size: 'Size' }
@@ -167,7 +174,7 @@ function Thumb({ entry, size, rounded = 'rounded-xl' }: {
       />
     )
   }
-  const Icon = mt === 'audio' ? Music2 : mt === 'image' ? ImageIcon : mt === 'video' ? Video : FileQuestion
+  const Icon = mt === 'audio' ? Music2 : mt === 'image' ? ImageIcon : mt === 'video' ? Video : mt === 'text' ? FileText : FileQuestion
   return (
     <div className={box} style={{ width: size, height: size }}>
       <Icon size={size * 0.45} className="text-text-muted" />
@@ -218,6 +225,7 @@ export default function ApiFilesView(): JSX.Element {
   const [playing, setPlaying] = useState<string | null>(null)
   const [lightboxItems, setLightboxItems] = useState<LightboxItem[]>([])
   const [lightboxIndex, setLightboxIndex] = useState(-1)
+  const [textFile, setTextFile] = useState<TextFileSource | null>(null)
   const [infoSong, setInfoSong] = useState<JWApiSong | null>(null)
 
   // Sheets. `sheetEntry` is the row the actions sheet was opened for;
@@ -533,6 +541,25 @@ export default function ApiFilesView(): JSX.Element {
     setLightboxIndex(idx >= 0 ? idx : 0)
   }
 
+  // Text viewer — files come over HTTP from the same stream URL the player
+  // uses, capped client-side (there's no local-disk source on Android, unlike
+  // desktop, which also feeds this from a main-process file read).
+  const openApiText = (entry: JWApiFileEntry): void => {
+    setTextFile({
+      name: entry.name,
+      onDownload: () => handleDownload(entry),
+      load: async () => {
+        const res = await fetch(buildStreamUrl(entry.path, activeChannel))
+        if (!res.ok) throw new Error(`Couldn't load this file (HTTP ${res.status})`)
+        const buf = await res.arrayBuffer()
+        const truncated = buf.byteLength > TEXT_VIEW_MAX
+        const bytes = new Uint8Array(truncated ? buf.slice(0, TEXT_VIEW_MAX) : buf)
+        if (bytes.subarray(0, 8000).includes(0)) throw new Error('This looks like a binary file')
+        return { text: new TextDecoder('utf-8').decode(bytes), truncated }
+      },
+    })
+  }
+
   // ── Selection ──────────────────────────────────────────────────────────────
 
   const enterSelectMode = (entry: JWApiFileEntry): void => {
@@ -603,6 +630,7 @@ export default function ApiFilesView(): JSX.Element {
     if (mt === 'folder') navigate(entry.path)
     else if (mt === 'audio') handlePlay(entry)
     else if (mt === 'image' || mt === 'video') openLightbox(entry)
+    else if (mt === 'text') openApiText(entry)
     else openActions(entry)
   }
 
@@ -1095,6 +1123,8 @@ export default function ApiFilesView(): JSX.Element {
         />
       )}
 
+      {textFile && <TextFileViewer source={textFile} onClose={() => setTextFile(null)} />}
+
       {/* ── Folder jump sheet ─────────────────────────────────────────────── */}
       {sheet === 'path' && (
         <Sheet onClose={closeSheet} title="Location">
@@ -1246,7 +1276,12 @@ export default function ApiFilesView(): JSX.Element {
                 <SheetItem icon={PackageOpen} label="Download folder (ZIP)" disabled={zipBusy}
                   onClick={() => { downloadFolder(sheetEntry); closeSheet() }} />
               ) : (
-                <SheetItem icon={Download} label="Download" onClick={() => { handleDownload(sheetEntry); closeSheet() }} />
+                <>
+                  {getMediaType(sheetEntry.name) === 'text' && (
+                    <SheetItem icon={Eye} label="View" onClick={() => { openApiText(sheetEntry); closeSheet() }} />
+                  )}
+                  <SheetItem icon={Download} label="Download" onClick={() => { handleDownload(sheetEntry); closeSheet() }} />
+                </>
               )}
               <SheetItem icon={CheckCircle2} label="Select" onClick={() => { enterSelectMode(sheetEntry); closeSheet() }} />
               <SheetItem icon={Link} label="Copy link" onClick={() => { copyLink(sheetEntry); closeSheet() }} />
