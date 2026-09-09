@@ -155,11 +155,20 @@ export default function LyricsDisplay({ getTime, onSeek, compact, override }: Ly
             return <div key={i} className="h-4" />
           }
 
+          // Every line except the one playing — played and upcoming alike.
+          const isBlurred = !isActive && lyricsBlur
           const lineStyle: React.CSSProperties = {
             opacity: isActive ? 1 : isPast ? 0.35 : 0.2,
             color: isActive ? activeColor : inactiveColor,
-            // Every line except the one playing — played and upcoming alike.
-            filter: (!isActive && lyricsBlur) ? `blur(${lyricsBlurAmount.toFixed(2)}px)` : 'none',
+            filter: isBlurred ? `blur(${lyricsBlurAmount.toFixed(2)}px)` : 'none',
+            // WebKit clips a blurred text layer against a slightly-off compositing
+            // box, leaving a colored hairline at the glyph edge where a wrapped
+            // line ends — most visible over a busy background like the blurred
+            // cover art. Forcing this line onto its own GPU layer (only while it's
+            // actually blurred, so unblurred lines don't pay for it) makes WebKit
+            // compute that box correctly instead of clipping it.
+            transform: isBlurred ? 'translateZ(0)' : undefined,
+            WebkitBackfaceVisibility: isBlurred ? 'hidden' : undefined,
             transition: 'opacity 0.35s ease, color 0.35s ease, filter 0.35s ease',
             fontSize: `${(compact ? 1.125 : 1.5) * lyricsScale}rem`,
             textAlign: lyricsAlign,

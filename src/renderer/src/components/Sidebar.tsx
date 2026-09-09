@@ -327,7 +327,7 @@ export default function Sidebar(): JSX.Element {
     <aside
       className={`app-sidebar hidden md:flex flex-col h-full bg-sidebar shrink-0 ${sidebarPosition === 'right' ? 'border-l' : 'border-r'} border-[var(--border)] transition-[width] duration-200 ${collapsed ? 'w-16' : 'w-60'}`}
     >
-      {/* Logo — collapses to zero height (redundant with the WRLD tab icon) */}
+      {/* Logo — collapses to zero height when the sidebar is collapsed */}
       <div
         className="flex flex-col items-center gap-1 shrink-0 px-5 overflow-hidden transition-[max-height,opacity] duration-200 ease-in-out"
         style={{ maxHeight: collapsed ? '0px' : '200px', opacity: collapsed ? 0 : 1 }}

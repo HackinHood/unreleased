@@ -2,11 +2,10 @@ import { useStorePick } from '../store/useStore'
 import { orderedNavItems, isNavItemVisible, splitMobileNavTabs, type NavItemDef } from '../lib/navItems'
 import type { ViewType } from '../types'
 
-// WRLD: tapping the mini player already opens it, so a second entry point in
-// the tab bar is redundant on mobile. Games ('heardle' — see NAV_ITEMS) and
-// Playlists: Home's own sections cover both directly, so a tab here would
-// just be a second, less complete route to the same destination.
-const MOBILE_HIDDEN_VIEWS: ViewType[] = ['wrld', 'heardle', 'playlists']
+// Games ('heardle' — see NAV_ITEMS) and Playlists: Home's own sections cover
+// both directly, so a tab here would just be a second, less complete route
+// to the same destination.
+const MOBILE_HIDDEN_VIEWS: ViewType[] = ['heardle', 'playlists']
 
 // The mobile bottom nav's visible items, ordered and filtered exactly like
 // BottomNav does — pulled out so BottomNav, HomeView (the "More" trigger),
