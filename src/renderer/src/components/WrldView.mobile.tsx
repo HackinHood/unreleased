@@ -1673,6 +1673,13 @@ const LyricsPanel = memo(function LyricsPanel({
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
+        {/* Mask lives on this static wrapper, not the translating element
+            below — a mask-image sharing a compositing layer with an animated
+            transform can show a thin colour-fringed seam at the mask's edge
+            during GPU compositing (visible here as a faint stray line while
+            the lines were sliding). Keeping the mask on a layer that never
+            moves avoids that. */}
+        <div className="relative w-full h-full" style={{ WebkitMaskImage: edgeMask, maskImage: edgeMask }}>
         <div
           ref={linesRef}
           className={`relative flex flex-col ${padded ? 'gap-5 px-7' : 'gap-4 px-5'}`}
@@ -1680,8 +1687,6 @@ const LyricsPanel = memo(function LyricsPanel({
             transform: `translateY(${-displayTranslateY}px)`,
             transition: autoFollow ? 'transform 0.6s cubic-bezier(0.22,1,0.36,1)' : 'none',
             willChange: 'transform',
-            WebkitMaskImage: edgeMask,
-            maskImage: edgeMask,
           }}
         >
           {/* Half-viewport spacers so the first and last lines can sit at center. */}
@@ -1742,6 +1747,7 @@ const LyricsPanel = memo(function LyricsPanel({
             )
           })}
           <div style={{ height: vpHalf }} />
+        </div>
         </div>
 
         {!autoFollow && (
