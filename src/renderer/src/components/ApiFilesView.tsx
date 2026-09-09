@@ -27,6 +27,8 @@ import {
 import { getFileExt, getMediaType } from '../lib/fileTypes'
 import { formatBytes } from '../lib/format'
 import { registerBackHandler } from '../lib/backHandlers'
+import { isAndroidApp } from '../lib/androidUpdate'
+import { saveFile } from '../lib/fileSave'
 import { useToast, Toast } from '../hooks/useToast'
 import { Track } from '../types'
 import { ProgressiveCover } from './ProgressiveCover'
@@ -514,15 +516,20 @@ export default function ApiFilesView(): JSX.Element {
     }
   }
 
-  const handleDownload = (entry: JWApiFileEntry): void => {
-    const a = document.createElement('a')
-    a.href = buildStreamUrl(entry.path, activeChannel)
-    a.download = entry.name
-    a.target = '_blank'
-    a.rel = 'noopener noreferrer'
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+  // A plain `<a download>` click silently no-ops in this WebView (see
+  // lib/fileSave's header comment) — worse, with target="_blank" on top, the
+  // WebView hands the whole thing to the system browser instead, which reads
+  // to the user as "downloading takes me to Chrome/Google". Fetch the bytes
+  // and go through saveFile() like every other export in the app already does.
+  const handleDownload = async (entry: JWApiFileEntry): Promise<void> => {
+    try {
+      const res = await fetch(buildStreamUrl(entry.path, activeChannel))
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      await saveFile(entry.name, await res.blob())
+      showToast('Saved to Downloads')
+    } catch {
+      showToast('Download failed')
+    }
   }
 
   const openLightbox = (entry: JWApiFileEntry): void => {
@@ -653,13 +660,22 @@ export default function ApiFilesView(): JSX.Element {
       const poll = async (): Promise<void> => {
         const st = await apiFetch<{ status: string; download_url?: string; error?: string }>(`/zip-job-status/${job_id}/`)
         if (st.status === 'completed' && st.download_url) {
-          const a = document.createElement('a')
-          a.href = st.download_url
-          a.download = filename
-          a.target = '_blank'
-          document.body.appendChild(a)
-          a.click()
-          document.body.removeChild(a)
+          // A big folder's ZIP is built async server-side and handed back as
+          // a link instead of a body, not something saveFile() can take — on
+          // Android that link needs a real browser to turn into an actual
+          // download (this WebView doesn't do it, same reasoning as
+          // PlaylistsView's handleZipDownload), so hand it to the system
+          // browser instead of clicking it.
+          if (isAndroidApp()) window.open(st.download_url, '_blank', 'noopener')
+          else {
+            const a = document.createElement('a')
+            a.href = st.download_url
+            a.download = filename
+            a.target = '_blank'
+            document.body.appendChild(a)
+            a.click()
+            document.body.removeChild(a)
+          }
           setZipStatus('done')
           setTimeout(() => setZipStatus('idle'), 3000)
         } else if (st.status === 'failed') {
