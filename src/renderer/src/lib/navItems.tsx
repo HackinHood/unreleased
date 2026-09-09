@@ -21,10 +21,12 @@ export interface NavItemDef {
    *  would just crowd out more frequently used tabs. No effect on desktop. */
   mobileOverflow?: boolean
   defaultHidden?: boolean
+  /** Can't be toggled off from Settings — always occupies a bar slot. */
+  alwaysVisible?: boolean
 }
 
 export const NAV_ITEMS: NavItemDef[] = [
-  { view: 'home', label: 'Home', icon: <House size={18} />, mobileOnly: true },
+  { view: 'home', label: 'Home', icon: <House size={18} />, mobileOnly: true, alwaysVisible: true },
   { view: 'api-tracker', label: 'Tracker', icon: <SearchCode size={18} /> },
   { view: 'api-files', label: 'Files', icon: <HardDrive size={18} /> },
   // `view` stays 'heardle' — it's the persisted id (and the /heardle route);
@@ -145,6 +147,7 @@ export function isNavItemVisible(item: NavItemDef, visibility: Record<string, bo
   // Defaults to false so the desktop callers (Sidebar, the desktop menu-items
   // editor) keep hiding mobile-only items without having to opt in.
   if (item.mobileOnly && !isMobile) return false
+  if (item.alwaysVisible) return true
   return visibility[item.view] ?? !item.defaultHidden
 }
 

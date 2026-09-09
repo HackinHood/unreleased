@@ -7,14 +7,24 @@ import type { ViewType } from '../types'
 // to the same destination.
 const MOBILE_HIDDEN_VIEWS: ViewType[] = ['heardle', 'playlists']
 
-// The mobile bottom nav's visible items, ordered and filtered exactly like
-// BottomNav does — pulled out so BottomNav, HomeView (the "More" trigger),
-// and MoreNavSheet (its contents) all agree on what's direct vs. overflowed.
-function useMobileNavItems(): NavItemDef[] {
-  const { navVisibility, navOrder } = useStorePick('navVisibility', 'navOrder')
-  return orderedNavItems(navOrder).filter((i) => !MOBILE_HIDDEN_VIEWS.includes(i.view) && isNavItemVisible(i, navVisibility, false, true))
+// Every mobile-eligible item, ordered — pulled out so BottomNav, HomeView
+// (the "More" trigger), and MoreNavSheet (its contents) all agree on what's
+// direct vs. overflowed vs. hidden.
+function useMobileEligibleItems(): NavItemDef[] {
+  const { navOrder } = useStorePick('navOrder')
+  return orderedNavItems(navOrder).filter((i) => !MOBILE_HIDDEN_VIEWS.includes(i.view))
 }
 
+// The bar's direct slots come only from items the user has toggled on; the
+// "More" sheet is the catch-all for everything else reachable on mobile —
+// both the tail that overflows the bar's cap and items switched off in
+// Settings — so every destination stays one tap from Home even if it never
+// earned (or lost) a spot in the bar itself.
 export function useMobileNavSplit(): { tabs: NavItemDef[]; moreTabs: NavItemDef[] } {
-  return splitMobileNavTabs(useMobileNavItems())
+  const { navVisibility } = useStorePick('navVisibility')
+  const eligible = useMobileEligibleItems()
+  const visible = eligible.filter((i) => isNavItemVisible(i, navVisibility, false, true))
+  const hidden = eligible.filter((i) => !isNavItemVisible(i, navVisibility, false, true))
+  const { tabs, moreTabs } = splitMobileNavTabs(visible)
+  return { tabs, moreTabs: [...moreTabs, ...hidden] }
 }

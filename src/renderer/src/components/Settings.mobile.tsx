@@ -5,7 +5,7 @@ import {
   FolderOpen, FolderPlus, Minus, Loader2, Plus, AlignLeft, FileText, Trash2, Music2,
   Waves, RotateCcw, ExternalLink,
   ListOrdered, CloudUpload, Type, AlignCenter, Menu, Pencil, Upload,
-  ScrollText, ShieldCheck, User, LogOut, LogIn, AlertCircle, GripVertical, Images, Search, X, Bug, Disc,
+  ScrollText, ShieldCheck, User, LogOut, LogIn, AlertCircle, GripVertical, Images, Search, X, Bug, Disc, Lock,
 } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import { SKINS, getSkin, createCustomSkin, parseSkinFile } from '../lib/skins'
@@ -1225,13 +1225,22 @@ export default function Settings(): JSX.Element {
                             </button>
                             <span className={`w-6 h-6 shrink-0 flex items-center justify-center ${shown ? 'text-text-secondary' : 'opacity-40'}`}>{item.icon}</span>
                             <span className={`flex-1 min-w-0 truncate text-sm ${shown ? 'text-text-primary' : 'text-text-muted'}`}>{item.label}</span>
-                            <button
-                              onClick={() => setNavItemVisible(item.view, !shown)}
-                              aria-label={shown ? `Hide ${item.label}` : `Show ${item.label}`}
-                              className="shrink-0 w-11 h-11 flex items-center justify-center rounded-lg text-text-muted active:bg-[var(--surface-overlay)] transition-colors"
-                            >
-                              {shown ? <Eye size={16} /> : <EyeOff size={16} />}
-                            </button>
+                            {item.alwaysVisible ? (
+                              <span
+                                title="Always shown"
+                                className="shrink-0 w-11 h-11 flex items-center justify-center text-text-muted/50"
+                              >
+                                <Lock size={15} />
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => setNavItemVisible(item.view, !shown)}
+                                aria-label={shown ? `Hide ${item.label}` : `Show ${item.label}`}
+                                className="shrink-0 w-11 h-11 flex items-center justify-center rounded-lg text-text-muted active:bg-[var(--surface-overlay)] transition-colors"
+                              >
+                                {shown ? <Eye size={16} /> : <EyeOff size={16} />}
+                              </button>
+                            )}
                           </div>
                         )
                       })}
