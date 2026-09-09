@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { ChevronRight, MoreHorizontal, Play, ListMusic, Gamepad2, Flame, Music2, Disc3 } from 'lucide-react'
+import { ChevronRight, MoreHorizontal, Play, ListMusic, Gamepad2, Flame, Music2, Disc3, User } from 'lucide-react'
 import { useStorePick } from '../store/useStore'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { ProgressiveCover } from './ProgressiveCover'
@@ -66,10 +66,10 @@ function EmptyNote({ children }: { children: React.ReactNode }): JSX.Element {
 export default function HomeViewMobile(): JSX.Element {
   const {
     account, playlists, guestPlaylists, followedPlaylists, likedTrackIds,
-    listeningPlays, setActiveView, setPendingPlaylistId, playTrack, setShowMoreNav,
+    listeningPlays, setActiveView, setPendingPlaylistId, playTrack, setShowMoreNav, openSettings,
   } = useStorePick(
     'account', 'playlists', 'guestPlaylists', 'followedPlaylists', 'likedTrackIds',
-    'listeningPlays', 'setActiveView', 'setPendingPlaylistId', 'playTrack', 'setShowMoreNav',
+    'listeningPlays', 'setActiveView', 'setPendingPlaylistId', 'playTrack', 'setShowMoreNav', 'openSettings',
   )
   // Whatever doesn't fit the bottom nav directly — its old in-bar "More" tab
   // moved here, since fitting it AND a Home tab both in the bar pushed the
@@ -133,6 +133,15 @@ export default function HomeViewMobile(): JSX.Element {
   return (
     <div className="flex-1 min-h-0 overflow-y-auto pt-2 pb-4">
       <div className="flex items-center gap-2 px-4 pb-4">
+        <button
+          onClick={() => openSettings('account')}
+          aria-label="Profile"
+          className="w-9 h-9 shrink-0 rounded-full overflow-hidden bg-[var(--surface-overlay)] flex items-center justify-center text-text-muted active:bg-surface-highest transition-colors"
+        >
+          {account?.discord_avatar
+            ? <img src={account.discord_avatar} alt="" className="w-full h-full object-cover" />
+            : <User size={17} />}
+        </button>
         <h1 className="flex-1 min-w-0 text-text-primary text-[26px] font-bold leading-tight">Home</h1>
         {moreTabs.length > 0 && (
           <button

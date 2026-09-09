@@ -1,4 +1,4 @@
-﻿import { useRef, useState } from 'react'
+﻿import { ReactNode, useRef, useState } from 'react'
 import { X, GripVertical, ListMusic, Trash2, History, ChevronDown, Radio, Search, RefreshCw } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
@@ -266,16 +266,16 @@ export default function QueuePanel(): JSX.Element {
               </p>
 
               {(query ? filteredUpcoming : filteredUpcoming.slice(0, visibleCount)).map(({ track, i }) => (
-                <div
+                <SwipeableUpcomingRow
                   key={`up-${track.id}-${queueIndex + 1 + i}`}
-                  draggable={!query}
+                  query={!!query}
+                  isDragOver={dragOverIdx === i && dragIdx !== i}
+                  isDragging={dragIdx === i}
                   onDragStart={(e) => handleDragStart(e, i)}
                   onDragOver={(e) => handleDragOver(e, i)}
                   onDrop={() => handleDrop(i)}
                   onDragEnd={handleDragEnd}
-                  className={`transition-transform ${
-                    dragOverIdx === i && dragIdx !== i ? 'translate-y-0.5 opacity-70' : ''
-                  } ${dragIdx === i ? 'opacity-30' : ''}`}
+                  onRemove={() => removeFromQueue(queueIndex + 1 + i)}
                 >
                   <QueueRow
                     track={track}
@@ -288,7 +288,7 @@ export default function QueuePanel(): JSX.Element {
                     onPlay={() => jumpToTrack(track, queueIndex + 1 + i)}
                     onRemove={() => removeFromQueue(queueIndex + 1 + i)}
                   />
-                </div>
+                </SwipeableUpcomingRow>
               ))}
 
               {!query && filteredUpcoming.length > visibleCount && (
@@ -310,6 +310,106 @@ export default function QueuePanel(): JSX.Element {
             </p>
           ) : null}
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Swipe-to-remove wrapper (mobile) + drag-to-reorder wrapper (desktop) ────
+// Same row, two removal gestures: HTML5 drag events (desktop mouse) never
+// fire from touch, so a phone gets nothing from the reorder wiring above — a
+// leftward swipe uncovers a red delete backdrop instead, mirroring the
+// swipe-to-delete pattern most mail/message apps already teach.
+function SwipeableUpcomingRow({
+  children, query, isDragOver, isDragging, onDragStart, onDragOver, onDrop, onDragEnd, onRemove,
+}: {
+  children: ReactNode
+  query: boolean
+  isDragOver: boolean
+  isDragging: boolean
+  onDragStart: (e: React.DragEvent) => void
+  onDragOver: (e: React.DragEvent) => void
+  onDrop: () => void
+  onDragEnd: () => void
+  onRemove: () => void
+}): JSX.Element {
+  // How far left fully reveals the backdrop, and how far past that triggers
+  // removal on release — rubber-banded past REVEAL so the row doesn't just
+  // vanish off-screen as you keep dragging.
+  const REVEAL = 72
+  const THRESHOLD = 56
+  const startRef = useRef<{ x: number; y: number } | null>(null)
+  // Undecided until the touch moves enough to tell a horizontal swipe from a
+  // vertical scroll — committing too early would swallow a scroll attempt
+  // that happens to start with a slightly diagonal touch.
+  const axisRef = useRef<'x' | 'y' | null>(null)
+  const [dragX, setDragX] = useState(0)
+  const [swiping, setSwiping] = useState(false)
+  const [removing, setRemoving] = useState(false)
+
+  const onTouchStart = (e: React.TouchEvent): void => {
+    if (e.touches.length !== 1) return
+    if ((e.target as HTMLElement).closest('button')) return
+    startRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+    axisRef.current = null
+  }
+  const onTouchMove = (e: React.TouchEvent): void => {
+    if (!startRef.current) return
+    const dx = e.touches[0].clientX - startRef.current.x
+    const dy = e.touches[0].clientY - startRef.current.y
+    if (!axisRef.current) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return
+      axisRef.current = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y'
+      if (axisRef.current === 'x') setSwiping(true)
+    }
+    if (axisRef.current !== 'x') return
+    // preventDefault here (not just on the horizontal axis check above) is
+    // what stops the synthetic click iOS/Android fire after touchend — without
+    // it, releasing mid-swipe on the row also triggered its tap-to-play.
+    e.preventDefault()
+    const raw = Math.min(dx, 0)
+    setDragX(raw < -REVEAL ? -REVEAL + (raw + REVEAL) / 4 : raw)
+  }
+  const onTouchEnd = (): void => {
+    if (axisRef.current === 'x' && dragX < -THRESHOLD) {
+      setRemoving(true)
+      setDragX(-window.innerWidth)
+      window.setTimeout(onRemove, 180)
+    } else {
+      setDragX(0)
+    }
+    setSwiping(false)
+    startRef.current = null
+    axisRef.current = null
+  }
+
+  return (
+    <div
+      draggable={!query}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      onTouchCancel={onTouchEnd}
+      className={`relative overflow-hidden transition-transform ${isDragOver ? 'translate-y-0.5 opacity-70' : ''} ${isDragging ? 'opacity-30' : ''}`}
+    >
+      <div
+        className="absolute inset-0 rounded-lg bg-red-500 flex items-center justify-end pr-5 pointer-events-none"
+        style={{ opacity: dragX < 0 ? Math.min(1, -dragX / THRESHOLD) : 0 }}
+      >
+        <Trash2 size={15} className="text-white" />
+      </div>
+      <div
+        style={{
+          transform: dragX ? `translateX(${dragX}px)` : undefined,
+          transition: swiping ? 'none' : 'transform 0.2s ease-out, opacity 0.2s ease-out',
+          opacity: removing ? 0 : 1,
+        }}
+      >
+        {children}
       </div>
     </div>
   )

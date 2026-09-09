@@ -59,6 +59,7 @@ const NAV_POSITIONS: { id: SidebarPosition; label: string; icon: ElementType }[]
 ]
 
 type Tab = 'appearance' | 'playback' | 'shortcuts' | 'feedback' | 'about'
+const TAB_IDS: Tab[] = ['appearance', 'playback', 'shortcuts', 'feedback', 'about']
 
 // A hand-maintained index of every setting row, used by the search bar to
 // jump straight to the tab a match lives on. `devOnly` mirrors the same gate
@@ -483,7 +484,11 @@ export default function Settings(): JSX.Element {
   // the user last was rather than snapping back here.
   useEffect(() => {
     if (!settingsTab) return
-    setTab(settingsTab as Tab)
+    // 'account' is a mobile-only section (see Settings.mobile.tsx) that has no
+    // desktop equivalent (the Sidebar owns account/profile there) — a deep
+    // link to it would otherwise leave `tab` pointing at a case this file
+    // never renders.
+    if (TAB_IDS.includes(settingsTab as Tab)) setTab(settingsTab as Tab)
     setSettingsTab(null)
   }, [settingsTab, setSettingsTab])
 
