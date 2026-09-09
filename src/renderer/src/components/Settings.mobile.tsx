@@ -5,7 +5,7 @@ import {
   FolderOpen, FolderPlus, Minus, Loader2, Plus, AlignLeft, FileText, Trash2, Music2,
   Waves, RotateCcw, ExternalLink,
   ListOrdered, CloudUpload, Type, AlignCenter, Menu, Pencil, Upload,
-  ScrollText, ShieldCheck, User, LogOut, LogIn, AlertCircle, GripVertical, Images, Search, X, Bug,
+  ScrollText, ShieldCheck, User, LogOut, LogIn, AlertCircle, GripVertical, Images, Search, X, Bug, Disc,
 } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import { SKINS, getSkin, createCustomSkin, parseSkinFile } from '../lib/skins'
@@ -347,16 +347,17 @@ function PickerRow({ preview, title, sub, onClick }: {
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }): JSX.Element {
   return (
     // A thumb-sized switch, with the tap target extended past it by padding so
-    // the whole 44px is live without the switch itself looking oversized.
-    // The knob is centred with inset-y-0 + my-auto rather than a fixed top
-    // offset, which only lands right if the parent has zero padding/border,
-    // and carries no shadow — a default downward-offset shadow reads as weight
-    // sitting low, making a geometrically centred knob look off-centre. The
-    // off state sits on surface-highest: against a card that is already
-    // surface-overlay, an off switch in that same colour vanished.
+    // the whole 44px is live without the switch itself looking oversized. The
+    // knob slides via flexbox justify-content (not absolute + translate) so it
+    // can never land outside the track regardless of rounding — it's always a
+    // flex child inset by the track's own padding. The off state sits on
+    // surface-highest: against a card that is already surface-overlay, an off
+    // switch in that same colour vanished.
     <button onClick={onClick} aria-pressed={on} className="shrink-0 -m-2 p-2">
-      <span className={`relative block w-[46px] h-[26px] rounded-full transition-colors ${on ? 'bg-accent' : 'bg-[var(--surface-highest)]'}`}>
-        <span className={`absolute inset-y-0 my-auto w-[20px] h-[20px] rounded-full bg-white transition-all ${on ? 'left-[23px]' : 'left-[3px]'}`} />
+      <span className={`flex items-center w-[46px] h-[26px] p-[3px] rounded-full transition-colors ${
+        on ? 'bg-accent justify-end' : 'bg-[var(--surface-highest)] justify-start'
+      }`}>
+        <span className="w-5 h-5 rounded-full bg-white" />
       </span>
     </button>
   )
@@ -397,9 +398,10 @@ export default function Settings(): JSX.Element {
     lyricsFont, setLyricsFont,
     gradientsEnabled, setGradientsEnabled,
     surfaceGradientsEnabled, setSurfaceGradientsEnabled,
+    wrldThemeBackground, setWrldThemeBackground,
     fullEraNames, setFullEraNames,
     autoReportErrors, setAutoReportErrors,
-  } = useStorePick('setShowSettings', 'setActiveView', 'openProfile', 'account', 'setShowUserAuth', 'logoutAccount', 'theme', 'setTheme', 'customSkins', 'saveCustomSkin', 'deleteCustomSkin', 'accentColor', 'setAccentColor', 'settingsTab', 'setSettingsTab', 'navOrder', 'setNavOrder', 'navVisibility', 'setNavItemVisible', 'audioOutput', 'setAudioOutput', 'crossfadeEnabled', 'crossfadeDuration', 'setCrossfade', 'pauseFadeEnabled', 'setPauseFade', 'preferOgVersion', 'setPreferOgVersion', 'rotateSuggestedCovers', 'setRotateSuggestedCovers', 'mediaOverlayEnabled', 'setMediaOverlayEnabled', 'lyricsOffset', 'setLyricsOffset', 'sleepTimerEnd', 'setSleepTimer', 'developerMode', 'setDeveloperMode', 'lastfmUser', 'setLastfmUser', 'lastfmEnabled', 'setLastfmEnabled', 'appTextScale', 'setAppTextScale', 'lyricsScale', 'setLyricsScale', 'lyricsAlign', 'setLyricsAlign', 'lyricsBlur', 'setLyricsBlur', 'lyricsBlurAmount', 'setLyricsBlurAmount', 'lyricsColorActive', 'setLyricsColorActive', 'lyricsColorInactive', 'setLyricsColorInactive', 'appFont', 'setAppFont', 'lyricsFont', 'setLyricsFont', 'gradientsEnabled', 'setGradientsEnabled', 'surfaceGradientsEnabled', 'setSurfaceGradientsEnabled', 'fullEraNames', 'setFullEraNames', 'autoReportErrors', 'setAutoReportErrors')
+  } = useStorePick('setShowSettings', 'setActiveView', 'openProfile', 'account', 'setShowUserAuth', 'logoutAccount', 'theme', 'setTheme', 'customSkins', 'saveCustomSkin', 'deleteCustomSkin', 'accentColor', 'setAccentColor', 'settingsTab', 'setSettingsTab', 'navOrder', 'setNavOrder', 'navVisibility', 'setNavItemVisible', 'audioOutput', 'setAudioOutput', 'crossfadeEnabled', 'crossfadeDuration', 'setCrossfade', 'pauseFadeEnabled', 'setPauseFade', 'preferOgVersion', 'setPreferOgVersion', 'rotateSuggestedCovers', 'setRotateSuggestedCovers', 'mediaOverlayEnabled', 'setMediaOverlayEnabled', 'lyricsOffset', 'setLyricsOffset', 'sleepTimerEnd', 'setSleepTimer', 'developerMode', 'setDeveloperMode', 'lastfmUser', 'setLastfmUser', 'lastfmEnabled', 'setLastfmEnabled', 'appTextScale', 'setAppTextScale', 'lyricsScale', 'setLyricsScale', 'lyricsAlign', 'setLyricsAlign', 'lyricsBlur', 'setLyricsBlur', 'lyricsBlurAmount', 'setLyricsBlurAmount', 'lyricsColorActive', 'setLyricsColorActive', 'lyricsColorInactive', 'setLyricsColorInactive', 'appFont', 'setAppFont', 'lyricsFont', 'setLyricsFont', 'gradientsEnabled', 'setGradientsEnabled', 'surfaceGradientsEnabled', 'setSurfaceGradientsEnabled', 'wrldThemeBackground', 'setWrldThemeBackground', 'fullEraNames', 'setFullEraNames', 'autoReportErrors', 'setAutoReportErrors')
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [customAccent, setCustomAccent] = useState(accentColor)
@@ -1089,6 +1091,14 @@ export default function Settings(): JSX.Element {
                   >
                     <Toggle on={surfaceGradientsEnabled} onClick={() => setSurfaceGradientsEnabled(!surfaceGradientsEnabled)} />
                   </Row>
+                  <Row
+                    icon={Disc}
+                    iconColor="#8b5cf6"
+                    label="Theme background in WRLD"
+                    sub="Use the app's theme behind the WRLD tab instead of the playing song's cover"
+                  >
+                    <Toggle on={wrldThemeBackground} onClick={() => setWrldThemeBackground(!wrldThemeBackground)} />
+                  </Row>
                 </SettingsCard>
 
                 <SettingsCard title="Text">
@@ -1227,19 +1237,6 @@ export default function Settings(): JSX.Element {
                       })}
                     </div>
                   </Block>
-                  {/* The Editor/Admin tab isn't in the NAV_ITEMS registry the
-                      list above is built from, so it gets its own switch —
-                      shown only to the accounts that have it. */}
-                  {(account?.is_editor || account?.is_administrator) && ([
-                    { view: 'editor-profile' as ViewType, label: account?.is_administrator ? 'Admin' : 'Editor', icon: ShieldCheck },
-                  ]).map((item) => {
-                    const shown = navVisibility[item.view] ?? true
-                    return (
-                      <Row key={item.view} icon={item.icon} iconColor="#f59e0b" label={`${item.label} tab`} sub="Editor-only tab in the nav bar">
-                        <Toggle on={shown} onClick={() => setNavItemVisible(item.view, !shown)} />
-                      </Row>
-                    )
-                  })}
                 </SettingsCard>
               </div>
             )}

@@ -4,7 +4,7 @@ import {
   Music, Radio, Search, SkipForward, ThumbsUp, ThumbsDown, X, ChevronDown, Play, Pause,
   SkipBack, SkipForward as SkipFwd, Shuffle, Repeat, Repeat1, Volume2, VolumeX,
   MoreHorizontal, Heart, ListMusic, Trash2, Download, History, SlidersHorizontal,
-  Mic2, Layers, ArrowUpDown, Loader2, GripVertical, RefreshCw,
+  Mic2, Layers, ArrowUpDown, Loader2, GripVertical, RefreshCw, Settings2, AlignLeft, AlignCenter,
 } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import { useShallow } from 'zustand/react/shallow'
@@ -1471,6 +1471,7 @@ function LyricsScreen({
     prevTrack: s.prevTrack,
   })))
   useBackToClose(onClose)
+  const [showLyricsSettings, setShowLyricsSettings] = useState(false)
 
   return createPortal(
     // isolate: ArtBackdrop's noise-texture layer uses mix-blend-overlay,
@@ -1496,10 +1497,23 @@ function LyricsScreen({
           className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full active:bg-white/10"
           style={{ color: txtPri }}
         ><ChevronDown size={22} /></button>
+        {/* Balances the two buttons on the right (settings + download) so the
+            title stays centered instead of drifting toward the close button. */}
+        <span className="w-11 shrink-0" />
         <div className="flex-1 min-w-0 text-center">
           <p className="text-[13px] font-semibold truncate" style={{ color: txtPri }}>{title || 'Lyrics'}</p>
           {artist && <p className="text-[11px] truncate" style={{ color: txtTer }}>{artist}</p>}
         </div>
+        {/* Lyric display settings (size, alignment, blur, colors, sync
+            offset) shown right here as a sheet instead of sending the user
+            off to Settings — they're mid-song, tucking away to a different
+            screen just to nudge the text size would lose the moment. */}
+        <button
+          onClick={() => setShowLyricsSettings(true)}
+          aria-label="Lyrics display settings"
+          className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full active:bg-white/10"
+          style={{ color: txtTer }}
+        ><Settings2 size={19} /></button>
         {/* Downloading the .lrc was a right-click on desktop, with no touch
             equivalent at all — it's a button now, and only for LRC lyrics
             since plain text has no timestamps worth exporting. */}
@@ -1524,6 +1538,8 @@ function LyricsScreen({
         txtPri={txtPri} txtSec={txtSec} txtTer={txtTer} txtFaint={txtFaint}
       />
 
+      {showLyricsSettings && <LyricsSettingsSheet onClose={() => setShowLyricsSettings(false)} />}
+
       {!radioFmActive && (
         <div
           className="relative shrink-0 px-6 pt-1 flex items-center justify-center gap-8"
@@ -1547,6 +1563,192 @@ function LyricsScreen({
       )}
     </div>,
     document.body,
+  )
+}
+
+// ─── lyrics display settings ─────────────────────────────────────────────────
+
+const LYRICS_TEXT_SIZES: { label: string; value: number }[] = [
+  { label: 'Small', value: 0.85 },
+  { label: 'Default', value: 1 },
+  { label: 'Large', value: 1.2 },
+  { label: 'Huge', value: 1.4 },
+]
+
+const LYRICS_ACTIVE_PRESETS = ['#ffffff', '#1db954', '#a78bfa', '#60a5fa', '#f472b6', '#facc15']
+const LYRICS_INACTIVE_PRESETS = ['#9ca3af', '#6b7280', '#94a3b8', '#c4b5fd', '#7dd3fc', '#fda4af']
+
+// One row of color swatches — "Auto" (null) defers to the surface's own
+// text colors, otherwise a preset or a custom pick via the native color input.
+function LyricColorRow({ label, presets, value, fallback, onChange }: {
+  label: string
+  presets: string[]
+  value: string | null
+  fallback: string
+  onChange: (color: string | null) => void
+}): JSX.Element {
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-text-muted text-xs w-full">{label}</span>
+      <button
+        onClick={() => onChange(null)}
+        className={`h-8 px-2.5 rounded-lg text-[11px] font-semibold border transition-colors ${
+          value === null
+            ? 'bg-accent/15 text-accent border-[var(--accent)]'
+            : 'text-text-muted border-[var(--border)] active:bg-[var(--surface-raised)]'
+        }`}
+      >
+        Auto
+      </button>
+      {presets.map((c) => (
+        <button
+          key={c}
+          onClick={() => onChange(c)}
+          className="w-8 h-8 rounded-full border border-[var(--border)] shrink-0"
+          style={{ backgroundColor: c, outline: value?.toLowerCase() === c ? `2px solid ${c}` : 'none', outlineOffset: '2px' }}
+          title={c}
+        />
+      ))}
+      <input
+        type="color"
+        value={value ?? fallback}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-8 h-8 rounded-full border border-[var(--border)] shrink-0 bg-transparent p-0"
+      />
+    </div>
+  )
+}
+
+/** The lyric-display controls (text size, alignment, blur, colors, sync
+ *  offset) shown right in the full lyrics screen, next to Download — this
+ *  used to mean leaving the song to dig through Settings just to nudge the
+ *  text size, which is exactly the wrong moment to lose the lyrics view. */
+function LyricsSettingsSheet({ onClose }: { onClose: () => void }): JSX.Element {
+  const {
+    lyricsScale, setLyricsScale,
+    lyricsAlign, setLyricsAlign,
+    lyricsBlur, setLyricsBlur,
+    lyricsBlurAmount, setLyricsBlurAmount,
+    lyricsColorActive, setLyricsColorActive,
+    lyricsColorInactive, setLyricsColorInactive,
+    lyricsOffset, setLyricsOffset,
+  } = useStorePick(
+    'lyricsScale', 'setLyricsScale', 'lyricsAlign', 'setLyricsAlign',
+    'lyricsBlur', 'setLyricsBlur', 'lyricsBlurAmount', 'setLyricsBlurAmount',
+    'lyricsColorActive', 'setLyricsColorActive', 'lyricsColorInactive', 'setLyricsColorInactive',
+    'lyricsOffset', 'setLyricsOffset',
+  )
+
+  return (
+    <Sheet onClose={onClose} title="Lyrics display">
+      <div className="px-5 pb-2 flex flex-col gap-5">
+        <div>
+          <p className="text-text-secondary text-xs mb-2">Text size</p>
+          <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--surface-highest)]">
+            {LYRICS_TEXT_SIZES.map(({ label, value }) => {
+              const active = lyricsScale === value
+              return (
+                <button
+                  key={value}
+                  onClick={() => setLyricsScale(value)}
+                  aria-pressed={active}
+                  className={`flex-1 min-w-0 h-9 rounded-lg text-[13px] font-medium transition-colors ${
+                    active ? 'bg-accent text-white' : 'text-text-secondary active:bg-[var(--surface-overlay)]'
+                  }`}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-text-secondary text-xs mb-2">Alignment</p>
+          <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--surface-highest)]">
+            {[
+              { value: 'left' as const, label: 'Left', icon: AlignLeft },
+              { value: 'center' as const, label: 'Center', icon: AlignCenter },
+            ].map(({ value, label, icon: Icon }) => {
+              const active = lyricsAlign === value
+              return (
+                <button
+                  key={value}
+                  onClick={() => setLyricsAlign(value)}
+                  aria-pressed={active}
+                  className={`flex-1 min-w-0 flex items-center justify-center gap-1.5 h-9 rounded-lg text-[13px] font-medium transition-colors ${
+                    active ? 'bg-accent text-white' : 'text-text-secondary active:bg-[var(--surface-overlay)]'
+                  }`}
+                >
+                  <Icon size={14} /> {label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-text-primary text-sm">Blur inactive lines</p>
+            <button
+              onClick={() => setLyricsBlur(!lyricsBlur)}
+              aria-pressed={lyricsBlur}
+              className={`flex items-center shrink-0 w-11 h-6 p-0.5 rounded-full transition-colors ${
+                lyricsBlur ? 'bg-accent justify-end' : 'bg-[var(--surface-highest)] justify-start'
+              }`}
+            >
+              <span className="w-5 h-5 rounded-full bg-white" />
+            </button>
+          </div>
+          {lyricsBlur && (
+            <div className="flex items-center gap-2 mt-2">
+              <input
+                type="range" min={0.25} max={4} step={0.25}
+                value={lyricsBlurAmount}
+                onChange={(e) => setLyricsBlurAmount(parseFloat(e.target.value))}
+                className="flex-1 accent-[var(--accent)]"
+              />
+              <span className="text-text-muted text-xs tabular-nums w-8 text-right">{lyricsBlurAmount}×</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <p className="text-text-secondary text-xs -mb-1">Colors</p>
+          <LyricColorRow
+            label="Current line"
+            presets={LYRICS_ACTIVE_PRESETS}
+            value={lyricsColorActive}
+            fallback="#ffffff"
+            onChange={setLyricsColorActive}
+          />
+          <LyricColorRow
+            label="Other lines"
+            presets={LYRICS_INACTIVE_PRESETS}
+            value={lyricsColorInactive}
+            fallback="#9ca3af"
+            onChange={setLyricsColorInactive}
+          />
+        </div>
+
+        <div className="flex items-center justify-between">
+          <p className="text-text-primary text-sm">Sync offset</p>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setLyricsOffset(Math.round((lyricsOffset - 0.1) * 10) / 10)}
+              className="w-8 h-8 rounded-full bg-[var(--surface-highest)] text-text-primary text-base font-medium active:bg-[var(--surface-overlay)]"
+            >−</button>
+            <span className="text-text-primary text-sm tabular-nums w-14 text-center">
+              {lyricsOffset > 0 ? '+' : ''}{lyricsOffset.toFixed(1)}s
+            </span>
+            <button
+              onClick={() => setLyricsOffset(Math.round((lyricsOffset + 0.1) * 10) / 10)}
+              className="w-8 h-8 rounded-full bg-[var(--surface-highest)] text-text-primary text-base font-medium active:bg-[var(--surface-overlay)]"
+            >+</button>
+          </div>
+        </div>
+      </div>
+    </Sheet>
   )
 }
 
