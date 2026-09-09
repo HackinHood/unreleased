@@ -62,7 +62,6 @@ export default function WrldView(): JSX.Element {
     nextTrack, prevTrack,
     showQueue, setShowQueue,
     toggleEqPanel, eqFxActive,
-    sidebarPosition,
   } = useStore(useShallow(s => ({
     currentTrack: s.currentTrack,
     currentTrackFull: s.currentTrackFull,
@@ -92,7 +91,6 @@ export default function WrldView(): JSX.Element {
     toggleEqPanel: s.toggleEqPanel,
     // Same "anything non-neutral" indicator as the player bar's EQ button.
     eqFxActive: s.eqEnabled || s.playbackSpeed !== 1 || s.eqBalance !== 0 || s.eqMono || s.eqBoost !== 1 || s.skipSilence || s.reverbEnabled,
-    sidebarPosition: s.sidebarPosition,
   })))
 
   // Skins beyond the classic pair mean `theme === 'dark'` no longer covers
@@ -342,10 +340,9 @@ export default function WrldView(): JSX.Element {
   // specifically, so WRLD's backdrop can paint full-bleed under the status
   // bar — which means WRLD has to pad its own header down to compensate
   // instead (every other view gets that inset for free from the shell).
-  // Skipped when the nav bar sits on top: the shell doesn't reserve that
-  // padding there either (BottomNav pads itself instead), so WRLD shouldn't
-  // add its own on top of that.
-  const ownsTopInset = sidebarPosition !== 'top'
+  // Always true: mobile's nav bar is bottom-only now (see BottomNav), so the
+  // shell always reserves this inset itself.
+  const ownsTopInset = true
 
   return (
     <div

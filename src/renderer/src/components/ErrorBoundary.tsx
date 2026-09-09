@@ -27,14 +27,23 @@ interface State { error: Error | null; copied: boolean; reportStatus: ReportStat
 export default class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null, copied: false, reportStatus: 'idle' }
   private componentStack: string | null = null
+  // Guards against double-sending — the reportStatus 'sending' value alone
+  // can't do this, since it's also pre-set synchronously below (to avoid a
+  // flash of the manual button) before the actual send starts.
+  private reported = false
 
   static getDerivedStateFromError(error: Error): Partial<State> {
-    return { error, reportStatus: 'idle' }
+    // Pre-set 'sending' when auto-report is on so the card never flashes an
+    // idle "Report this error" button an instant before componentDidCatch
+    // (below) fires it automatically anyway.
+    return { error, reportStatus: useStore.getState().autoReportErrors ? 'sending' : 'idle' }
   }
 
   componentDidCatch(error: Error, info: { componentStack: string }): void {
     console.error('ErrorBoundary caught:', error, info)
     this.componentStack = info.componentStack
+    this.reported = false
+    if (useStore.getState().autoReportErrors) void this.reportError()
   }
 
   private copyError = (): void => {
@@ -49,7 +58,8 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   private reportError = async (): Promise<void> => {
     const { error } = this.state
-    if (!error || this.state.reportStatus === 'sending') return
+    if (!error || this.reported) return
+    this.reported = true
     this.setState({ reportStatus: 'sending' })
     const message = [
       `Crash: ${error.message}`,

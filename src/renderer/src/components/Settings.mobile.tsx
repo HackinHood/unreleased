@@ -3,11 +3,11 @@ import {
   Brush, Palette, Volume2, Zap, Clock, Info, Github, MessageCircle, Check,
   PenLine, BookOpen, Copy, Eye, EyeOff, ChevronDown, ChevronRight, ArrowLeft, KeyRound, Globe, RefreshCw,
   FolderOpen, FolderPlus, Minus, Loader2, Plus, AlignLeft, FileText, Trash2, Music2,
-  PanelLeft, PanelTop, PanelBottom, Waves, RotateCcw, ExternalLink,
+  Waves, RotateCcw, ExternalLink,
   ListOrdered, CloudUpload, Type, AlignCenter, Menu, Pencil, Upload,
-  ScrollText, ShieldCheck, User, LogOut, LogIn, AlertCircle, GripVertical, Images, Search, X,
+  ScrollText, ShieldCheck, User, LogOut, LogIn, AlertCircle, GripVertical, Images, Search, X, Bug,
 } from 'lucide-react'
-import { useStore, useStorePick, type SidebarPosition } from '../store/useStore'
+import { useStore, useStorePick } from '../store/useStore'
 import { SKINS, getSkin, createCustomSkin, parseSkinFile } from '../lib/skins'
 import SkinEditorModal from './SkinEditorModal'
 import { FONTS } from '../lib/fonts'
@@ -102,15 +102,6 @@ function LyricColorRow({ label, presets, value, fallback, onChange }: {
   )
 }
 
-// A vertical rail doesn't fit a phone, so only the two edges the tab bar can
-// actually take are offered. `left`/`right` still exist in the store (a value
-// saved on desktop, or a synced profile) and render as bottom tabs — see how
-// `active` is derived below.
-const NAV_POSITIONS: { id: SidebarPosition; label: string; icon: ElementType }[] = [
-  { id: 'top', label: 'Top', icon: PanelTop },
-  { id: 'bottom', label: 'Bottom', icon: PanelBottom },
-]
-
 type Tab = 'account' | 'appearance' | 'playback' | 'feedback' | 'about'
 
 const SECTION_IDS: Tab[] = ['account', 'appearance', 'playback', 'feedback', 'about']
@@ -148,6 +139,7 @@ const SETTINGS_SEARCH_INDEX: { tab: Tab; label: string; sub?: string }[] = [
   { tab: 'playback', label: 'Last.fm scrobbling' },
   // Feedback / About
   { tab: 'feedback', label: 'Feedback', sub: 'Report a bug or share an idea' },
+  { tab: 'feedback', label: 'Auto-report app errors', sub: 'Automatically send a crash report when the app hits an unexpected error' },
   { tab: 'about', label: 'About', sub: 'Version, GitHub, Discord, API links' },
   { tab: 'about', label: 'Auth Token', sub: 'View and copy your account token' },
   { tab: 'about', label: 'API Docs' },
@@ -382,7 +374,6 @@ export default function Settings(): JSX.Element {
     customSkins, saveCustomSkin, deleteCustomSkin,
     accentColor, setAccentColor,
     settingsTab, setSettingsTab,
-    sidebarPosition, setSidebarPosition,
     navOrder, setNavOrder,
     navVisibility, setNavItemVisible,
     audioOutput, setAudioOutput,
@@ -407,7 +398,8 @@ export default function Settings(): JSX.Element {
     gradientsEnabled, setGradientsEnabled,
     surfaceGradientsEnabled, setSurfaceGradientsEnabled,
     fullEraNames, setFullEraNames,
-  } = useStorePick('setShowSettings', 'setActiveView', 'openProfile', 'account', 'setShowUserAuth', 'logoutAccount', 'theme', 'setTheme', 'customSkins', 'saveCustomSkin', 'deleteCustomSkin', 'accentColor', 'setAccentColor', 'settingsTab', 'setSettingsTab', 'sidebarPosition', 'setSidebarPosition', 'navOrder', 'setNavOrder', 'navVisibility', 'setNavItemVisible', 'audioOutput', 'setAudioOutput', 'crossfadeEnabled', 'crossfadeDuration', 'setCrossfade', 'pauseFadeEnabled', 'setPauseFade', 'preferOgVersion', 'setPreferOgVersion', 'rotateSuggestedCovers', 'setRotateSuggestedCovers', 'mediaOverlayEnabled', 'setMediaOverlayEnabled', 'lyricsOffset', 'setLyricsOffset', 'sleepTimerEnd', 'setSleepTimer', 'developerMode', 'setDeveloperMode', 'lastfmUser', 'setLastfmUser', 'lastfmEnabled', 'setLastfmEnabled', 'appTextScale', 'setAppTextScale', 'lyricsScale', 'setLyricsScale', 'lyricsAlign', 'setLyricsAlign', 'lyricsBlur', 'setLyricsBlur', 'lyricsBlurAmount', 'setLyricsBlurAmount', 'lyricsColorActive', 'setLyricsColorActive', 'lyricsColorInactive', 'setLyricsColorInactive', 'appFont', 'setAppFont', 'lyricsFont', 'setLyricsFont', 'gradientsEnabled', 'setGradientsEnabled', 'surfaceGradientsEnabled', 'setSurfaceGradientsEnabled', 'fullEraNames', 'setFullEraNames')
+    autoReportErrors, setAutoReportErrors,
+  } = useStorePick('setShowSettings', 'setActiveView', 'openProfile', 'account', 'setShowUserAuth', 'logoutAccount', 'theme', 'setTheme', 'customSkins', 'saveCustomSkin', 'deleteCustomSkin', 'accentColor', 'setAccentColor', 'settingsTab', 'setSettingsTab', 'navOrder', 'setNavOrder', 'navVisibility', 'setNavItemVisible', 'audioOutput', 'setAudioOutput', 'crossfadeEnabled', 'crossfadeDuration', 'setCrossfade', 'pauseFadeEnabled', 'setPauseFade', 'preferOgVersion', 'setPreferOgVersion', 'rotateSuggestedCovers', 'setRotateSuggestedCovers', 'mediaOverlayEnabled', 'setMediaOverlayEnabled', 'lyricsOffset', 'setLyricsOffset', 'sleepTimerEnd', 'setSleepTimer', 'developerMode', 'setDeveloperMode', 'lastfmUser', 'setLastfmUser', 'lastfmEnabled', 'setLastfmEnabled', 'appTextScale', 'setAppTextScale', 'lyricsScale', 'setLyricsScale', 'lyricsAlign', 'setLyricsAlign', 'lyricsBlur', 'setLyricsBlur', 'lyricsBlurAmount', 'setLyricsBlurAmount', 'lyricsColorActive', 'setLyricsColorActive', 'lyricsColorInactive', 'setLyricsColorInactive', 'appFont', 'setAppFont', 'lyricsFont', 'setLyricsFont', 'gradientsEnabled', 'setGradientsEnabled', 'surfaceGradientsEnabled', 'setSurfaceGradientsEnabled', 'fullEraNames', 'setFullEraNames', 'autoReportErrors', 'setAutoReportErrors')
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [customAccent, setCustomAccent] = useState(accentColor)
@@ -1175,16 +1167,6 @@ export default function Settings(): JSX.Element {
                 </SettingsCard>
 
                 <SettingsCard title="Navigation">
-                  <Block icon={PanelLeft} iconColor="#0d9488" label="Tab bar position" sub="Which edge the nav tabs sit on">
-                    <Segmented
-                      // A left/right value saved on desktop renders as bottom
-                      // tabs here, so Bottom is what's really selected —
-                      // without this, neither option would look picked at all.
-                      value={sidebarPosition === 'top' ? 'top' : 'bottom'}
-                      options={NAV_POSITIONS.map(({ id, label, icon }) => ({ value: id, label, icon }))}
-                      onChange={setSidebarPosition}
-                    />
-                  </Block>
                   <Block
                     icon={ListOrdered}
                     iconColor="#6366f1"
@@ -1433,6 +1415,16 @@ export default function Settings(): JSX.Element {
                   Found a bug or have an idea? Let us know. To report a problem with a
                   specific song's info or lyrics, open that song and choose “Report”.
                 </p>
+                <SettingsCard>
+                  <Row
+                    icon={Bug}
+                    iconColor="#ef4444"
+                    label="Auto-report app errors"
+                    sub="When the app hits an unexpected error, send a crash report automatically instead of asking first"
+                  >
+                    <Toggle on={autoReportErrors} onClick={() => setAutoReportErrors(!autoReportErrors)} />
+                  </Row>
+                </SettingsCard>
                 <ReportForm mode={{ kind: 'feedback' }} />
               </div>
             )}

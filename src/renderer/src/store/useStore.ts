@@ -305,6 +305,11 @@ interface AppState {
   // `reportModal` is the open report dialog's target (null = closed).
   pendingReports: PendingReport[]
   reportModal: ReportTarget | null
+  // Whether ErrorBoundary auto-submits a crash report the moment it catches
+  // an error, through the same feedback pipeline (submitFeedback) the manual
+  // "Report this error" button uses. On by default; Settings can turn it off
+  // for anyone who'd rather report manually (or not at all).
+  autoReportErrors: boolean
 
   // Playlist folders — a local-first grouping over both synced and local
   // playlists (keyed by "api:<id>"/"local:<id>"). Persisted to localStorage and
@@ -551,6 +556,7 @@ interface AppActions {
   /** Opens the report dialog for general feedback or a specific song. */
   openReport: (target: ReportTarget) => void
   closeReport: () => void
+  setAutoReportErrors: (enabled: boolean) => void
   /** Queues a general feedback report and tries to deliver it. `contact` is
    *  the optional reach-me field the endpoint accepts. Resolves once that
    *  delivery attempt settles: `true` if it actually reached the server this
@@ -1438,6 +1444,8 @@ export const useStore = create<AppStore>((set, get, store) => ({
   // ── Reports (feedback + song issue reports) ────────────────────────────────
   pendingReports: ls.get<PendingReport[]>('pendingReports') ?? [],
   reportModal: null,
+  autoReportErrors: ls.get<boolean>('autoReportErrors') ?? true,
+  setAutoReportErrors: (autoReportErrors) => { set({ autoReportErrors }); ls.set('autoReportErrors', autoReportErrors) },
 
   openReport: (target) => set({ reportModal: target }),
   closeReport: () => set({ reportModal: null }),

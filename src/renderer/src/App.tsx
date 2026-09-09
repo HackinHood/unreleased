@@ -186,7 +186,11 @@ export default function App(): JSX.Element {
           // finishes closing and this padding would otherwise reappear. WRLD
           // still gets its own full-bleed by compensating with a negative
           // top offset on its own overlay wrapper below.
-          style={sidebarPosition !== 'top' && !heroBleedTop
+          // Mobile's nav bar is bottom-only (no per-platform top option any
+          // more — see BottomNav), so on mobile this only ever depends on
+          // heroBleedTop. sidebarPosition still gates it on desktop, where
+          // Sidebar itself can sit at the top and already reserves the space.
+          style={(isMobile || sidebarPosition !== 'top') && !heroBleedTop
             ? { paddingTop: 'var(--top-inset)' } : undefined}
         >
           <div className="flex-1 overflow-hidden flex">

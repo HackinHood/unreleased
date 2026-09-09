@@ -325,13 +325,15 @@ function StatsPanel({ onClose }: { onClose: () => void }): JSX.Element {
 // ─── View ─────────────────────────────────────────────────────────────────────
 
 export default function WordleView(): JSX.Element {
-  const { setActiveView, playTrack, sidebarPosition, setHeroBleedTop } = useStorePick(
-    'setActiveView', 'playTrack', 'sidebarPosition', 'setHeroBleedTop')
+  const { setActiveView, playTrack, setHeroBleedTop } = useStorePick(
+    'setActiveView', 'playTrack', 'setHeroBleedTop')
 
   // Lets GameBackdrop's wash paint full-bleed under the status bar instead of
   // stopping at the shell's usual inset — matches WRLD's ownsTopInset trick.
   // The corner buttons and the switcher's top clearance compensate below.
-  const ownsTopInset = sidebarPosition !== 'top'
+  // Always true: mobile's nav bar is bottom-only now (see BottomNav), so the
+  // shell always reserves this inset itself.
+  const ownsTopInset = true
   useEffect(() => {
     setHeroBleedTop(true)
     return () => setHeroBleedTop(false)

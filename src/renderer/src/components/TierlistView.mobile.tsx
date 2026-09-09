@@ -157,13 +157,15 @@ function TierEditPopover({ tier, canDelete, onChange, onDelete, onClose }: {
 // ─── View ───────────────────────────────────────────────────────────────────
 
 export default function TierlistView(): JSX.Element {
-  const { setActiveView, sidebarPosition, setHeroBleedTop } = useStorePick(
-    'setActiveView', 'sidebarPosition', 'setHeroBleedTop')
+  const { setActiveView, setHeroBleedTop } = useStorePick(
+    'setActiveView', 'setHeroBleedTop')
 
   // Lets GameBackdrop's wash paint full-bleed under the status bar instead of
   // stopping at the shell's usual inset — matches WRLD's ownsTopInset trick.
   // The corner buttons and the switcher's top clearance compensate below.
-  const ownsTopInset = sidebarPosition !== 'top'
+  // Always true: mobile's nav bar is bottom-only now (see BottomNav), so the
+  // shell always reserves this inset itself.
+  const ownsTopInset = true
   useEffect(() => {
     setHeroBleedTop(true)
     return () => setHeroBleedTop(false)

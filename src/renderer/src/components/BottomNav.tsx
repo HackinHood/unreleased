@@ -10,10 +10,13 @@ import { useMobileNavSplit } from '../hooks/useMobileNavTabs'
 // which meant Settings → Appearance → "Menu items" (order + show/hide) silently
 // did nothing on a phone; the same maps drive both surfaces here.
 //
-// Placement follows the same `sidebarPosition` setting: only top/bottom are
-// offered on mobile (a vertical rail doesn't fit a phone — see Settings), and
-// `atTop` flips the border, the safe-area inset, and the active marker to the
-// opposite edge.
+// Always bottom-anchored — unlike the desktop Sidebar (left/right/top/bottom,
+// via `sidebarPosition`), mobile no longer offers a way to move this bar; a
+// vertical rail never fit a phone anyway, and top placement wasn't worth the
+// two-way UI it required. Deliberately not reading `sidebarPosition` at all:
+// that field is desktop's, and a value of 'top' saved there (or synced from a
+// desktop session) must never flip this bar — see App.tsx's `isMobile` guard
+// on the matching top-inset padding.
 //
 // Hard-capped (see MAX_MOBILE_TABS in lib/navItems), Settings always last —
 // a phone-width row scrolling to reach an 8th or 9th enabled item (the
@@ -23,10 +26,9 @@ import { useMobileNavSplit } from '../hooks/useMobileNavTabs'
 // tab in this bar — see useMobileNavSplit for the shared tabs/moreTabs split.
 
 export default function BottomNav(): JSX.Element {
-  const { activeView, setActiveView, toggleSettings, sidebarPosition } =
-    useStorePick('activeView', 'setActiveView', 'toggleSettings', 'sidebarPosition')
+  const { activeView, setActiveView, toggleSettings } =
+    useStorePick('activeView', 'setActiveView', 'toggleSettings')
   const showSettings = activeView === 'settings'
-  const atTop = sidebarPosition === 'top'
   const { tabs } = useMobileNavSplit()
 
   const navigateTo = (view: ViewType): void => {
@@ -48,7 +50,7 @@ export default function BottomNav(): JSX.Element {
   const labelCls = 'text-[10px] font-semibold leading-none w-full text-center truncate px-0.5'
   const marker = (active: boolean): JSX.Element | null => active ? (
     <span
-      className={`absolute ${atTop ? 'bottom-0' : 'top-0'} left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full`}
+      className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full"
       style={{ background: 'var(--accent)' }}
     />
   ) : null
@@ -81,9 +83,7 @@ export default function BottomNav(): JSX.Element {
       // safe-area-inset-bottom padding below the icons, that read as a stark,
       // "dead" slab distinct from the rest of the app instead of part of it.
       className={`md:hidden ${activeView === 'wrld' ? 'hidden' : 'flex'} items-stretch bg-surface shrink-0`}
-      style={atTop
-        ? { borderBottom: '1px solid var(--border)', paddingTop: 'var(--top-inset)' }
-        : { borderTop: '1px solid var(--border)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      style={{ borderTop: '1px solid var(--border)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
       {tabs.map((tab) => {
         const active = navTabFor(activeView) === tab.view

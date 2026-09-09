@@ -120,6 +120,18 @@ export default function SongInfoModal({ song, onClose, onEdit }: Props): JSX.Ele
     } catch {}
   }
 
+  // Swipe-down-to-dismiss on mobile, same curtain gesture as WRLD's full-
+  // screen player. Only armed from the hero (cover/header) area — same
+  // region the desktop drag-handle uses — so it doesn't fight the scrollable
+  // info list below. dragY/dragging get handed to ModalOverlay so it can
+  // translate the backdrop *with* the panel — otherwise the panel would slide
+  // away while an opaque backdrop stayed put, hiding the app behind it until
+  // the modal actually closed.
+  // Called before the `!displaySong` early return below (hooks must run
+  // unconditionally on every render) even though it's only used once we know
+  // we're actually rendering the modal.
+  const { dragY, dragging, handlers: dragHandlers } = useDragToDismiss(onClose)
+
   if (!displaySong) return null
 
   // The user's per-song override (custom name/cover). Subscribing to the whole
@@ -165,15 +177,6 @@ export default function SongInfoModal({ song, onClose, onEdit }: Props): JSX.Ele
       setCoverBusy(null)
     }
   }
-
-  // Swipe-down-to-dismiss on mobile, same curtain gesture as WRLD's full-
-  // screen player. Only armed from the hero (cover/header) area — same
-  // region the desktop drag-handle uses — so it doesn't fight the scrollable
-  // info list below. dragY/dragging get handed to ModalOverlay so it can
-  // translate the backdrop *with* the panel — otherwise the panel would slide
-  // away while an opaque backdrop stayed put, hiding the app behind it until
-  // the modal actually closed.
-  const { dragY, dragging, handlers: dragHandlers } = useDragToDismiss(onClose)
 
   let notesDisplay: string | null = null
   if (displaySong.notes) {

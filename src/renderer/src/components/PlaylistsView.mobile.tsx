@@ -356,7 +356,7 @@ export default function PlaylistsView(): JSX.Element {
     playlistsSelectedLocalId: localSelectedId, setPlaylistsSelectedLocalId: setLocalSelectedId,
     playlistsSort: sortRaw, setPlaylistsSort: setSortRaw,
     playlistFolders, createFolder, renameFolder, deleteFolder, movePlaylistsToFolder,
-    appTextScale, currentTrack, sidebarPosition, setHeroBleedTop, playNext } = useStorePick('account', 'playlists', 'refreshPlaylists', 'playTrack', 'playCollection', 'addToQueue', 'setShowUserAuth', 'likedTrackIds', 'toggleLike', 'setActiveView', 'setPendingEditorSongId', 'localPlaylists', 'libraryTracks', 'libraryArt', 'loadLibrary', 'deleteLocalPlaylist', 'renameLocalPlaylist', 'updateLocalPlaylist', 'addToLocalPlaylist', 'removeFromLocalPlaylist', 'reorderLocalPlaylist', 'createLocalPlaylist', 'guestPlaylists', 'createGuestPlaylist', 'deleteGuestPlaylist', 'renameGuestPlaylist', 'removeFromGuestPlaylist', 'followedPlaylists', 'followPlaylist', 'unfollowPlaylist', 'updateFollowedPlaylistMeta', 'pendingPlaylistId', 'setPendingPlaylistId', 'playlistsSelectedId', 'setPlaylistsSelectedId', 'playlistsSelectedLocalId', 'setPlaylistsSelectedLocalId', 'playlistsSort', 'setPlaylistsSort', 'playlistFolders', 'createFolder', 'renameFolder', 'deleteFolder', 'movePlaylistsToFolder', 'appTextScale', 'currentTrack', 'sidebarPosition', 'setHeroBleedTop', 'playNext')
+    appTextScale, currentTrack, setHeroBleedTop, playNext } = useStorePick('account', 'playlists', 'refreshPlaylists', 'playTrack', 'playCollection', 'addToQueue', 'setShowUserAuth', 'likedTrackIds', 'toggleLike', 'setActiveView', 'setPendingEditorSongId', 'localPlaylists', 'libraryTracks', 'libraryArt', 'loadLibrary', 'deleteLocalPlaylist', 'renameLocalPlaylist', 'updateLocalPlaylist', 'addToLocalPlaylist', 'removeFromLocalPlaylist', 'reorderLocalPlaylist', 'createLocalPlaylist', 'guestPlaylists', 'createGuestPlaylist', 'deleteGuestPlaylist', 'renameGuestPlaylist', 'removeFromGuestPlaylist', 'followedPlaylists', 'followPlaylist', 'unfollowPlaylist', 'updateFollowedPlaylistMeta', 'pendingPlaylistId', 'setPendingPlaylistId', 'playlistsSelectedId', 'setPlaylistsSelectedId', 'playlistsSelectedLocalId', 'setPlaylistsSelectedLocalId', 'playlistsSort', 'setPlaylistsSort', 'playlistFolders', 'createFolder', 'renameFolder', 'deleteFolder', 'movePlaylistsToFolder', 'appTextScale', 'currentTrack', 'setHeroBleedTop', 'playNext')
   // Cast back to the component's own SortField union — the store keeps the
   // field as a plain string so it doesn't have to import this component's type.
   const sort = sortRaw as SortState
@@ -2247,10 +2247,10 @@ export default function PlaylistsView(): JSX.Element {
     setHeroBleedTop(heroActive)
     return () => setHeroBleedTop(false)
   }, [heroActive, setHeroBleedTop])
-  // Matches WRLD's own ownsTopInset: when the nav bar sits on top, the shell
-  // never reserved this padding in the first place (BottomNav pads itself
-  // instead), so there's nothing for the hero to compensate for.
-  const ownsTopInset = sidebarPosition !== 'top'
+  // Matches WRLD's own ownsTopInset. Always true: mobile's nav bar is
+  // bottom-only now (see BottomNav), so the shell always reserves this inset
+  // itself and the hero always has something to compensate for.
+  const ownsTopInset = true
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">

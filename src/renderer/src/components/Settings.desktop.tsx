@@ -5,7 +5,7 @@ import {
   FolderOpen, Monitor, BellOff, Minus, Loader2, Plus, AlignLeft, FileText, Trash2, Wrench, FlaskConical,
   PanelLeft, PanelRight, PanelTop, PanelBottom, Waves, Keyboard, RotateCcw, AppWindow, PictureInPicture2, Minimize2,
   ListOrdered, GripVertical, CloudUpload, Type, AlignCenter, Menu, Pencil, Upload,
-  ScrollText, ShieldCheck, Disc, Images, Search, LogOut,
+  ScrollText, ShieldCheck, Disc, Images, Search, LogOut, Bug,
 } from 'lucide-react'
 import { useStore, useStorePick, type SidebarPosition } from '../store/useStore'
 import { HOTKEY_ACTIONS, HOTKEY_CATEGORIES, effectiveBinding, comboTokens, eventToCombo } from '../lib/hotkeys'
@@ -98,6 +98,7 @@ const SETTINGS_SEARCH_INDEX: { tab: Tab; label: string; sub?: string; devOnly?: 
   { tab: 'shortcuts', label: 'Keyboard shortcuts', sub: 'Rebind any in-app or global hotkey' },
   // Feedback / About
   { tab: 'feedback', label: 'Feedback', sub: 'Report a bug or share an idea' },
+  { tab: 'feedback', label: 'Auto-report app errors', sub: 'Automatically send a crash report when the app hits an unexpected error' },
   { tab: 'about', label: 'About', sub: 'Version, GitHub, Discord, API links' },
   { tab: 'about', label: 'Auth Token', sub: 'View and copy your account token' },
   { tab: 'about', label: 'Log out' },
@@ -266,7 +267,8 @@ export default function Settings(): JSX.Element {
     surfaceGradientsEnabled, setSurfaceGradientsEnabled,
     wrldThemeBackground, setWrldThemeBackground,
     refreshPlaylists, fullEraNames, setFullEraNames,
-  } = useStorePick('setShowSettings', 'setActiveView', 'account', 'logoutAccount', 'theme', 'setTheme', 'customSkins', 'saveCustomSkin', 'deleteCustomSkin', 'accentColor', 'setAccentColor', 'settingsTab', 'setSettingsTab', 'sidebarPosition', 'setSidebarPosition', 'navOrder', 'setNavOrder', 'navVisibility', 'setNavItemVisible', 'navControlOrder', 'setNavControlOrder', 'navControlVisibility', 'setNavControlVisible', 'audioOutput', 'setAudioOutput', 'crossfadeEnabled', 'crossfadeDuration', 'setCrossfade', 'pauseFadeEnabled', 'setPauseFade', 'preferOgVersion', 'setPreferOgVersion', 'rotateSuggestedCovers', 'setRotateSuggestedCovers', 'mediaOverlayEnabled', 'setMediaOverlayEnabled', 'lyricsOffset', 'setLyricsOffset', 'sleepTimerEnd', 'setSleepTimer', 'hotkeyBindings', 'setHotkeyBinding', 'resetHotkeyBindings', 'hotkeySeekSeconds', 'setHotkeySeekSeconds', 'developerMode', 'setDeveloperMode', 'lastfmUser', 'setLastfmUser', 'lastfmEnabled', 'setLastfmEnabled', 'appTextScale', 'setAppTextScale', 'lyricsScale', 'setLyricsScale', 'lyricsAlign', 'setLyricsAlign', 'lyricsBlur', 'setLyricsBlur', 'lyricsBlurAmount', 'setLyricsBlurAmount', 'lyricsColorActive', 'setLyricsColorActive', 'lyricsColorInactive', 'setLyricsColorInactive', 'appFont', 'setAppFont', 'lyricsFont', 'setLyricsFont', 'gradientsEnabled', 'setGradientsEnabled', 'surfaceGradientsEnabled', 'setSurfaceGradientsEnabled', 'wrldThemeBackground', 'setWrldThemeBackground', 'refreshPlaylists', 'fullEraNames', 'setFullEraNames')
+    autoReportErrors, setAutoReportErrors,
+  } = useStorePick('setShowSettings', 'setActiveView', 'account', 'logoutAccount', 'theme', 'setTheme', 'customSkins', 'saveCustomSkin', 'deleteCustomSkin', 'accentColor', 'setAccentColor', 'settingsTab', 'setSettingsTab', 'sidebarPosition', 'setSidebarPosition', 'navOrder', 'setNavOrder', 'navVisibility', 'setNavItemVisible', 'navControlOrder', 'setNavControlOrder', 'navControlVisibility', 'setNavControlVisible', 'audioOutput', 'setAudioOutput', 'crossfadeEnabled', 'crossfadeDuration', 'setCrossfade', 'pauseFadeEnabled', 'setPauseFade', 'preferOgVersion', 'setPreferOgVersion', 'rotateSuggestedCovers', 'setRotateSuggestedCovers', 'mediaOverlayEnabled', 'setMediaOverlayEnabled', 'lyricsOffset', 'setLyricsOffset', 'sleepTimerEnd', 'setSleepTimer', 'hotkeyBindings', 'setHotkeyBinding', 'resetHotkeyBindings', 'hotkeySeekSeconds', 'setHotkeySeekSeconds', 'developerMode', 'setDeveloperMode', 'lastfmUser', 'setLastfmUser', 'lastfmEnabled', 'setLastfmEnabled', 'appTextScale', 'setAppTextScale', 'lyricsScale', 'setLyricsScale', 'lyricsAlign', 'setLyricsAlign', 'lyricsBlur', 'setLyricsBlur', 'lyricsBlurAmount', 'setLyricsBlurAmount', 'lyricsColorActive', 'setLyricsColorActive', 'lyricsColorInactive', 'setLyricsColorInactive', 'appFont', 'setAppFont', 'lyricsFont', 'setLyricsFont', 'gradientsEnabled', 'setGradientsEnabled', 'surfaceGradientsEnabled', 'setSurfaceGradientsEnabled', 'wrldThemeBackground', 'setWrldThemeBackground', 'refreshPlaylists', 'fullEraNames', 'setFullEraNames', 'autoReportErrors', 'setAutoReportErrors')
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [customAccent, setCustomAccent] = useState(accentColor)
@@ -1451,6 +1453,16 @@ export default function Settings(): JSX.Element {
                   Found a bug or have an idea? Let us know. To report a problem with a
                   specific song's info or lyrics, open that song and choose “Report”.
                 </p>
+                <div className="max-w-md mb-2">
+                  <Row
+                    icon={Bug}
+                    iconColor="#ef4444"
+                    label="Auto-report app errors"
+                    sub="When the app hits an unexpected error, send a crash report automatically instead of asking first"
+                  >
+                    <Toggle on={autoReportErrors} onClick={() => setAutoReportErrors(!autoReportErrors)} />
+                  </Row>
+                </div>
                 <div className="max-w-md">
                   <ReportForm mode={{ kind: 'feedback' }} />
                 </div>
