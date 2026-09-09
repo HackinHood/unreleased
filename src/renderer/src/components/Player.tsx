@@ -728,6 +728,17 @@ export default function Player(): JSX.Element {
       if (audio.ended) { onAudioEnded(audio); return }
       if (audio.error) { recoverPlayback('error'); return }
       if (audio.paused) { audio.play().catch(() => recoverPlayback('play-rejected')); return }
+      // The staleness check below trusts `timeupdate` to keep landing at its
+      // normal cadence — true in the foreground, not guaranteed once the app
+      // is backgrounded (Android's WebView throttles it, sometimes to a full
+      // stop). Without this guard a perfectly healthy background track reads
+      // as "stalled" the moment STALL_TIMEOUT_MS of silence from that event
+      // elapses, and the reload this triggers has its own `.play()` blocked
+      // by the same background page — the track just stops outright, ~20-30s
+      // after leaving the app. Skip the check entirely while hidden; keep
+      // resetting the clock so time spent backgrounded is never held against
+      // it once the app is foregrounded again.
+      if (document.hidden) { lastProgressAt.current = Date.now(); return }
       // Playing on paper, but the clock isn't moving. Very common on mobile:
       // the connection goes away without the element ever firing 'error', so it
       // sits in a rebuffer that will never finish. Nothing else detects this.
