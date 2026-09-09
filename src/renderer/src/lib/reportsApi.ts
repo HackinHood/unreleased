@@ -3,8 +3,11 @@
 // queue/flush logic.
 //
 // Live endpoints (both unauthenticated, throttled at 10/min):
-//   POST /juicewrld/feedback/  { message, contact? }
+//   POST /juicewrld/feedback/  { message, contact?, automated? }
 //   POST /juicewrld/reports/   { song_id | public_id, message, contact? }
+// `automated` flags a feedback report ErrorBoundary sent on its own (see
+// autoReportErrors) rather than one a person actually wrote, so the API can
+// tell them apart on the review side.
 // Neither takes structured category/issue fields, so the form's category and
 // issue checkboxes are folded into the message text, with the app version on
 // the last line — that context is what makes a bug report actionable.
@@ -36,7 +39,7 @@ async function post(url: string, body: unknown): Promise<void> {
 
 export async function submitFeedback(r: PendingFeedback, contact?: string | null): Promise<void> {
   const message = `[${FEEDBACK_CATEGORY_LABELS[r.category]}] ${r.message}\n\n— Unreleased v${r.appVersion}`
-  await post(FEEDBACK_URL, { message, ...(contact ? { contact } : {}) })
+  await post(FEEDBACK_URL, { message, ...(contact ? { contact } : {}), ...(r.automated ? { automated: true } : {}) })
 }
 
 // ── Editor review ─────────────────────────────────────────────────────────────

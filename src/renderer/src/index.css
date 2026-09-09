@@ -251,6 +251,23 @@ html.gradients #root {
     radial-gradient(80% 70% at 0% 100%, rgb(var(--accent-rgb) / 0.08), transparent 55%);
 }
 
+/* Same gap, same fix, for WRLD: its dark blurred-cover backdrop is the only
+   thing under that sliver while it's open, so leaking through to the raw
+   `var(--surface)` below reads as a wrong-colored (and theme-following)
+   patch sitting on top of an otherwise dark, immersive screen — much more
+   jarring than the Gradient Surfaces case above, since WRLD's backdrop is
+   always dark regardless of the active theme. `wrld-active` is toggled on
+   <html> for exactly as long as WrldView is mounted (mobile only — desktop
+   never fills the safe-area top inset this way). Can't replicate the actual
+   blurred-cover art here (this paints behind everything, before React has
+   anything to sample from), so a plain dark tone is the fix: close enough
+   to blend, and always closer than the theme surface color it replaces. */
+html.wrld-active,
+html.wrld-active body,
+html.wrld-active #root {
+  background: #000;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

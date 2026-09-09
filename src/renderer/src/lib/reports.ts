@@ -52,6 +52,11 @@ interface BaseReport {
 export interface PendingFeedback extends BaseReport {
   kind: 'feedback'
   category: FeedbackCategory
+  /** True for a crash report ErrorBoundary sent on its own (see
+   *  autoReportErrors) rather than something the user actually wrote —
+   *  the API's `automated` field, so these can be told apart from real
+   *  user feedback on the review side. */
+  automated?: boolean
 }
 
 export interface PendingSongReport extends BaseReport {

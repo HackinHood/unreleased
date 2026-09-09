@@ -22,6 +22,7 @@ import type { SyncedLyricLine, Track } from '../types'
 import * as userApi from '../lib/userApi'
 import { useCanEdit } from '../hooks/useChannelRoles'
 import SongInfoModal from './SongInfoModal'
+import CoverEditor from './CoverEditor'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { ProgressiveCover } from './ProgressiveCover'
 import SongContextMenu from './SongContextMenu'
@@ -63,7 +64,6 @@ export default function WrldView(): JSX.Element {
     nextTrack, prevTrack,
     showQueue, setShowQueue,
     toggleEqPanel, eqFxActive,
-    setPendingEditorSongId,
   } = useStore(useShallow(s => ({
     currentTrack: s.currentTrack,
     currentTrackFull: s.currentTrackFull,
@@ -93,9 +93,7 @@ export default function WrldView(): JSX.Element {
     toggleEqPanel: s.toggleEqPanel,
     // Same "anything non-neutral" indicator as the player bar's EQ button.
     eqFxActive: s.eqEnabled || s.playbackSpeed !== 1 || s.eqBalance !== 0 || s.eqMono || s.eqBoost !== 1 || s.skipSilence || s.reverbEnabled,
-    setPendingEditorSongId: s.setPendingEditorSongId,
   })))
-  const canEdit = useCanEdit()
 
   // Skins beyond the classic pair mean `theme === 'dark'` no longer covers
   // "is this a dark look" — Ocean, Mocha, etc. need the dark treatment too.
@@ -105,6 +103,15 @@ export default function WrldView(): JSX.Element {
   const [textIsDark, setTextIsDark] = useState(false)
   const [sheet, setSheet] = useState<'radio' | 'versions' | null>(null)
   const [lyricsOpen, setLyricsOpen] = useState(false)
+
+  // iOS's installed-PWA safe-area sliver at the very top of the screen isn't
+  // always actually covered by .app-shell — see the html.wrld-active rule in
+  // index.css for the full story. Toggled here (not derived from CSS alone)
+  // since it has to track exactly how long this component is mounted.
+  useEffect(() => {
+    document.documentElement.classList.add('wrld-active')
+    return () => document.documentElement.classList.remove('wrld-active')
+  }, [])
 
   // ── 999 FM: voting ──
   const [voteDismissed, setVoteDismissed] = useState(false)
@@ -198,25 +205,25 @@ export default function WrldView(): JSX.Element {
     } catch {}
   }
 
-  // Long-press the cover to jump straight into Personalize (custom cover/name)
-  // for the current song — the same modal the "···" menu's "Song info" opens,
-  // just skipping that hop since a cover press is unambiguously about the art.
-  // Stream metadata's song_id is sometimes missing on FM; fall back to
-  // RadioFmPlayer's title-search match, same as SongMenu does.
+  // Long-press the cover for a quick "Change cover" sheet — the same picker
+  // Personalize's "Custom cover" section offers (see CoverEditor), just
+  // reached directly instead of via Song info. Stream metadata's song_id is
+  // sometimes missing on FM; fall back to RadioFmPlayer's title-search match,
+  // same as SongMenu does.
   const coverSongId = radioFmActive
     ? (radioFmNowPlaying?.song_id ?? radioFmMatchedSong?.songId ?? null)
     : (currentTrack ? userApi.trackIdToSongId(currentTrack.id) : null)
-  const [showCoverInfo, setShowCoverInfo] = useState(false)
-  const [coverInfoData, setCoverInfoData] = useState<JWApiSong | null>(null)
-  const openCoverPersonalize = (): void => {
+  const [showCoverPicker, setShowCoverPicker] = useState(false)
+  const [coverPickerSong, setCoverPickerSong] = useState<JWApiSong | null>(null)
+  const openCoverPicker = (): void => {
     if (coverSongId == null) return
-    setCoverInfoData(null)
-    setShowCoverInfo(true)
+    setCoverPickerSong(null)
+    setShowCoverPicker(true)
     apiFetch<JWApiSong>(`/songs/${coverSongId}/`)
-      .then(song => setCoverInfoData(song))
-      .catch(() => setShowCoverInfo(false))
+      .then(song => setCoverPickerSong(song))
+      .catch(() => setShowCoverPicker(false))
   }
-  const coverPress = useLongPress({ onTap: () => {}, onLongPress: openCoverPersonalize })
+  const coverPress = useLongPress({ onTap: () => {}, onLongPress: openCoverPicker })
 
   // Everything on this page sits on the blurred cover, so text colour has to
   // follow the artwork's brightness rather than the theme.
@@ -710,18 +717,25 @@ export default function WrldView(): JSX.Element {
         </Sheet>
       )}
 
-      {/* ── Cover long-press → Personalize (Song info opens straight onto it) ── */}
-      {showCoverInfo && createPortal(
-        <SongInfoModal
-          song={coverInfoData}
-          onClose={() => { setShowCoverInfo(false); setCoverInfoData(null) }}
-          onEdit={canEdit ? (songId) => {
-            setShowCoverInfo(false); setCoverInfoData(null)
-            setPendingEditorSongId(songId)
-            setActiveView('editor')
-          } : undefined}
-        />,
-        document.body
+      {/* ── Cover long-press → Change cover ─────────────────────────────── */}
+      {showCoverPicker && (
+        <Sheet onClose={() => setShowCoverPicker(false)} title="Change cover">
+          <div className="px-5 pb-4">
+            {coverPickerSong ? (
+              <CoverEditor
+                songId={coverPickerSong.id}
+                apiTitle={coverPickerSong.name}
+                ownImageRaw={coverPickerSong.image_url}
+                altTitles={(coverPickerSong.track_titles ?? []).filter(t => t && t !== coverPickerSong.name)}
+                onPicked={() => setShowCoverPicker(false)}
+              />
+            ) : (
+              <div className="flex items-center justify-center gap-2 text-text-muted text-xs py-6">
+                <Loader2 size={13} className="animate-spin" /> Loading…
+              </div>
+            )}
+          </div>
+        </Sheet>
       )}
     </div>
   )

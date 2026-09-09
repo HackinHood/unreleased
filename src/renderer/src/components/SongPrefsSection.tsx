@@ -1,14 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, X, ImageIcon, RotateCcw, Star, Music2, Play, Sparkles, FolderSearch, Loader2 } from 'lucide-react'
+import { X, ImageIcon, RotateCcw, Star, Music2, Play, Sparkles } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { useShallow } from 'zustand/react/shallow'
-import {
-  JWApiSong, resolvePrefCoverUrl, apiFetch, buildStreamUrl, smallCoverUrl,
-  parseBrowseEntries, cleanTitleForSearch, filterSearchResults, JWApiBrowseResponse,
-} from '../lib/juicewrldApi'
-import { getMediaType } from '../lib/fileTypes'
+import { JWApiSong, resolvePrefCoverUrl, smallCoverUrl } from '../lib/juicewrldApi'
 import { getOwnVersionMeta, SongVersionMeta } from '../lib/versionsApi'
-import FilePickerModal from './FilePickerModal'
+import CoverEditor from './CoverEditor'
 
 // The "Personalize" editor shown inside SongInfoModal — the one place a user
 // sets the per-song overrides in lib/songPrefs (custom name, custom cover,
@@ -134,80 +130,13 @@ export default function SongPrefsSection({
     }
   }
 
-  // ── Cover choices ─────────────────────────────────────────────────────────
+  // ── Cover ──────────────────────────────────────────────────────────────────
   const [coverOpen, setCoverOpen] = useState(false)
-  const [coverDraft, setCoverDraft] = useState('')
-  const [browseOpen, setBrowseOpen] = useState(false)
-  const coverChoices = useMemo(() => {
-    const out: { raw: string; url: string; title: string }[] = []
-    const seen = new Set<string>()
-    const push = (raw: string | null | undefined, title: string): void => {
-      if (!raw) return
-      const url = resolvePrefCoverUrl(raw)
-      if (!url || seen.has(url)) return
-      seen.add(url)
-      out.push({ raw, url, title })
-    }
-    push(ownImageRaw, apiTitle)
-    for (const v of versions) push(v.song.image_url, v.song.name)
-    return out
-  }, [ownImageRaw, versions, apiTitle])
-
-  // ── Searched covers ───────────────────────────────────────────────────────
-  // Same title(+alt names) search FilePickerModal seeds itself with, but run
-  // inline the first time the cover panel opens — surfaces likely covers
-  // right here instead of making the user open the full browser to see them.
-  // null = not fetched yet (per song), so switching songs re-triggers it.
-  const [searchedCovers, setSearchedCovers] = useState<{ path: string; url: string }[] | null>(null)
-  const [searchedLoading, setSearchedLoading] = useState(false)
-  useEffect(() => { setSearchedCovers(null) }, [songId])
-  useEffect(() => {
-    if (!coverOpen || searchedCovers != null) return
-    const queries = [apiTitle, ...versions.map((v) => v.song.name)]
-      .map(cleanTitleForSearch)
-      .filter((q, i, arr) => q && arr.indexOf(q) === i)
-    if (queries.length === 0) { setSearchedCovers([]); return }
-    let cancelled = false
-    setSearchedLoading(true)
-    const seenUrls = new Set(coverChoices.map((c) => c.url))
-    Promise.all(queries.map((q) =>
-      apiFetch<JWApiBrowseResponse>('/files/browse/', { search: q })
-        .then((data) => filterSearchResults(parseBrowseEntries(data), q))
-        .catch(() => [])
-    )).then((lists) => {
-      if (cancelled) return
-      const seenPaths = new Set<string>()
-      const out: { path: string; url: string }[] = []
-      for (const list of lists) {
-        for (const e of list) {
-          if (e.type !== 'file' || getMediaType(e.name) !== 'image' || seenPaths.has(e.path)) continue
-          seenPaths.add(e.path)
-          const url = buildStreamUrl(e.path)
-          if (seenUrls.has(url)) continue
-          out.push({ path: e.path, url })
-        }
-      }
-      setSearchedCovers(out)
-    }).finally(() => { if (!cancelled) setSearchedLoading(false) })
-    return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [coverOpen, searchedCovers, apiTitle, versions])
-
   const effectiveCover = resolvePrefCoverUrl(pref?.cover_url) ?? apiImageUrl
-  const coverDraftPreview = resolvePrefCoverUrl(coverDraft.trim())
   const nameOverridden = !!pref?.name
   const coverOverridden = !!pref?.cover_url
   const hasOverrides = nameOverridden || coverOverridden || !!pref?.default_version
   const playcount = pref?.playcount ?? 0
-
-  // Cover is per-version, same as each version's own art already is — unlike
-  // default_version, it should NOT spread to siblings, or customizing one
-  // version's cover here would silently overwrite every other version's too.
-  const applyCover = (raw: string | null): void => {
-    setSongCover(songId, raw)
-    setCoverOpen(false)
-    setCoverDraft('')
-  }
 
   return (
     <div className="rounded-xl border border-[var(--border)] bg-surface-raised px-4 py-3.5 mt-2 mb-4">
@@ -293,7 +222,7 @@ export default function SongPrefsSection({
         </button>
         {coverOverridden && (
           <button
-            onClick={() => applyCover(null)}
+            onClick={() => setSongCover(songId, null)}
             className="text-[10px] text-text-muted hover:text-red-400 transition-colors"
             title="Use the original cover"
           >
@@ -303,110 +232,16 @@ export default function SongPrefsSection({
       </div>
 
       {coverOpen && (
-        <div className="mt-2.5 rounded-lg border border-[var(--border)] bg-surface p-2.5 space-y-2.5">
-          {coverChoices.length > 0 && (
-            <>
-              <p className="text-[10px] text-text-muted">From this song's versions</p>
-              <div className="grid grid-cols-5 gap-1.5">
-                {coverChoices.map((c) => {
-                  const active = pref?.cover_url === c.raw
-                  return (
-                    <button
-                      key={c.url}
-                      onClick={() => applyCover(c.raw)}
-                      title={c.title}
-                      className={`relative aspect-square rounded-md overflow-hidden bg-surface-overlay border transition-colors ${active ? 'border-accent' : 'border-transparent hover:border-[var(--border)]'}`}
-                    >
-                      <img src={smallCoverUrl(c.url)} alt={c.title} className="w-full h-full object-cover"
-                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />
-                      {active && (
-                        <span className="absolute bottom-0.5 right-0.5 w-4 h-4 rounded-full bg-accent flex items-center justify-center">
-                          <Check size={10} className="text-white" />
-                        </span>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            </>
-          )}
-
-          {searchedLoading ? (
-            <div className="flex items-center gap-1.5 text-[10px] text-text-muted py-1">
-              <Loader2 size={11} className="animate-spin" /> Searching API files for "{apiTitle}"…
-            </div>
-          ) : searchedCovers && searchedCovers.length > 0 && (
-            <>
-              <p className="text-[10px] text-text-muted">Found in API files</p>
-              <div className="grid grid-cols-5 gap-1.5">
-                {searchedCovers.map((c) => {
-                  const active = pref?.cover_url === c.url
-                  return (
-                    <button
-                      key={c.url}
-                      onClick={() => applyCover(c.url)}
-                      title={c.path}
-                      className={`relative aspect-square rounded-md overflow-hidden bg-surface-overlay border transition-colors ${active ? 'border-accent' : 'border-transparent hover:border-[var(--border)]'}`}
-                    >
-                      <img src={smallCoverUrl(c.url)} alt="" className="w-full h-full object-cover"
-                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />
-                      {active && (
-                        <span className="absolute bottom-0.5 right-0.5 w-4 h-4 rounded-full bg-accent flex items-center justify-center">
-                          <Check size={10} className="text-white" />
-                        </span>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            </>
-          )}
-
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <p className="text-[10px] text-text-muted">Or paste an image URL / storage path</p>
-              <button
-                onClick={() => setBrowseOpen(true)}
-                className="flex items-center gap-1 text-[10px] font-medium text-accent hover:text-accent/80 transition-colors"
-              >
-                <FolderSearch size={11} /> Browse API files
-              </button>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="shrink-0 w-8 h-8 rounded-md overflow-hidden bg-surface-overlay flex items-center justify-center">
-                {coverDraftPreview ? (
-                  <img key={coverDraftPreview} src={smallCoverUrl(coverDraftPreview)} alt="" className="w-full h-full object-cover"
-                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-                ) : (
-                  <ImageIcon size={12} className="text-text-muted opacity-40" />
-                )}
-              </div>
-              <input
-                value={coverDraft}
-                onChange={(e) => setCoverDraft(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && coverDraft.trim()) applyCover(coverDraft.trim()) }}
-                placeholder="https://…  or  Covers/song.jpg"
-                className="flex-1 min-w-0 bg-surface-overlay border border-[var(--border)] rounded-md px-2 py-1.5 text-xs text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent/50"
-              />
-              <button
-                onClick={() => coverDraft.trim() && applyCover(coverDraft.trim())}
-                disabled={!coverDraft.trim()}
-                className="shrink-0 px-2.5 py-1.5 rounded-md bg-accent/15 text-accent text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Use
-              </button>
-            </div>
-          </div>
+        <div className="mt-2.5 rounded-lg border border-[var(--border)] bg-surface p-2.5">
+          <CoverEditor
+            songId={songId}
+            apiTitle={apiTitle}
+            ownImageRaw={ownImageRaw}
+            versions={versions}
+            altTitles={altTitles}
+            onPicked={() => setCoverOpen(false)}
+          />
         </div>
-      )}
-
-      {browseOpen && (
-        <FilePickerModal
-          songTitle={apiTitle}
-          altTitles={altTitles}
-          onClose={() => setBrowseOpen(false)}
-          onSelect={(path) => { setBrowseOpen(false); applyCover(path) }}
-        />
       )}
 
       {/* ── Default version ── */}

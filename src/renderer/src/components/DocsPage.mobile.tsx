@@ -1181,7 +1181,8 @@ Content-Type: application/json
         <p className="text-xs text-text-muted mb-2">General API/app feedback. No auth required. Forwards to a webhook + the mod server.</p>
         <Pre>{`{
   "message": "required",
-  "contact": "optional"
+  "contact": "optional",
+  "automated": "optional — true for a crash report the client sent on its own"
 }`}</Pre>
         <p className="text-xs text-text-muted">Throttled at <Code>10/min</Code>.</p>
       </Section>

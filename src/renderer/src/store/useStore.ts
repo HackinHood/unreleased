@@ -558,11 +558,13 @@ interface AppActions {
   closeReport: () => void
   setAutoReportErrors: (enabled: boolean) => void
   /** Queues a general feedback report and tries to deliver it. `contact` is
-   *  the optional reach-me field the endpoint accepts. Resolves once that
+   *  the optional reach-me field the endpoint accepts. `automated` flags a
+   *  crash report ErrorBoundary sent on its own rather than one the user
+   *  actually wrote (the API's `automated` field). Resolves once that
    *  delivery attempt settles: `true` if it actually reached the server this
    *  round, `false` if it's still sitting in the outbox (offline, rejected,
    *  or the API is disabled) — the caller can surface which happened. */
-  submitFeedback: (category: FeedbackCategory, message: string, contact?: string) => Promise<boolean>
+  submitFeedback: (category: FeedbackCategory, message: string, contact?: string, automated?: boolean) => Promise<boolean>
   /** Queues a song issue report (wrong/missing info or lyrics) and tries to
    *  deliver it. `issues` is the set of checked problem types. Same delivered
    *  vs. still-queued resolution as `submitFeedback`. */
@@ -1460,12 +1462,13 @@ export const useStore = create<AppStore>((set, get, store) => ({
     return !get().pendingReports.some((r) => r.id === report.id)
   },
 
-  submitFeedback: async (category, message, contact) => {
+  submitFeedback: async (category, message, contact, automated) => {
     const text = message.trim()
     if (!text) return false
     return get()._enqueueReport({
       id: newReportId(), kind: 'feedback', category, message: text,
       contact: contact?.trim() || undefined,
+      ...(automated ? { automated: true } : {}),
       appVersion: APP_VERSION, createdAt: Date.now(), attempts: 0,
     })
   },

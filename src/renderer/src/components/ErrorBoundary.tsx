@@ -62,7 +62,7 @@ export default class ErrorBoundary extends Component<Props, State> {
     console.error('ErrorBoundary caught:', error, info)
     this.componentStack = info.componentStack
     this.reported = false
-    if (useStore.getState().autoReportErrors) void this.reportError()
+    if (useStore.getState().autoReportErrors) void this.reportError(true)
   }
 
   private copyError = (): void => {
@@ -75,7 +75,11 @@ export default class ErrorBoundary extends Component<Props, State> {
     }).catch(() => {/* ignore */})
   }
 
-  private reportError = async (): Promise<void> => {
+  /** `auto` distinguishes componentDidCatch firing this on its own (the
+   *  autoReportErrors setting) from a person clicking "Report this error" —
+   *  only the former is genuinely unattended, so only that gets the API's
+   *  `automated` field. */
+  private reportError = async (auto = false): Promise<void> => {
     const { error } = this.state
     if (!error || this.reported) return
     this.reported = true
@@ -87,7 +91,7 @@ export default class ErrorBoundary extends Component<Props, State> {
       `\nURL: ${sanitizedUrl()}`,
       `User agent: ${navigator.userAgent}`,
     ].join('\n')
-    const delivered = await useStore.getState().submitFeedback('bug', message)
+    const delivered = await useStore.getState().submitFeedback('bug', message, undefined, auto)
     this.setState({ reportStatus: delivered ? 'delivered' : 'queued' })
   }
 
@@ -129,7 +133,10 @@ export default class ErrorBoundary extends Component<Props, State> {
               </p>
             ) : (
               <button
-                onClick={this.reportError}
+                // Not `onClick={this.reportError}` directly — that would
+                // hand the click's SyntheticEvent to `auto` (truthy), wrongly
+                // marking a manual report as automated.
+                onClick={() => this.reportError()}
                 disabled={this.state.reportStatus === 'sending'}
                 className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary underline mt-1 disabled:opacity-50"
               >
