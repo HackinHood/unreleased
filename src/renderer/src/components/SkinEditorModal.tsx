@@ -125,7 +125,7 @@ export default function SkinEditorModal({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+        <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">
           {/* Base mode */}
           <div className="flex items-center gap-2 mb-4">
             <span className="text-text-secondary text-xs mr-1">Base mode</span>

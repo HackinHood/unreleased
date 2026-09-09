@@ -68,7 +68,11 @@ export default function QueuePanel(): JSX.Element {
 
   return (
     <div
-      className="bg-surface-raised flex shrink-0 overflow-hidden animate-slide-in-right"
+      // bg-surface on mobile, not bg-surface-raised: this is `position: fixed;
+      // inset: 0` there, so Safari's Liquid Glass toolbar tinting samples this
+      // element's background directly — bg-surface-raised made the status bar
+      // read visibly darker than the rest of the app while this panel is open.
+      className={`${isMobile ? 'bg-surface' : 'bg-surface-raised'} flex shrink-0 overflow-hidden animate-slide-in-right`}
       style={isMobile
         // Full-screen on a phone, so it sits outside the app shell's
         // safe-area padding and owns the gesture-bar inset itself.

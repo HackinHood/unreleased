@@ -420,6 +420,7 @@ export default function Settings(): JSX.Element {
     setTheme(skin.id)
     if (skin.accent) setCustomAccent(skin.accent)
     setEditingSkinId(skin.id)
+    setPickerOpen(null)
   }
 
   const importSkinFile = async (file: File): Promise<void> => {
@@ -634,7 +635,7 @@ export default function Settings(): JSX.Element {
                 setTheme(skin.id)
                 if (skin.accent) { setAccentColor(skin.accent); setCustomAccent(skin.accent) }
               }}
-              onDoubleClick={() => { if (skin.custom) setEditingSkinId(skin.id) }}
+              onDoubleClick={() => { if (skin.custom) { setEditingSkinId(skin.id); setPickerOpen(null) } }}
               className="w-full text-left"
               title={skin.dynamic ? 'Palette follows the current song’s cover art' : skin.name}
             >
@@ -678,7 +679,7 @@ export default function Settings(): JSX.Element {
                 on touch, so it stays visible. */}
             {skin.custom && (
               <button
-                onClick={(e) => { e.stopPropagation(); setEditingSkinId(skin.id) }}
+                onClick={(e) => { e.stopPropagation(); setEditingSkinId(skin.id); setPickerOpen(null) }}
                 className="absolute top-1.5 right-1.5 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center active:bg-black/70 transition-colors"
                 aria-label={`Edit ${skin.name}`}
               >
