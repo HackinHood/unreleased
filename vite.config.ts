@@ -12,17 +12,34 @@ function commitHash() {
   if (envSha) return envSha.slice(0, 7)
 
   try {
-    const gitDir = resolve(__dirname, '.git')
+    const dotGit = resolve(__dirname, '.git')
+    // A worktree checkout has a `.git` *file* pointing at the real gitdir
+    // (e.g. `<main-repo>/.git/worktrees/<name>`), rather than a `.git` dir.
+    const dotGitContents = readFileSync(dotGit, 'utf-8')
+    const gitDir = dotGitContents.startsWith('gitdir:')
+      ? resolve(__dirname, dotGitContents.slice(7).trim())
+      : dotGit
+
+    const readRef = (dir: string, ref: string) => {
+      const refPath = resolve(dir, ref)
+      if (existsSync(refPath)) return readFileSync(refPath, 'utf-8').trim()
+      const packed = resolve(dir, 'packed-refs')
+      if (!existsSync(packed)) return undefined
+      return readFileSync(packed, 'utf-8')
+        .split('\n')
+        .find((line) => line.endsWith(ref))
+        ?.split(' ')[0]
+    }
+
     let head = readFileSync(resolve(gitDir, 'HEAD'), 'utf-8').trim()
     if (head.startsWith('ref:')) {
       const ref = head.slice(4).trim()
-      const refPath = resolve(gitDir, ref)
-      head = existsSync(refPath)
-        ? readFileSync(refPath, 'utf-8').trim()
-        : readFileSync(resolve(gitDir, 'packed-refs'), 'utf-8')
-            .split('\n')
-            .find((line) => line.endsWith(ref))
-            ?.split(' ')[0] ?? 'unknown'
+      // Refs live in the shared/common gitdir, not the per-worktree one.
+      const commondirPath = resolve(gitDir, 'commondir')
+      const commonDir = existsSync(commondirPath)
+        ? resolve(gitDir, readFileSync(commondirPath, 'utf-8').trim())
+        : gitDir
+      head = readRef(gitDir, ref) ?? readRef(commonDir, ref) ?? 'unknown'
     }
     return head.slice(0, 7)
   } catch {
