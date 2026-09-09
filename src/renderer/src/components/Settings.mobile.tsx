@@ -13,7 +13,7 @@ import SkinEditorModal from './SkinEditorModal'
 import { FONTS } from '../lib/fonts'
 import { orderedNavItems, isNavItemVisible, DEFAULT_NAV_ORDER, DEFAULT_NAV_VISIBILITY } from '../lib/navItems'
 import { getToken, CONTRIBUTOR_ENABLED, showStaffProfile, staffProfileLabel } from '../lib/userApi'
-import { APP_VERSION } from '../lib/appVersion'
+import { APP_VERSION, COMMIT_HASH } from '../lib/appVersion'
 import {
   lastfmConfigured, lastfmGetAuthToken, lastfmAuthUrl, lastfmTryGetSession, lastfmDisconnect,
 } from '../lib/lastfm'
@@ -1438,10 +1438,21 @@ export default function Settings(): JSX.Element {
             {/* ── About ── */}
             {!settingsQueryTrimmed && tab === 'about' && (
               <div>
-                <p className="text-text-muted text-xs mb-3">
+                <p className="text-text-muted text-xs mb-1">
                   unreleased v{APP_VERSION} &mdash; powered by{' '}
                   <a href="https://juicewrldapi.com" target="_blank" rel="noopener noreferrer" className="text-accent">
                     juicewrldapi.com
+                  </a>
+                </p>
+                <p className="text-text-muted text-xs mb-3">
+                  Last updated to commit{' '}
+                  <a
+                    href={`https://github.com/Juice-WRLD-API/Unreleased/commit/${COMMIT_HASH}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent font-mono"
+                  >
+                    {COMMIT_HASH}
                   </a>
                 </p>
 

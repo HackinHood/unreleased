@@ -6,6 +6,7 @@ import { useStore, useStorePick } from '../store/useStore'
 import { ViewType } from '../types'
 import { showStaffProfile, staffProfileView, getToken } from '../lib/userApi'
 import { orderedNavItems, isNavItemVisible, orderedNavControls, isNavControlVisible, navTabFor, tabEntryView, type NavControlId } from '../lib/navItems'
+import { preloadView } from '../lib/lazyViews'
 import PlaylistContextMenu, { PlaylistContextMenuState } from './PlaylistContextMenu'
 
 const LS_COLLAPSED = 'sidebar:collapsed'
@@ -121,6 +122,16 @@ export default function Sidebar(): JSX.Element {
   // sub-views of a tab (the games inside Games). See navTabFor.
   const activeTab = navTabFor(activeView)
 
+  // Start the view's chunk on hover/focus rather than on click. Pointing at a
+  // menu item precedes clicking it by ~100ms, which is usually the whole
+  // download — so by the time Suspense would need a fallback, there's nothing
+  // left to wait for. Focus covers keyboard navigation. Idempotent and
+  // bandwidth-aware; see preloadView.
+  const warmOnIntent = (view: ViewType): { onPointerEnter: () => void; onFocus: () => void } => ({
+    onPointerEnter: () => preloadView(view),
+    onFocus: () => preloadView(view),
+  })
+
   const navClick = (view: ViewType): void => {
     if (activeView === view && view === 'playlists') {
       window.dispatchEvent(new CustomEvent('playlists:back'))
@@ -211,14 +222,14 @@ export default function Sidebar(): JSX.Element {
         )
       case 'download':
         return (
-          <button key="download" onClick={() => setActiveView('download')} title={collapsed ? 'Download desktop app' : undefined} className={rowCls}>
+          <button key="download" onClick={() => setActiveView('download')} {...warmOnIntent('download')} title={collapsed ? 'Download desktop app' : undefined} className={rowCls}>
             <span className={iconWrap}><Download size={18} /></span>
             <span aria-hidden={collapsed} className={labelCls}>Download app</span>
           </button>
         )
       case 'settings':
         return (
-          <button key="settings" onClick={() => openSettings()} title={collapsed ? 'Settings' : undefined} className={rowCls}>
+          <button key="settings" onClick={() => openSettings()} {...warmOnIntent('settings')} title={collapsed ? 'Settings' : undefined} className={rowCls}>
             <span className={iconWrap}><Settings size={18} /></span>
             <span aria-hidden={collapsed} className={labelCls}>Settings</span>
           </button>
@@ -254,9 +265,9 @@ export default function Sidebar(): JSX.Element {
       case 'diagnostics':
         return <button key="diagnostics" onClick={() => setShowDiagnostics(true)} title="Diagnostics" className={barIconBtn}><Info size={18} /></button>
       case 'download':
-        return <button key="download" onClick={() => setActiveView('download')} title="Download desktop app" className={barIconBtn}><Download size={18} /></button>
+        return <button key="download" onClick={() => setActiveView('download')} {...warmOnIntent('download')} title="Download desktop app" className={barIconBtn}><Download size={18} /></button>
       case 'settings':
-        return <button key="settings" onClick={() => openSettings()} title="Settings" className={barIconBtn}><Settings size={18} /></button>
+        return <button key="settings" onClick={() => openSettings()} {...warmOnIntent('settings')} title="Settings" className={barIconBtn}><Settings size={18} /></button>
     }
   }
 
@@ -279,6 +290,7 @@ export default function Sidebar(): JSX.Element {
                 onDrop={(e) => { e.preventDefault(); if (navDragIdx !== null) moveNavItem(navDragIdx, idx); setNavDragIdx(null); setNavOverIdx(null) }}
                 onDragEnd={() => { setNavDragIdx(null); setNavOverIdx(null) }}
                 onClick={() => navClick(view)}
+                {...warmOnIntent(view)}
                 onContextMenu={openNavMenu(view, label)}
                 className={`flex items-center gap-2 pl-2 pr-3 py-1.5 rounded text-sm font-medium whitespace-nowrap transition-colors cursor-grab active:cursor-grabbing ${
                   navDragIdx === idx ? 'opacity-40' : ''
@@ -356,6 +368,7 @@ export default function Sidebar(): JSX.Element {
             >
               <button
                 onClick={() => navClick(view)}
+                {...warmOnIntent(view)}
                 title={collapsed ? label : undefined}
                 className="flex items-center flex-1 min-w-0 py-2 pl-2 gap-3"
               >

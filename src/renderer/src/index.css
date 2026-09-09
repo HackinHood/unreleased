@@ -504,3 +504,25 @@ input[type='range']:active::-webkit-slider-thumb {
   .animate-wordle-shake,
   .animate-menu-pop { animation-duration: 0.01ms; animation-delay: 0ms; }
 }
+
+/* Suspense fallback for a lazily-loaded view (components/ViewSkeleton).
+   Starts invisible and only fades in after a beat: a chunk that's already
+   warm (lib/lazyViews prefetches on nav hover/tap) resolves well inside the
+   delay, so the common case shows nothing at all instead of a flash of
+   skeleton. Pure CSS — no timer to keep in sync with React's own scheduling. */
+@keyframes view-skeleton-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.view-skeleton {
+  opacity: 0;
+  animation: view-skeleton-in 150ms ease 200ms forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Keep the delay — it's what suppresses the flash, not decoration — but
+     drop the fade itself. Not folded into the block above, which zeroes
+     animation-delay for animations where the delay IS decoration. */
+  .view-skeleton { animation-duration: 0.01ms; }
+  .view-skeleton .animate-pulse { animation: none; }
+}

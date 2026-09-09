@@ -3,6 +3,7 @@ import { useStorePick } from '../store/useStore'
 import { navTabFor, tabEntryView } from '../lib/navItems'
 import { useMobileNavSplit } from '../hooks/useMobileNavTabs'
 import { useBackToClose } from '../hooks/useBackToClose'
+import { preloadView } from '../lib/lazyViews'
 
 // The bottom sheet for nav items that don't fit the bar directly — opened
 // from a button on Home rather than a tab of its own; see BottomNav's
@@ -42,6 +43,7 @@ export default function MoreNavSheet(): JSX.Element | null {
             return (
               <button
                 key={tab.view}
+                onPointerDown={() => preloadView(tab.view)}
                 onClick={() => navigateTo(tab.view)}
                 className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors ${
                   active ? 'text-accent bg-accent/10' : 'text-text-primary hover:bg-[var(--surface-overlay)] active:bg-[var(--surface-overlay)]'

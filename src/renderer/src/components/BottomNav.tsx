@@ -4,6 +4,7 @@ import { useStorePick } from '../store/useStore'
 import { ViewType } from '../types'
 import { navTabFor, tabEntryView } from '../lib/navItems'
 import { useMobileNavSplit } from '../hooks/useMobileNavTabs'
+import { preloadView } from '../lib/lazyViews'
 
 // The mobile nav bar — the counterpart to the desktop Sidebar, which it now
 // shares its destination list with. It used to hardcode its own four tabs,
@@ -88,7 +89,9 @@ export default function BottomNav(): JSX.Element {
       {tabs.map((tab) => {
         const active = navTabFor(activeView) === tab.view
         return (
-          <button key={tab.view} onClick={() => navigateTo(tab.view)} className={tabCls(active)}>
+          // Touch has no hover, so warm the chunk on pointerdown — still lands
+          // ~80-150ms before the click that needs it.
+          <button key={tab.view} onPointerDown={() => preloadView(tab.view)} onClick={() => navigateTo(tab.view)} className={tabCls(active)}>
             {marker(active)}
             {/* NAV_ITEMS icons are sized for the 18px side menu; scale them up
                 to a touch-appropriate 24 without forking the definitions. */}
@@ -100,7 +103,7 @@ export default function BottomNav(): JSX.Element {
 
       {/* Never hideable or counted against the cap: on mobile this is the
           only route into Settings. */}
-      <button onClick={() => toggleSettings()} className={tabCls(showSettings)}>
+      <button onPointerDown={() => preloadView('settings')} onClick={() => toggleSettings()} className={tabCls(showSettings)}>
         {marker(showSettings)}
         <Settings size={24} />
         <span className={labelCls}>Settings</span>

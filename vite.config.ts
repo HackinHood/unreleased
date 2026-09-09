@@ -1,6 +1,15 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
+import { execSync } from 'child_process'
+
+function commitHash() {
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim()
+  } catch {
+    return 'unknown'
+  }
+}
 
 // The production CSP (style-src 'self', see index.html) blocks the inline
 // <style> tags Vite's dev server injects for HMR, so every view renders
@@ -21,6 +30,9 @@ export default defineConfig({
   root: resolve(__dirname, 'src/renderer'),
   envDir: resolve(__dirname, '.'),
   base: './',
+  define: {
+    __COMMIT_HASH__: JSON.stringify(commitHash()),
+  },
   build: {
     outDir: resolve(__dirname, 'dist'),
     emptyOutDir: true,

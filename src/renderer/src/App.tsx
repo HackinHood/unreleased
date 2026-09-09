@@ -4,8 +4,9 @@ import { setToken, getToken } from './lib/userApi'
 import { useThemeEffects } from './lib/themeEffects'
 import { runWhenIdle, isStandalonePWA } from './lib/platform'
 import { applySeo } from './lib/seo'
-import { lazyView } from './lib/lazyView'
+import { orderedNavItems, isNavItemVisible } from './lib/navItems'
 import { useIsMobile } from './hooks/useIsMobile'
+import ViewSkeleton from './components/ViewSkeleton'
 import { ViewType } from './types'
 
 function getViewFromPath(pathname: string): ViewType {
@@ -39,9 +40,6 @@ function getViewFromPath(pathname: string): ViewType {
 import Sidebar from './components/Sidebar'
 import BottomNav from './components/BottomNav'
 import ApiTrackerView from './components/ApiTrackerView'
-import ApiFilesView from './components/ApiFilesView'
-import LikedSongsView from './components/LikedSongsView'
-import PlaylistsView from './components/PlaylistsView'
 import RadioFmPlayer from './components/RadioFmPlayer'
 import RadioVotePopup from './components/RadioVotePopup'
 import LastfmScrobbler from './components/LastfmScrobbler'
@@ -60,34 +58,23 @@ import ErrorBoundary from './components/ErrorBoundary'
 import SandboxNotch from './components/SandboxNotch'
 import MoreNavSheet from './components/MoreNavSheet'
 
-// Rarely-visited views load on first navigation instead of inflating the
-// startup bundle. Suspense fallback is null: these chunks are local (Electron)
-// or small (web), so a spinner would just flash. lazyView (not React's lazy)
-// so a chunk that vanished in a redeploy triggers a reload instead of an
-// error card — see lib/lazyView.
-const EditorPage = lazyView(() => import('./components/EditorPage'))
-const AdminPage = lazyView(() => import('./components/AdminPage'))
-const SharedPlaylistView = lazyView(() => import('./components/SharedPlaylistView'))
-const EditorProfileView = lazyView(() => import('./components/EditorProfileView'))
-const NotFoundView = lazyView(() => import('./components/NotFoundView'))
-const DocsPage = lazyView(() => import('./components/DocsPage'))
-const WrldView = lazyView(() => import('./components/WrldView'))
-const NewsView = lazyView(() => import('./components/NewsView'))
-const HeardleView = lazyView(() => import('./components/HeardleView'))
-const WordleView = lazyView(() => import('./components/WordleView'))
-const TierlistView = lazyView(() => import('./components/TierlistView'))
-const StatsView = lazyView(() => import('./components/StatsView'))
-const DownloadAppView = lazyView(() => import('./components/DownloadAppView'))
-const AlbumsAdminView = lazyView(() => import('./components/AlbumsAdminView'))
-const ContributorPage = lazyView(() => import('./components/ContributorPage'))
-const ContributorProfileView = lazyView(() => import('./components/ContributorProfileView'))
-const HomeView = lazyView(() => import('./components/HomeView'))
-const Settings = lazyView(() => import('./components/Settings'))
-const DiagnosticsModal = lazyView(() => import('./components/DiagnosticsModal'))
+// Everything off the startup path loads on first navigation instead of
+// inflating the initial bundle — including Playlists and Files, which are big
+// enough (~5.8k and ~2.6k lines across their desktop/mobile halves) that
+// shipping them to every visitor of the Tracker landing page was most of the
+// eager bundle. Definitions live in lib/lazyViews so the nav chrome can warm a
+// chunk on hover/tap without importing this file; preloadView is the warmer.
+import {
+  EditorPage, AdminPage, SharedPlaylistView, EditorProfileView, NotFoundView,
+  DocsPage, WrldView, NewsView, HeardleView, WordleView, TierlistView,
+  StatsView, DownloadAppView, AlbumsAdminView, ContributorPage,
+  ContributorProfileView, HomeView, Settings, PlaylistsView, ApiFilesView,
+  LikedSongsView, DiagnosticsModal, preloadView,
+} from './lib/lazyViews'
 
 export default function App(): JSX.Element {
-  const { showNowPlaying, showQueue, showDiagnostics, setShowDiagnostics, showUploadManager, setShowUploadManager, activeView, previousView, sidebarPosition, loadAccount, completeDiscordLogin, showUserAuth, setShowUserAuth, prefetchApiData, refreshPlaylists, heroBleedTop } = useStorePick(
-    'showNowPlaying', 'showQueue', 'showDiagnostics', 'setShowDiagnostics', 'showUploadManager', 'setShowUploadManager', 'activeView', 'previousView', 'sidebarPosition', 'loadAccount', 'completeDiscordLogin', 'showUserAuth', 'setShowUserAuth', 'prefetchApiData', 'refreshPlaylists', 'heroBleedTop')
+  const { showNowPlaying, showQueue, showDiagnostics, setShowDiagnostics, showUploadManager, setShowUploadManager, activeView, previousView, sidebarPosition, loadAccount, completeDiscordLogin, showUserAuth, setShowUserAuth, prefetchApiData, refreshPlaylists, heroBleedTop, navOrder, navVisibility } = useStorePick(
+    'showNowPlaying', 'showQueue', 'showDiagnostics', 'setShowDiagnostics', 'showUploadManager', 'setShowUploadManager', 'activeView', 'previousView', 'sidebarPosition', 'loadAccount', 'completeDiscordLogin', 'showUserAuth', 'setShowUserAuth', 'prefetchApiData', 'refreshPlaylists', 'heroBleedTop', 'navOrder', 'navVisibility')
   // What renders behind WRLD — WRLD is a full-screen overlay on top of
   // wherever you were (Spotify-style "now playing" sheet), not a real nav
   // destination, so dragging it down should reveal that page like a curtain
@@ -155,6 +142,23 @@ export default function App(): JSX.Element {
   // dedupes identical in-flight GETs.
   useEffect(() => runWhenIdle(() => { prefetchApiData() }), [prefetchApiData])
 
+  // Warm the chunks for the nav destinations the user can actually reach, so
+  // switching tabs doesn't wait on a download. Scheduled at a longer idle
+  // timeout than the data prefetch above so it queues behind it — a chunk for
+  // a view nobody has asked for yet must never get in front of the requests
+  // the visible view is making right now.
+  //
+  // Driven by the user's own menu (order + show/hide), not a fixed list: a
+  // tab they've hidden isn't somewhere they navigate, so downloading it would
+  // be pure waste. Capped, and skipped entirely on Data Saver / 2G — see
+  // preloadView. The active view is already loaded by definition.
+  useEffect(() => runWhenIdle(() => {
+    orderedNavItems(navOrder)
+      .filter((i) => isNavItemVisible(i, navVisibility, false, isMobile) && i.view !== activeView)
+      .slice(0, 4)
+      .forEach((i) => preloadView(i.view))
+  }, 4000), [navOrder, navVisibility, isMobile, activeView])
+
   // Deliver any reports queued in a previous session. loadAccount also flushes
   // after login (to attach the token), but this covers a signed-out user whose
   // loadAccount returns early. No-op until the reporting endpoints exist.
@@ -198,7 +202,7 @@ export default function App(): JSX.Element {
         >
           <div className="flex-1 overflow-hidden flex">
             <ErrorBoundary>
-            <Suspense fallback={null}>
+            <Suspense fallback={<ViewSkeleton />}>
             {bgView === 'home' ? <HomeView />
               : bgView === 'settings' ? <Settings />
               : bgView === 'api-tracker' ? <ApiTrackerView />

@@ -8,3 +8,8 @@
 // during render that error takes down whatever component touched it — which is
 // how Settings → About whited out the whole window.
 export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'
+
+// The short git commit hash the running build was compiled from, read from
+// the `__COMMIT_HASH__` build-time define in vite.config.ts. Same
+// undefined-guard as APP_VERSION above, for the same reason.
+export const COMMIT_HASH = typeof __COMMIT_HASH__ !== 'undefined' ? __COMMIT_HASH__ : 'dev'
