@@ -549,6 +549,7 @@ export default function ApiFilesView(): JSX.Element {
       const next = new Set(prev)
       if (next.has(path)) next.delete(path)
       else next.add(path)
+      if (next.size === 0) setSelectMode(false)
       return next
     })
   }

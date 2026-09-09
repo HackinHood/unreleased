@@ -1535,31 +1535,6 @@ export default function PlaylistsView(): JSX.Element {
           )}
         </div>
 
-        {searchOpen && !reorderMode && (
-          <div className="relative shrink-0 px-4 pt-2">
-            <div className="relative flex items-center">
-              <Search size={16} className="absolute left-3.5 text-text-muted pointer-events-none" />
-              <input
-                ref={searchInputRef}
-                type="search"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder={`Search ${tracks.length} tracks`}
-                enterKeyHint="search"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck={false}
-                className="w-full h-11 bg-surface-overlay rounded-full pl-10 pr-10 text-[15px] text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent/50 [&::-webkit-search-cancel-button]:hidden"
-              />
-              <button
-                onClick={() => { setSearch(''); setSearchOpen(false) }}
-                className="absolute right-1 w-9 h-9 flex items-center justify-center rounded-full text-text-muted active:text-text-primary"
-                aria-label="Close search"
-              ><X size={16} /></button>
-            </div>
-          </div>
-        )}
-
         <div ref={setListScrollEl} className="relative flex-1 overflow-y-auto overscroll-contain pb-6">
           {/* Hidden file input (API cover upload) */}
           <input
@@ -1639,6 +1614,32 @@ export default function PlaylistsView(): JSX.Element {
               onShuffle={playShuffle}
               disabled={tracks.length === 0}
             />
+
+            {/* Track search — under Play/Shuffle rather than pinned below the
+                app bar, so it reads as part of this playlist's controls
+                instead of a page-level search. */}
+            {searchOpen && !reorderMode && (
+              <div className="relative mt-3">
+                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                <input
+                  ref={searchInputRef}
+                  type="search"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder={`Search ${tracks.length} tracks`}
+                  enterKeyHint="search"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  className="w-full h-11 bg-surface-overlay rounded-full pl-10 pr-10 text-[15px] text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent/50 [&::-webkit-search-cancel-button]:hidden"
+                />
+                <button
+                  onClick={() => { setSearch(''); setSearchOpen(false) }}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded-full text-text-muted active:text-text-primary"
+                  aria-label="Close search"
+                ><X size={16} /></button>
+              </div>
+            )}
 
             {/* Someone else's playlist: nothing here can be edited, only kept
                 around two ways — Follow (a live pointer, always shows the

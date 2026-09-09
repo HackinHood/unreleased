@@ -4,7 +4,7 @@ import {
   Music, Radio, Search, SkipForward, ThumbsUp, ThumbsDown, X, ChevronDown, Play, Pause,
   SkipBack, SkipForward as SkipFwd, Shuffle, Repeat, Repeat1, Volume2, VolumeX,
   MoreHorizontal, Heart, ListMusic, Trash2, Download, History, SlidersHorizontal,
-  Mic2, Layers, ArrowUpDown, Loader2, GripVertical, RefreshCw, Settings2, AlignLeft, AlignCenter,
+  Mic2, Layers, Loader2, RefreshCw, Settings2, AlignLeft, AlignCenter,
 } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import { useShallow } from 'zustand/react/shallow'
@@ -1099,9 +1099,11 @@ function QueueSheet({ onClose }: { onClose: () => void }): JSX.Element {
   const history = queue.slice(0, queueIndex) // played tracks, oldest first
   const upcoming = queue.slice(queueIndex + 1)
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [reorder, setReorder] = useState(false)
   // reorderQueue's (from, to) are indices within `upcoming` itself — see its
   // definition in queueSlice.ts — which is exactly what useDragReorder tracks.
+  // Started by a press-and-hold directly on the row (QueueRow's own
+  // long-press timer calls drag.startFrom) rather than a separate "Reorder"
+  // mode + dedicated grip handle — one gesture instead of a mode switch.
   const drag = useDragReorder(upcoming.length, reorderQueue)
   const [search, setSearch] = useState('')
 
@@ -1124,14 +1126,6 @@ function QueueSheet({ onClose }: { onClose: () => void }): JSX.Element {
               onClick={reshuffleQueue}
               className="h-8 px-3 rounded-full text-xs font-semibold bg-surface-overlay text-text-secondary flex items-center gap-1.5"
             ><RefreshCw size={13} /> Reshuffle</button>
-          )}
-          {upcoming.length > 1 && (
-            <button
-              onClick={() => setReorder(r => !r)}
-              className={`h-8 px-3 rounded-full text-xs font-semibold flex items-center gap-1.5 ${
-                reorder ? 'bg-accent text-white' : 'bg-surface-overlay text-text-secondary'
-              }`}
-            ><ArrowUpDown size={13} /> Reorder</button>
           )}
           {upcoming.length > 0 && (
             <button
@@ -1224,10 +1218,10 @@ function QueueSheet({ onClose }: { onClose: () => void }): JSX.Element {
             <QueueRow
               key={`${track.id}-${queueIndex + 1 + i}`}
               track={track}
-              reorder={!query && reorder}
               dragging={drag.dragIndex === i}
+              anyDragging={drag.dragIndex !== null}
               rowStyle={drag.rowStyle(i)}
-              handleProps={drag.handleProps(i)}
+              onDragStart={query ? undefined : (clientY, rowEl) => drag.startFrom(i, clientY, rowEl)}
               onPlay={() => playTrack(track, queue.slice(queueIndex + 1 + i))}
               onRemove={() => removeFromQueue(queueIndex + 1 + i)}
             />
@@ -1242,25 +1236,69 @@ function QueueSheet({ onClose }: { onClose: () => void }): JSX.Element {
   )
 }
 
-function QueueRow({ track, active, playing, reorder, dragging, rowStyle, handleProps, onPlay, onRemove }: {
+// A press held on the row for LONG_PRESS_MS (without moving past the slop)
+// starts a reorder drag — no separate "Reorder" mode toggle or dedicated grip
+// handle. `onDragStart`'s own timing/slop is handled right here since the row
+// itself is the touch target; once it fires, useDragReorder's document-level
+// listeners (see mobile/useDragReorder.ts) take over the rest of the drag.
+const QUEUE_LONG_PRESS_MS = 420
+const QUEUE_LONG_PRESS_SLOP = 10
+
+function QueueRow({ track, active, playing, dragging, anyDragging, rowStyle, onDragStart, onPlay, onRemove }: {
   track: Track
   active?: boolean
   playing?: boolean
-  reorder?: boolean
   dragging?: boolean
+  /** True while ANY row in the list is mid-drag — suppresses tap-to-play on
+   *  every row while one is reordering, since the drag's live reflow can
+   *  shift a different row under the finger by the time it lifts. */
+  anyDragging?: boolean
   rowStyle?: React.CSSProperties
-  handleProps?: { onTouchStart: (e: React.TouchEvent<HTMLElement>) => void }
+  onDragStart?: (clientY: number, rowEl: HTMLElement | null) => void
   onPlay?: () => void
   onRemove?: () => void
 }): JSX.Element {
+  const rowRef = useRef<HTMLDivElement>(null)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const originRef = useRef<{ x: number; y: number } | null>(null)
+  const suppressClickRef = useRef(false)
+
+  const cancelPress = (): void => {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
+    originRef.current = null
+  }
+  const handleTouchStart = (e: React.TouchEvent): void => {
+    if (!onDragStart || e.touches.length !== 1) return
+    const t = e.touches[0]
+    originRef.current = { x: t.clientX, y: t.clientY }
+    timerRef.current = setTimeout(() => {
+      suppressClickRef.current = true
+      onDragStart(t.clientY, rowRef.current)
+    }, QUEUE_LONG_PRESS_MS)
+  }
+  const handleTouchMove = (e: React.TouchEvent): void => {
+    const origin = originRef.current
+    if (!origin) return
+    const t = e.touches[0]
+    if (Math.abs(t.clientX - origin.x) > QUEUE_LONG_PRESS_SLOP || Math.abs(t.clientY - origin.y) > QUEUE_LONG_PRESS_SLOP) cancelPress()
+  }
+
   return (
     <div
+      ref={rowRef}
       data-drag-row
       style={rowStyle}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={cancelPress}
+      onTouchCancel={cancelPress}
       className={`flex items-center gap-3 px-5 py-2 transition-colors ${
         active ? 'bg-accent/10' : dragging ? 'bg-white/10 shadow-xl rounded-xl' : onPlay ? 'active:bg-surface-overlay' : ''
       }`}
-      onClick={() => { if (!reorder && onPlay && !active) onPlay() }}
+      onClick={() => {
+        if (suppressClickRef.current) { suppressClickRef.current = false; return }
+        if (!anyDragging && onPlay && !active) onPlay()
+      }}
     >
       <div className="w-11 h-11 rounded-lg shrink-0 overflow-hidden bg-surface-overlay">
         <AlbumArtThumbnail track={track} size={44} fill className="w-full h-full" shimmer={false} />
@@ -1269,14 +1307,7 @@ function QueueRow({ track, active, playing, reorder, dragging, rowStyle, handleP
         <p className={`text-[15px] truncate leading-snug ${active ? 'text-accent font-semibold' : 'text-text-primary'}`}>{track.title}</p>
         <p className="text-text-muted text-xs truncate mt-0.5">{track.artist}</p>
       </div>
-      {reorder && handleProps ? (
-        <button
-          {...handleProps}
-          onClick={(e) => e.stopPropagation()}
-          aria-label={`Drag to reorder ${track.title}`}
-          className="w-10 h-11 -mr-1 shrink-0 flex items-center justify-center text-text-secondary touch-none"
-        ><GripVertical size={18} /></button>
-      ) : playing ? (
+      {playing ? (
         <span className="flex gap-[3px] items-end h-3.5 shrink-0">
           {[0, 1, 2].map(i => (
             <span key={i} className="w-[3px] h-full rounded-full bg-accent eq-bar" style={{ animationDelay: `${i * 0.18}s` }} />

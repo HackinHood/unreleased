@@ -23,6 +23,11 @@ export interface DragReorderHandle {
   /** Spread onto the grip handle that starts a drag for row `index`. Give the
    *  handle `touch-none` so the browser doesn't also try to scroll from it. */
   handleProps: (index: number) => { onTouchStart: (e: React.TouchEvent<HTMLElement>) => void }
+  /** Same start logic as handleProps' onTouchStart, callable without a live
+   *  touch event — for gestures (e.g. press-and-hold-to-reorder on the row
+   *  itself) that decide to start dragging asynchronously, after a timer,
+   *  rather than directly from a dedicated handle's touchstart. */
+  startFrom: (index: number, clientY: number, rowEl: HTMLElement | null) => void
 }
 
 export function useDragReorder(
@@ -76,16 +81,20 @@ export function useDragReorder(
     }
   }, [dragIndex])
 
+  const startFrom = (index: number, clientY: number, rowEl: HTMLElement | null): void => {
+    rowHeightRef.current = rowEl?.getBoundingClientRect().height ?? 0
+    fromRef.current = index
+    startYRef.current = clientY
+    dragYRef.current = 0
+    setDragY(0)
+    setDragIndex(index)
+    navigator.vibrate?.(8)
+  }
+
   const handleProps = (index: number): { onTouchStart: (e: React.TouchEvent<HTMLElement>) => void } => ({
     onTouchStart: (e) => {
       const row = e.currentTarget.closest<HTMLElement>('[data-drag-row]')
-      rowHeightRef.current = row?.getBoundingClientRect().height ?? 0
-      fromRef.current = index
-      startYRef.current = e.touches[0].clientY
-      dragYRef.current = 0
-      setDragY(0)
-      setDragIndex(index)
-      navigator.vibrate?.(8)
+      startFrom(index, e.touches[0].clientY, row)
     },
   })
 
@@ -108,5 +117,5 @@ export function useDragReorder(
     }
   }
 
-  return { dragIndex, rowStyle, handleProps }
+  return { dragIndex, rowStyle, handleProps, startFrom }
 }
