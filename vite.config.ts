@@ -1,11 +1,30 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
-import { execSync } from 'child_process'
+import { readFileSync, existsSync } from 'fs'
 
 function commitHash() {
+  const envSha =
+    process.env.COMMIT_HASH ||
+    process.env.VERCEL_GIT_COMMIT_SHA ||
+    process.env.CF_PAGES_COMMIT_SHA ||
+    process.env.GITHUB_SHA
+  if (envSha) return envSha.slice(0, 7)
+
   try {
-    return execSync('git rev-parse --short HEAD').toString().trim()
+    const gitDir = resolve(__dirname, '.git')
+    let head = readFileSync(resolve(gitDir, 'HEAD'), 'utf-8').trim()
+    if (head.startsWith('ref:')) {
+      const ref = head.slice(4).trim()
+      const refPath = resolve(gitDir, ref)
+      head = existsSync(refPath)
+        ? readFileSync(refPath, 'utf-8').trim()
+        : readFileSync(resolve(gitDir, 'packed-refs'), 'utf-8')
+            .split('\n')
+            .find((line) => line.endsWith(ref))
+            ?.split(' ')[0] ?? 'unknown'
+    }
+    return head.slice(0, 7)
   } catch {
     return 'unknown'
   }
