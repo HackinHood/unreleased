@@ -2,6 +2,25 @@ import { Component, ReactNode } from 'react'
 import { AlertTriangle, Copy, Check, Flag, Loader2, CloudOff } from 'lucide-react'
 import { useStore } from '../store/useStore'
 
+// Strips anything a stack/component-stack shouldn't be carrying off-device
+// before an auto-report sends it anywhere: a dev server serves modules from
+// real absolute paths (Windows drive letters, /Users/, /home/), which would
+// otherwise leak the reporter's local folder structure verbatim. Bundle-
+// relative production paths (the normal case) pass through untouched.
+function redactLocalPaths(text: string): string {
+  return text
+    .replace(/[A-Za-z]:\\(?:[^\s\\]+\\)*[^\s\\]*/g, '<local-path>')
+    .replace(/\/(?:Users|home|root)\/[^\s)]*/g, '<local-path>')
+}
+
+// Query string / hash can carry short-lived but sensitive values (an OAuth
+// callback's `code`/`state`, a share token) — only the origin and path are
+// worth reporting for context anyway.
+function sanitizedUrl(): string {
+  const { origin, pathname } = window.location
+  return origin + pathname
+}
+
 interface Props {
   children: ReactNode
   fallback?: ReactNode
@@ -62,10 +81,10 @@ export default class ErrorBoundary extends Component<Props, State> {
     this.reported = true
     this.setState({ reportStatus: 'sending' })
     const message = [
-      `Crash: ${error.message}`,
-      error.stack ? `\nStack:\n${error.stack}` : '',
-      this.componentStack ? `\nComponent stack:\n${this.componentStack}` : '',
-      `\nURL: ${window.location.href}`,
+      `Crash: ${redactLocalPaths(error.message)}`,
+      error.stack ? `\nStack:\n${redactLocalPaths(error.stack)}` : '',
+      this.componentStack ? `\nComponent stack:\n${redactLocalPaths(this.componentStack)}` : '',
+      `\nURL: ${sanitizedUrl()}`,
       `User agent: ${navigator.userAgent}`,
     ].join('\n')
     const delivered = await useStore.getState().submitFeedback('bug', message)
