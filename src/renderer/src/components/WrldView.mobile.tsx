@@ -28,6 +28,7 @@ import SongContextMenu from './SongContextMenu'
 import { getSkin } from '../lib/skins'
 import { Sheet, SheetItem, SheetDivider } from './mobile/Sheet'
 import { useDragReorder } from './mobile/useDragReorder'
+import { useLongPress } from './mobile/useLongPress'
 import { useBackToClose } from '../hooks/useBackToClose'
 import { useDragToDismiss } from '../hooks/useDragToDismiss'
 
@@ -62,6 +63,7 @@ export default function WrldView(): JSX.Element {
     nextTrack, prevTrack,
     showQueue, setShowQueue,
     toggleEqPanel, eqFxActive,
+    setPendingEditorSongId,
   } = useStore(useShallow(s => ({
     currentTrack: s.currentTrack,
     currentTrackFull: s.currentTrackFull,
@@ -91,7 +93,9 @@ export default function WrldView(): JSX.Element {
     toggleEqPanel: s.toggleEqPanel,
     // Same "anything non-neutral" indicator as the player bar's EQ button.
     eqFxActive: s.eqEnabled || s.playbackSpeed !== 1 || s.eqBalance !== 0 || s.eqMono || s.eqBoost !== 1 || s.skipSilence || s.reverbEnabled,
+    setPendingEditorSongId: s.setPendingEditorSongId,
   })))
+  const canEdit = useCanEdit()
 
   // Skins beyond the classic pair mean `theme === 'dark'` no longer covers
   // "is this a dark look" — Ocean, Mocha, etc. need the dark treatment too.
@@ -193,6 +197,26 @@ export default function WrldView(): JSX.Element {
       playTrack(songToTrack(song))
     } catch {}
   }
+
+  // Long-press the cover to jump straight into Personalize (custom cover/name)
+  // for the current song — the same modal the "···" menu's "Song info" opens,
+  // just skipping that hop since a cover press is unambiguously about the art.
+  // Stream metadata's song_id is sometimes missing on FM; fall back to
+  // RadioFmPlayer's title-search match, same as SongMenu does.
+  const coverSongId = radioFmActive
+    ? (radioFmNowPlaying?.song_id ?? radioFmMatchedSong?.songId ?? null)
+    : (currentTrack ? userApi.trackIdToSongId(currentTrack.id) : null)
+  const [showCoverInfo, setShowCoverInfo] = useState(false)
+  const [coverInfoData, setCoverInfoData] = useState<JWApiSong | null>(null)
+  const openCoverPersonalize = (): void => {
+    if (coverSongId == null) return
+    setCoverInfoData(null)
+    setShowCoverInfo(true)
+    apiFetch<JWApiSong>(`/songs/${coverSongId}/`)
+      .then(song => setCoverInfoData(song))
+      .catch(() => setShowCoverInfo(false))
+  }
+  const coverPress = useLongPress({ onTap: () => {}, onLongPress: openCoverPersonalize })
 
   // Everything on this page sits on the blurred cover, so text colour has to
   // follow the artwork's brightness rather than the theme.
@@ -351,7 +375,18 @@ export default function WrldView(): JSX.Element {
       // App.tsx is rendering behind this overlay (see bgView there), Spotify-
       // curtain style, instead of leaving the opaque backdrop covering it
       // while only the text/controls slide.
-      className="relative flex-1 h-full w-full overflow-hidden flex flex-col"
+      //
+      // `isolate`: ArtBackdrop's noise-texture layer uses mix-blend-overlay,
+      // which blends with whatever is painted behind it in the same stacking
+      // context. bgView stays mounted directly behind this overlay now (for
+      // that same curtain reveal) — without a boundary here, that blend
+      // reaches past this whole view into bgView underneath, visible as a
+      // faint colour/tint bleeding through the top of the screen (nav
+      // bars, accent-tinted rows, etc. from whatever page is still mounted
+      // there). LyricsScreen already isolates itself for the identical
+      // reason; the main page never needed to until bgView started
+      // persisting behind it.
+      className="relative flex-1 h-full w-full overflow-hidden flex flex-col isolate"
       style={{
         transform: dragY ? `translateY(${dragY}px)` : undefined,
         borderRadius: dragY ? Math.min(dragY, 32) : 0,
@@ -413,11 +448,18 @@ export default function WrldView(): JSX.Element {
         <div className="flex-1 min-h-0 flex flex-col items-center px-8 py-2 gap-2">
           <div ref={coverRowRef} className="flex-1 min-h-0 w-full flex items-center justify-center">
             <div
-              className="rounded-3xl overflow-hidden shadow-[0_28px_70px_rgba(0,0,0,0.65)] transition-transform duration-500 ease-out"
+              className="rounded-3xl overflow-hidden shadow-[0_28px_70px_rgba(0,0,0,0.65)] transition-transform duration-500 ease-out touch-none"
               style={{
                 width: coverSize, height: coverSize,
                 transform: isPlaying || radioFmActive ? 'scale(1)' : 'scale(0.92)',
+                // Without this, iOS Safari's own long-press-on-<img> callout
+                // (Save to Photos / Copy / etc) wins the gesture before our
+                // long-press timer ever fires — this property is inherited,
+                // so it reaches the <img> ProgressiveCover renders below.
+                WebkitTouchCallout: 'none',
+                WebkitUserSelect: 'none',
               }}
+              {...(coverSongId != null ? coverPress : {})}
             >
               {artSrc && !artError ? (
                 <ProgressiveCover src={artSrc} alt="Album art" className="w-full h-full object-cover" onError={() => setArtError(true)} />
@@ -666,6 +708,20 @@ export default function WrldView(): JSX.Element {
             />
           ))}
         </Sheet>
+      )}
+
+      {/* ── Cover long-press → Personalize (Song info opens straight onto it) ── */}
+      {showCoverInfo && createPortal(
+        <SongInfoModal
+          song={coverInfoData}
+          onClose={() => { setShowCoverInfo(false); setCoverInfoData(null) }}
+          onEdit={canEdit ? (songId) => {
+            setShowCoverInfo(false); setCoverInfoData(null)
+            setPendingEditorSongId(songId)
+            setActiveView('editor')
+          } : undefined}
+        />,
+        document.body
       )}
     </div>
   )

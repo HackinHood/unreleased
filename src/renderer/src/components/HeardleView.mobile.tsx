@@ -570,8 +570,8 @@ function LeaderboardPanel({ initialMode, signedIn, onClose }: {
 // ─── View ─────────────────────────────────────────────────────────────────────
 
 export default function HeardleView(): JSX.Element {
-  const { setActiveView, playTrack, setIsPlaying, isPlaying, volume, setVolume, account, setHeroBleedTop } = useStorePick(
-    'setActiveView', 'playTrack', 'setIsPlaying', 'isPlaying', 'volume', 'setVolume', 'account', 'setHeroBleedTop')
+  const { setActiveView, playTrack, setIsPlaying, isPlaying, volume, setVolume, account, setHeroBleedTop, previousView } = useStorePick(
+    'setActiveView', 'playTrack', 'setIsPlaying', 'isPlaying', 'volume', 'setVolume', 'account', 'setHeroBleedTop', 'previousView')
 
   // Lets GameBackdrop's wash paint full-bleed under the status bar instead of
   // stopping at the shell's usual inset — matches WRLD's ownsTopInset trick.
@@ -1210,7 +1210,12 @@ export default function HeardleView(): JSX.Element {
         style={{ top: ownsTopInset ? 'calc(var(--top-inset) + 0.5rem)' : '0.5rem' }}
       >
         <button
-          onClick={() => setActiveView('wrld')}
+          // Desktop treats WRLD as the games' hub and always returns there;
+          // on mobile there's no WRLD tab in this flow any more — Home is
+          // where every game is actually entered from (see HomeView's Games
+          // section) — so back goes to wherever that really was instead of a
+          // hardcoded destination that no longer makes sense here.
+          onClick={() => setActiveView(previousView ?? 'home')}
           aria-label="Back"
           className="w-11 h-11 flex items-center justify-center rounded-full text-text-primary active:bg-surface-overlay transition-colors"
         >

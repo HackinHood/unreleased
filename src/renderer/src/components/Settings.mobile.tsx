@@ -435,7 +435,13 @@ export default function Settings(): JSX.Element {
   // Every platform-eligible nav item in saved order — visible ones and the
   // toggled-off extras alike — so the list is where you both reorder and
   // show/hide.
-  const navRows = orderedNavItems(navOrder)
+  // Games ('heardle' — see NAV_ITEMS) and Playlists dropped here: both are
+  // unconditionally excluded from the actual mobile nav now that Home covers
+  // them directly (see useMobileNavTabs' MOBILE_HIDDEN_VIEWS), so a
+  // reorder/show-hide row for either here would toggle something with no
+  // visible effect. Desktop's Settings keeps them — Sidebar still has its own
+  // tabs for both.
+  const navRows = orderedNavItems(navOrder).filter((i) => i.view !== 'heardle' && i.view !== 'playlists')
   const navOrderIsDefault = navOrder.length === DEFAULT_NAV_ORDER.length && navOrder.every((v, i) => v === DEFAULT_NAV_ORDER[i])
   const navVisIsDefault = navRows.every((i) => (navVisibility[i.view] ?? true) === (DEFAULT_NAV_VISIBILITY[i.view] ?? true))
   const navIsDefault = navOrderIsDefault && navVisIsDefault

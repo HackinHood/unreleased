@@ -325,8 +325,8 @@ function StatsPanel({ onClose }: { onClose: () => void }): JSX.Element {
 // ─── View ─────────────────────────────────────────────────────────────────────
 
 export default function WordleView(): JSX.Element {
-  const { setActiveView, playTrack, setHeroBleedTop } = useStorePick(
-    'setActiveView', 'playTrack', 'setHeroBleedTop')
+  const { setActiveView, playTrack, setHeroBleedTop, previousView } = useStorePick(
+    'setActiveView', 'playTrack', 'setHeroBleedTop', 'previousView')
 
   // Lets GameBackdrop's wash paint full-bleed under the status bar instead of
   // stopping at the shell's usual inset — matches WRLD's ownsTopInset trick.
@@ -618,7 +618,9 @@ export default function WordleView(): JSX.Element {
         style={{ top: ownsTopInset ? 'calc(var(--top-inset) + 0.5rem)' : '0.5rem' }}
       >
         <button
-          onClick={() => setActiveView('wrld')}
+          // See HeardleView.mobile.tsx's back button — same reasoning: Home,
+          // not WRLD, is where mobile actually enters this game from now.
+          onClick={() => setActiveView(previousView ?? 'home')}
           aria-label="Back"
           className="w-11 h-11 flex items-center justify-center rounded-full text-text-primary active:bg-surface-overlay transition-colors"
         >

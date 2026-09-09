@@ -184,8 +184,11 @@ export default function App(): JSX.Element {
           // — so it needs this padding applied consistently regardless of
           // WRLD's state, or it visibly "nudges" into place the instant WRLD
           // finishes closing and this padding would otherwise reappear. WRLD
-          // still gets its own full-bleed by compensating with a negative
-          // top offset on its own overlay wrapper below.
+          // still gets its own full-bleed for free — its overlay below is
+          // absolutely positioned, and an absolutely positioned element's
+          // offsets resolve against the containing block's padding edge,
+          // which sits before (outside) this padding, so no compensation is
+          // needed there.
           // Mobile's nav bar is bottom-only (no per-platform top option any
           // more — see BottomNav), so on mobile this only ever depends on
           // heroBleedTop. sidebarPosition still gates it on desktop, where

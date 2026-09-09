@@ -16,6 +16,11 @@ export interface NavItemDef {
   electronOnly?: boolean
   /** Hidden from the desktop side menu — the view has no desktop surface. */
   mobileOnly?: boolean
+  /** Always lands in the mobile "More" sheet rather than a direct bar slot,
+   *  regardless of how much room the bar has — for destinations Home already
+   *  gives a shortcut to (or, for News, doesn't need one), so a bar slot
+   *  would just crowd out more frequently used tabs. No effect on desktop. */
+  mobileOverflow?: boolean
   defaultHidden?: boolean
 }
 
@@ -26,14 +31,14 @@ export const NAV_ITEMS: NavItemDef[] = [
   { view: 'api-files', label: 'Files', icon: <HardDrive size={18} /> },
   // `view` stays 'heardle' — it's the persisted id (and the /heardle route);
   // only the label is Games, so the tab can hold more than one game later.
+  // Excluded from the mobile bar/More entirely (see useMobileNavTabs'
+  // MOBILE_HIDDEN_VIEWS) — Home's Games section already covers it directly.
   { view: 'heardle', label: 'Games', icon: <Gamepad2 size={18} /> },
-  // After Games on purpose: the mobile bar shows only the first four of these
-  // (BottomNav drops 'wrld' and pins Settings), so this ordering is what puts
-  // Playlists in the "More" sheet rather than Games. Home surfaces playlists
-  // directly, which is what makes that trade worth it.
+  // Same as Games: hidden from mobile entirely, since Home's own Playlists
+  // section is the real mobile entry point now.
   { view: 'playlists', label: 'Playlists', icon: <ListMusic size={18} /> },
-  { view: 'stats', label: 'Wrapped', icon: <BarChart3 size={18} /> },
-  { view: 'news', label: 'News', icon: <Newspaper size={18} /> },
+  { view: 'stats', label: 'Wrapped', icon: <BarChart3 size={18} />, mobileOverflow: true },
+  { view: 'news', label: 'News', icon: <Newspaper size={18} />, mobileOverflow: true },
   // Extras — off by default, addable from Settings → Appearance → Menu items.
   { view: 'liked', label: 'Liked Songs', icon: <Heart size={18} />, defaultHidden: true },
   { view: 'docs', label: 'API Docs', icon: <BookOpen size={18} />, defaultHidden: true },
@@ -108,19 +113,26 @@ export function orderedNavItems(order: ViewType[]): NavItemDef[] {
 // phone-width row scrolling to reach an 8th or 9th enabled item (the original
 // behavior) is worse than just not offering that many at once. Above the cap,
 // the tail overflows into the "More" sheet, opened from a button on Home
-// rather than the bar itself.
+// rather than the bar itself — so unlike the old in-bar "More" tab, a direct
+// slot never has to be reserved for the trigger; the cap here is exactly the
+// bar's real capacity minus the pinned Settings slot.
 export const MAX_MOBILE_TABS = 6
 
 /** Split an already-filtered, already-ordered list of mobile nav items into
  *  the ones the bottom bar shows directly and the tail that overflows into
  *  the "More" sheet. Pure — callers supply the visible, ordered list (see
- *  BottomNav, HomeView, MoreNavSheet) so this has no store dependency. */
+ *  BottomNav, HomeView, MoreNavSheet) so this has no store dependency.
+ *  `mobileOverflow` items are pulled out regardless of how much room is
+ *  left — they don't compete for the cap at all — so freeing up bar space
+ *  elsewhere (as removing Playlists/Games did) can't pull them back in. */
 export function splitMobileNavTabs(items: NavItemDef[]): { tabs: NavItemDef[]; moreTabs: NavItemDef[] } {
-  const overflow = items.length > MAX_MOBILE_TABS - 1
-  return {
-    tabs: overflow ? items.slice(0, MAX_MOBILE_TABS - 2) : items,
-    moreTabs: overflow ? items.slice(MAX_MOBILE_TABS - 2) : [],
+  const tabs: NavItemDef[] = []
+  const moreTabs: NavItemDef[] = []
+  for (const item of items) {
+    if (!item.mobileOverflow && tabs.length < MAX_MOBILE_TABS - 1) tabs.push(item)
+    else moreTabs.push(item)
   }
+  return { tabs, moreTabs }
 }
 
 // True when an item should render in the side menu: platform-eligible and not

@@ -6,11 +6,17 @@ import { ProgressiveCover } from './ProgressiveCover'
 import { loadRecentTracks } from '../lib/recentTracks'
 import { filterListeningPlaysByDays } from '../lib/listeningPlays'
 import { playlistCoverUrl } from '../lib/juicewrldApi'
-import { tabEntryView } from '../lib/navItems'
 import { useMobileNavSplit } from '../hooks/useMobileNavTabs'
 import { loadStats as loadHeardleStats, todayKey as heardleToday } from '../lib/heardle'
 import { loadStats as loadWordleStats, todayKey as wordleToday } from '../lib/wordle'
+import { loadTierlistState } from '../lib/tierlist'
 import type { Track, ViewType } from '../types'
+
+// A daily puzzle (streak + played-today) vs. Tier List, which is a standing
+// ranking with no daily reset — same card shell, different second line.
+type GameCard =
+  | { view: ViewType; label: string; kind: 'daily'; streak: number; done: boolean }
+  | { view: ViewType; label: string; kind: 'freeform'; sub: string }
 
 // The mobile landing screen — a dashboard over things the app already knows,
 // not a new data source. Everything here reads from the store or localStorage
@@ -74,12 +80,14 @@ export default function HomeViewMobile(): JSX.Element {
   // remounted on every visit (it's a route), which is exactly when this should
   // refresh — a song played while you were on another tab shows up on return.
   const recent = useMemo(() => loadRecentTracks(), [])
-  const games = useMemo(() => {
+  const games = useMemo((): GameCard[] => {
     const heardle = loadHeardleStats('daily')
     const wordle = loadWordleStats()
+    const rankedCount = Object.keys(loadTierlistState().assignments).length
     return [
-      { view: 'heardle' as ViewType, label: 'Heardle', streak: heardle.currentStreak, done: heardle.lastDay === heardleToday() },
-      { view: 'wordle' as ViewType, label: 'Wordle', streak: wordle.currentStreak, done: wordle.lastDay === wordleToday() },
+      { view: 'heardle', label: 'Heardle', kind: 'daily', streak: heardle.currentStreak, done: heardle.lastDay === heardleToday() },
+      { view: 'wordle', label: 'Wordle', kind: 'daily', streak: wordle.currentStreak, done: wordle.lastDay === wordleToday() },
+      { view: 'tierlist', label: 'Tier List', kind: 'freeform', sub: rankedCount > 0 ? `${rankedCount} ranked` : 'Rank your songs' },
     ]
   }, [])
 
@@ -184,26 +192,28 @@ export default function HomeViewMobile(): JSX.Element {
         )}
       </Section>
 
-      <Section
-        title="Games"
-        icon={<Gamepad2 size={15} />}
-        action={{ label: 'All', onClick: () => setActiveView(tabEntryView('heardle')) }}
-      >
-        <div className="px-4 grid grid-cols-2 gap-3">
+      <Section title="Games" icon={<Gamepad2 size={15} />}>
+        <div className="flex gap-3 overflow-x-auto no-scrollbar px-4 pb-1">
           {games.map((g) => (
             <button
               key={g.view}
               onClick={() => setActiveView(g.view)}
-              className="rounded-xl bg-[var(--surface-overlay)] px-3.5 py-3 text-left active:bg-surface-highest transition-colors"
+              className="w-[140px] shrink-0 rounded-xl bg-[var(--surface-overlay)] px-3.5 py-3 text-left active:bg-surface-highest transition-colors"
             >
               <p className="text-text-primary text-sm font-semibold truncate">{g.label}</p>
-              <div className="flex items-center gap-1 mt-1 text-text-muted">
-                <Flame size={12} className={g.streak > 0 ? 'text-accent' : ''} />
-                <span className="text-[11px] tabular-nums">{g.streak} day streak</span>
-              </div>
-              <p className={`text-[11px] mt-1.5 font-medium ${g.done ? 'text-accent' : 'text-text-muted'}`}>
-                {g.done ? 'Played today' : 'Not played today'}
-              </p>
+              {g.kind === 'daily' ? (
+                <>
+                  <div className="flex items-center gap-1 mt-1 text-text-muted">
+                    <Flame size={12} className={g.streak > 0 ? 'text-accent' : ''} />
+                    <span className="text-[11px] tabular-nums">{g.streak} day streak</span>
+                  </div>
+                  <p className={`text-[11px] mt-1.5 font-medium ${g.done ? 'text-accent' : 'text-text-muted'}`}>
+                    {g.done ? 'Played today' : 'Not played today'}
+                  </p>
+                </>
+              ) : (
+                <p className="text-[11px] mt-1.5 text-text-muted">{g.sub}</p>
+              )}
             </button>
           ))}
         </div>
