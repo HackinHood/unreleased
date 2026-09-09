@@ -355,7 +355,6 @@ export default function WrldView(): JSX.Element {
       // curtain style, instead of leaving the opaque backdrop covering it
       // while only the text/controls slide.
       className="relative flex-1 h-full w-full overflow-hidden flex flex-col"
-      {...dragHandlers}
       style={{
         transform: dragY ? `translateY(${dragY}px)` : undefined,
         borderRadius: dragY ? Math.min(dragY, 32) : 0,
@@ -368,6 +367,14 @@ export default function WrldView(): JSX.Element {
       />
 
       <div className="relative z-10 flex flex-col h-full min-h-0">
+        {/* Drag arms only over the header/cover area — not the whole sheet —
+            so it doesn't fight the progress bar, volume slider, or (below)
+            the transport controls' own touch handling. `touch-none` stops
+            the browser from also treating this gesture as a page scroll,
+            which otherwise animates the mobile browser's own chrome (URL
+            bar) in and out — visible as the rest of the app appearing to
+            "nudge" vertically while dragging. */}
+        <div className="flex-1 min-h-0 flex flex-col touch-none" {...dragHandlers}>
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <div
           className="shrink-0 flex items-center gap-1 px-2"
@@ -439,6 +446,7 @@ export default function WrldView(): JSX.Element {
               txtSec={txtSec}
             />
           </div>
+        </div>
         </div>
 
         {/* ── Controls ───────────────────────────────────────────────────── */}

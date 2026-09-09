@@ -217,6 +217,8 @@ export function ModalOverlay({
   panelClassName,
   minWidth = 360,
   minHeight = 320,
+  dragY = 0,
+  dragging = false,
   children,
 }: {
   onClose: () => void
@@ -234,6 +236,13 @@ export function ModalOverlay({
   panelClassName: string
   minWidth?: number
   minHeight?: number
+  /** Live offset (px) from a caller's own swipe-to-dismiss gesture (e.g.
+   *  useDragToDismiss), for the plain-backdrop (non-docked) case only. The
+   *  panel translates with it while the backdrop fades out in proportion —
+   *  so dragging down actually uncovers the app behind instead of leaving a
+   *  dimmed rectangle trailing the panel down the screen. */
+  dragY?: number
+  dragging?: boolean
   children: (drag: {
     onHandleMouseDown: (e: ReactMouseEvent) => void
     locked: boolean
@@ -393,8 +402,21 @@ export function ModalOverlay({
       <div
         className={`fixed inset-0 ${zIndexClassName} flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-0 md:px-4`}
         onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+        // Fades out (rather than translating) as the panel is dragged, so the
+        // app behind is revealed cleanly instead of a dimmed rectangle just
+        // sliding down with it and hovering above the panel.
+        style={{
+          opacity: dragY ? Math.max(1 - dragY / 240, 0) : 1,
+          transition: dragging ? 'none' : 'opacity 0.25s ease-out',
+        }}
       >
-        <div className={`relative overflow-hidden ${panelClassName}`}>
+        <div
+          className={`relative overflow-hidden ${panelClassName}`}
+          style={{
+            transform: dragY ? `translateY(${dragY}px)` : undefined,
+            transition: dragging ? 'none' : 'transform 0.25s ease-out',
+          }}
+        >
           {children({ onHandleMouseDown: () => {}, locked: false, toggleLock: () => {}, canLock: false })}
         </div>
       </div>,

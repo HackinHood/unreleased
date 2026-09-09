@@ -169,8 +169,11 @@ export default function SongInfoModal({ song, onClose, onEdit }: Props): JSX.Ele
   // Swipe-down-to-dismiss on mobile, same curtain gesture as WRLD's full-
   // screen player. Only armed from the hero (cover/header) area — same
   // region the desktop drag-handle uses — so it doesn't fight the scrollable
-  // info list below.
-  const { style: dragStyle, handlers: dragHandlers } = useDragToDismiss(onClose)
+  // info list below. dragY/dragging get handed to ModalOverlay so it can
+  // translate the backdrop *with* the panel — otherwise the panel would slide
+  // away while an opaque backdrop stayed put, hiding the app behind it until
+  // the modal actually closed.
+  const { dragY, dragging, handlers: dragHandlers } = useDragToDismiss(onClose)
 
   let notesDisplay: string | null = null
   if (displaySong.notes) {
@@ -200,11 +203,12 @@ export default function SongInfoModal({ song, onClose, onEdit }: Props): JSX.Ele
       zIndexClassName="z-[160]"
       panelClassName="bg-surface border border-[var(--border)] rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-lg max-h-[92svh] md:max-h-[86vh]"
       minWidth={420} minHeight={480}
+      dragY={dragY} dragging={dragging}
     >
       {({ onHandleMouseDown, locked, toggleLock, canLock }) => (
       <div
         className="select-text bg-surface w-full h-full flex flex-col overflow-hidden"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', ...dragStyle }}
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
 
         <div

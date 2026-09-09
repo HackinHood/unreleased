@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   Info, ListPlus, ListEnd, Plus, Folder, Pencil, Download, PackageOpen,
-  ChevronDown, ChevronRight, Check, Loader2, CheckSquare2, Heart, Trash2, ListMusic, Flag,
+  ChevronDown, ChevronRight, ChevronLeft, Check, Loader2, CheckSquare2, Heart, Trash2, ListMusic, Flag,
   Layers, Star,
 } from 'lucide-react'
 import { useStore } from '../store/useStore'
@@ -88,6 +88,22 @@ function MenuItem({ icon, label, onClick, destructive, trailing, innerRef }: {
 
 function Divider(): JSX.Element {
   return <div className="my-1 border-t border-[var(--border)]" />
+}
+
+// A mobile sub-sheet's header: back chevron + title, in place of Sheet's
+// plain `title` string — sub-sheets (playlist picker, version switcher, ZIP
+// picker) need an explicit way back to the main sheet since swiping down or
+// tapping the scrim closes the whole menu, not just the sub-sheet.
+function SubSheetHeader({ title, onBack }: { title: string; onBack: () => void }): JSX.Element {
+  return (
+    <button
+      onClick={onBack}
+      className="w-full flex items-center gap-1 px-3 pt-3 pb-1 text-text-primary font-semibold text-[15px]"
+    >
+      <ChevronLeft size={19} className="text-text-muted shrink-0" />
+      {title}
+    </button>
+  )
 }
 
 
@@ -335,7 +351,7 @@ export default function SongContextMenu({
   if (isMobile) {
     if (panel === 'zip') {
       return (
-        <Sheet onClose={() => setPanel('main')} title="Download session">
+        <Sheet onClose={() => setPanel('main')} header={<SubSheetHeader title="Download session" onBack={() => setPanel('main')} />}>
           {zipCandidates && zipCandidates.length > 0 ? (
             <>
               <p className="px-5 pb-1 text-xs text-text-muted">Multiple matches found — pick one:</p>
@@ -352,7 +368,7 @@ export default function SongContextMenu({
 
     if (mobileSub === 'playlists') {
       return (
-        <Sheet onClose={() => setMobileSub(null)} title="Add to playlist">
+        <Sheet onClose={() => setMobileSub(null)} header={<SubSheetHeader title="Add to playlist" onBack={() => setMobileSub(null)} />}>
           {isLocalOnly ? (
             <>
               {localPlaylists.length === 0 && <p className="px-5 py-3 text-sm text-text-muted">No playlists yet.</p>}
@@ -422,7 +438,7 @@ export default function SongContextMenu({
 
     if (mobileSub === 'versions') {
       return (
-        <Sheet onClose={() => setMobileSub(null)} title="Change version">
+        <Sheet onClose={() => setMobileSub(null)} header={<SubSheetHeader title="Change version" onBack={() => setMobileSub(null)} />}>
           {mobileVersionsLoading ? (
             <p className="px-5 py-3 text-sm text-text-muted flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Loading…</p>
           ) : !mobileVersions || mobileVersions.length === 0 ? (
@@ -458,7 +474,7 @@ export default function SongContextMenu({
       <Sheet
         onClose={onClose}
         title={track.title}
-        header={<p className="px-5 -mt-2 pb-1 text-xs text-text-muted truncate">{track.artist}</p>}
+        header={<p className="px-5 pt-0.5 pb-2 text-xs text-text-muted truncate">{track.artist}</p>}
       >
         {onPlay && canQueue && <SheetItem icon={ListEnd} label="Play" onClick={() => { onPlay(); onClose() }} />}
         {onPlayNext && canQueue && <SheetItem icon={ListEnd} label="Play next" onClick={() => { onPlayNext(); onClose() }} />}

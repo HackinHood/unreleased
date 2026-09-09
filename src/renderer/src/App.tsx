@@ -153,7 +153,7 @@ export default function App(): JSX.Element {
   useEffect(() => { useStore.getState()._flushReports() }, [])
 
   return (
-    <div className="app-shell flex flex-col h-dvh bg-surface overflow-hidden">
+    <div className="app-shell flex flex-col bg-surface overflow-hidden">
       {/* Sidebar stays first in the DOM; reverse variants place it visually
           on the right/bottom without reordering focus/tab order. */}
       <div className={`flex flex-1 overflow-hidden ${
@@ -166,11 +166,20 @@ export default function App(): JSX.Element {
         <main
           className="flex-1 overflow-hidden flex flex-col relative"
           // Reserve the phone status-bar inset by default; a mobile view that
-          // wants a hero image to bleed full-bleed behind its own header (WRLD,
-          // Playlists' detail screens) raises heroBleedTop and paints that
+          // wants a hero image to bleed full-bleed behind its own header
+          // (Playlists' detail screens) raises heroBleedTop and paints that
           // strip itself instead — see the store field's doc comment.
-          style={sidebarPosition !== 'top' && !(activeView === 'wrld' || heroBleedTop)
-            ? { paddingTop: 'env(safe-area-inset-top, 0px)' } : undefined}
+          //
+          // Deliberately NOT conditioned on `activeView === 'wrld'`: bgView
+          // (below) stays mounted and visible the whole time WRLD is open —
+          // through the curtain-drag reveal, and permanently once WRLD closes
+          // — so it needs this padding applied consistently regardless of
+          // WRLD's state, or it visibly "nudges" into place the instant WRLD
+          // finishes closing and this padding would otherwise reappear. WRLD
+          // still gets its own full-bleed by compensating with a negative
+          // top offset on its own overlay wrapper below.
+          style={sidebarPosition !== 'top' && !heroBleedTop
+            ? { paddingTop: 'var(--top-inset)' } : undefined}
         >
           <div className="flex-1 overflow-hidden flex">
             <ErrorBoundary>
@@ -206,6 +215,16 @@ export default function App(): JSX.Element {
               <ErrorBoundary>
                 <Suspense fallback={null}>
                   <div className="absolute inset-0 z-30">
+                    {/* No compensation needed for main's padding here: an
+                        absolutely positioned element's offsets resolve
+                        against its containing block's padding edge, which
+                        sits BEFORE (outside) that padding — so `inset-0`
+                        already reaches the true top of `main` regardless of
+                        whatever padding-top `main` itself has. (An earlier
+                        version of this added a negative top offset to
+                        "compensate," which was wrong and clipped the top of
+                        WRLD — including its header row — behind `main`'s
+                        own overflow-hidden.) */}
                     <WrldView />
                   </div>
                 </Suspense>
