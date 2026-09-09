@@ -13,7 +13,7 @@
     <base href="./" />
     <script>if(/^https?:/.test(location.protocol))document.querySelector('base').href='/'</script>
     <!-- maximum-scale=1 stops iOS Safari's auto-zoom when focusing inputs
-         under 16px (all our text-xs fields); deliberate pinch-zoom still
+         under 10px (all our text-xs fields); deliberate pinch-zoom still
          works — iOS ignores the cap for user gestures. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <link rel="icon" type="image/png" href="/favicon.png" />
@@ -79,6 +79,12 @@
     <!-- iOS ignores the web manifest for "Add to Home Screen" — it reads these
          Apple-specific tags instead to launch fullscreen with our own icon. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- black-translucent lets the page paint under the status bar, which is
+         what keeps the skin/gradient running to the very top edge.
+         Known and not ours to fix: iOS softens the top of the screen in
+         installed apps regardless of page content — every installed PWA shows
+         it, so don't go hunting for a CSS blur in here. Only the viewer's
+         Settings → Accessibility → Reduce Transparency changes it. -->
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Unreleased" />
     <link rel="apple-touch-icon" href="/icon-512.png" />

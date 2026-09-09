@@ -129,6 +129,10 @@ interface AppState {
   settingsTab: SettingsTab | null
   showDiagnostics: boolean
   showQueue: boolean
+  // The bottom nav's overflow sheet — its trigger button lives on Home now,
+  // not in the nav bar itself, so the open/close state has to live somewhere
+  // both can reach.
+  showMoreNav: boolean
   // Equalizer popover visibility. Store-level (not Player-local) so the WRLD
   // tab's button and the 'equalizer' hotkey can open it from anywhere — the
   // always-mounted Player owns the actual portal.
@@ -452,6 +456,7 @@ interface AppActions {
   openProfile: () => void
   setShowDiagnostics: (show: boolean) => void
   setShowQueue: (show: boolean) => void
+  setShowMoreNav: (show: boolean) => void
   setShowEqPanel: (show: boolean) => void
   toggleEqPanel: () => void
   setInfoSongId: (id: number | null) => void
@@ -954,6 +959,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
   settingsTab: null,
   showDiagnostics: false,
   showQueue: false,
+  showMoreNav: false,
   showEqPanel: false,
   infoSongId: null,
   playerCollapsed: ls.get<boolean>('playerCollapsed') ?? false,
@@ -973,7 +979,17 @@ export const useStore = create<AppStore>((set, get, store) => ({
   // getSkin() maps unknown persisted ids (renamed/removed skins) back to dark.
   theme: getSkin(ls.get<string>('theme') ?? 'dark').id,
   sidebarPosition: ls.get<SidebarPosition>('sidebarPosition') ?? 'left',
-  navOrder: ls.get<ViewType[]>('navOrder') ?? DEFAULT_NAV_ORDER,
+  navOrder: (() => {
+    // Only users who actually reordered their menu have this key at all —
+    // everyone else falls through to DEFAULT_NAV_ORDER and picks up new
+    // destinations in their intended position for free. For the ones who did,
+    // orderedNavItems appends anything missing at the *end*, which would bury
+    // Home in the "More" sheet, so front-load it instead. The `includes` guard
+    // makes this idempotent, and a later drag persists whatever they choose.
+    const saved = ls.get<ViewType[]>('navOrder')
+    if (!saved) return DEFAULT_NAV_ORDER
+    return saved.includes('home') ? saved : ['home' as ViewType, ...saved]
+  })(),
   navVisibility: { ...DEFAULT_NAV_VISIBILITY, ...(ls.get<Record<string, boolean>>('navVisibility') ?? {}) },
   navControlOrder: (() => {
     const saved = ls.get<string[]>('navControlOrder') ?? DEFAULT_NAV_CONTROL_ORDER
@@ -991,6 +1007,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
     // entries or churn subscribers that key off previousView.
     if (get().activeView === view) return
     const paths: Partial<Record<ViewType, string>> = {
+      'home': '/home',
       'api-tracker': '/tracker',
       'api-files': '/files',
       'editor': '/editor',
@@ -1047,6 +1064,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
   },
   setShowDiagnostics: (showDiagnostics) => set({ showDiagnostics }),
   setShowQueue: (showQueue) => set({ showQueue }),
+  setShowMoreNav: (showMoreNav) => set({ showMoreNav }),
   setShowEqPanel: (showEqPanel) => set({ showEqPanel }),
   toggleEqPanel: () => set((s) => ({ showEqPanel: !s.showEqPanel })),
   setInfoSongId: (infoSongId) => {

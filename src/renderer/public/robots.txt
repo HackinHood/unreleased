@@ -11,6 +11,7 @@ Disallow: /shared/
 Disallow: /admin
 Disallow: /editor
 Disallow: /contributor
+Disallow: /home
 Disallow: /liked
 Disallow: /stats
 Disallow: /library

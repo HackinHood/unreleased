@@ -1,4 +1,4 @@
-import { SearchCode, HardDrive, ListMusic, Heart, BookOpen, Newspaper, Gamepad2, BarChart3, User, Download, Upload, Info, Settings } from 'lucide-react'
+import { SearchCode, HardDrive, ListMusic, Heart, BookOpen, Newspaper, Gamepad2, BarChart3, House, User, Download, Upload, Info, Settings } from 'lucide-react'
 import type { ReactNode } from 'react'
 import logo from '../assets/logo.png'
 import type { ViewType } from '../types'
@@ -14,17 +14,24 @@ export interface NavItemDef {
   label: string
   icon: ReactNode
   electronOnly?: boolean
+  /** Hidden from the desktop side menu — the view has no desktop surface. */
+  mobileOnly?: boolean
   defaultHidden?: boolean
 }
 
 export const NAV_ITEMS: NavItemDef[] = [
   { view: 'wrld', label: 'WRLD', icon: <img src={logo} alt="WRLD" className="w-[24px] h-[24px] object-contain" /> },
+  { view: 'home', label: 'Home', icon: <House size={18} />, mobileOnly: true },
   { view: 'api-tracker', label: 'Tracker', icon: <SearchCode size={18} /> },
   { view: 'api-files', label: 'Files', icon: <HardDrive size={18} /> },
-  { view: 'playlists', label: 'Playlists', icon: <ListMusic size={18} /> },
   // `view` stays 'heardle' — it's the persisted id (and the /heardle route);
   // only the label is Games, so the tab can hold more than one game later.
   { view: 'heardle', label: 'Games', icon: <Gamepad2 size={18} /> },
+  // After Games on purpose: the mobile bar shows only the first four of these
+  // (BottomNav drops 'wrld' and pins Settings), so this ordering is what puts
+  // Playlists in the "More" sheet rather than Games. Home surfaces playlists
+  // directly, which is what makes that trade worth it.
+  { view: 'playlists', label: 'Playlists', icon: <ListMusic size={18} /> },
   { view: 'stats', label: 'Wrapped', icon: <BarChart3 size={18} /> },
   { view: 'news', label: 'News', icon: <Newspaper size={18} /> },
   // Extras — off by default, addable from Settings → Appearance → Menu items.
@@ -97,10 +104,32 @@ export function orderedNavItems(order: ViewType[]): NavItemDef[] {
   return out
 }
 
+// Hard cap on the mobile bottom nav's direct buttons, Settings included — a
+// phone-width row scrolling to reach an 8th or 9th enabled item (the original
+// behavior) is worse than just not offering that many at once. Above the cap,
+// the tail overflows into the "More" sheet, opened from a button on Home
+// rather than the bar itself.
+export const MAX_MOBILE_TABS = 6
+
+/** Split an already-filtered, already-ordered list of mobile nav items into
+ *  the ones the bottom bar shows directly and the tail that overflows into
+ *  the "More" sheet. Pure — callers supply the visible, ordered list (see
+ *  BottomNav, HomeView, MoreNavSheet) so this has no store dependency. */
+export function splitMobileNavTabs(items: NavItemDef[]): { tabs: NavItemDef[]; moreTabs: NavItemDef[] } {
+  const overflow = items.length > MAX_MOBILE_TABS - 1
+  return {
+    tabs: overflow ? items.slice(0, MAX_MOBILE_TABS - 2) : items,
+    moreTabs: overflow ? items.slice(MAX_MOBILE_TABS - 2) : [],
+  }
+}
+
 // True when an item should render in the side menu: platform-eligible and not
 // toggled off. `visibility` is the merged map (defaults + user overrides).
-export function isNavItemVisible(item: NavItemDef, visibility: Record<string, boolean>, isElectron: boolean): boolean {
+export function isNavItemVisible(item: NavItemDef, visibility: Record<string, boolean>, isElectron: boolean, isMobile = false): boolean {
   if (item.electronOnly && !isElectron) return false
+  // Defaults to false so the desktop callers (Sidebar, the desktop menu-items
+  // editor) keep hiding mobile-only items without having to opt in.
+  if (item.mobileOnly && !isMobile) return false
   return visibility[item.view] ?? !item.defaultHidden
 }
 

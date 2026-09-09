@@ -82,6 +82,7 @@ const ROUTES: Record<ViewType, SeoEntry> = {
 
   // Personal or unstable surfaces: crawlable in principle, worthless in an
   // index, and in several cases they render empty for a signed-out crawler.
+  home: { path: '/home', title: 'Home', description: 'Your playlists, games and listening stats.', noindex: true },
   liked: { path: '/liked', title: 'Liked songs', description: 'Your liked Juice WRLD songs.', noindex: true },
   playlists: { path: '/playlists', title: 'Playlists', description: 'Your playlists and folders.', noindex: true },
   stats: { path: '/stats', title: 'Listening stats', description: 'Your all-time listening stats.', noindex: true },

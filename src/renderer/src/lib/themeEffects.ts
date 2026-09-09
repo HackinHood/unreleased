@@ -25,6 +25,51 @@ function hslToHex(h: number, s: number, l: number): string {
   return `#${f(0)}${f(8)}${f(4)}`
 }
 
+// Keeps the phone status bar / Safari toolbar tinted to match the app
+// instead of the static dark gray baked into index.html. Reads --surface
+// off <html> rather than taking a parameter so every effect that can change
+// it (skin, the per-track dynamic palette) can just call this.
+//
+// Regular Safari tab mode only supports a single flat theme-color — no real
+// gradient is possible there, since that pixel is Safari chrome, not our
+// page content. With Gradient Surfaces on, --surface alone would read as a
+// flat patch next to the glow the rest of the shell has, so this blends in
+// a chunk of accent approximating the top-right radial's peak (9% alpha,
+// same as .app-shell's in index.css) to get closer to what's actually
+// painted just below it. Standalone/PWA mode (black-translucent) doesn't
+// need this — there the status bar is translucent over real page content,
+// which now carries its own matching gradient (see html.gradients rule in
+// index.css).
+//
+// Note: iOS Safari only picks up a theme-color change on the next full
+// navigation/reload — it does not live-retint an already-open tab, even
+// though this correctly updates the DOM immediately. Nothing to fix there;
+// it's a WebKit limitation, not a bug in this code.
+function syncThemeColorMeta(): void {
+  const themeColor = document.querySelector('meta[name="theme-color"]')
+  if (!themeColor) return
+  const root = document.documentElement
+  const surface = getComputedStyle(root).getPropertyValue('--surface').trim()
+  if (!surface) return
+  if (!root.classList.contains('gradients') || !surface.startsWith('#')) {
+    themeColor.setAttribute('content', surface)
+    return
+  }
+  const accentRgb = getComputedStyle(root).getPropertyValue('--accent-rgb').trim().split(/\s+/).map(Number)
+  if (accentRgb.length !== 3 || accentRgb.some(Number.isNaN)) {
+    themeColor.setAttribute('content', surface)
+    return
+  }
+  themeColor.setAttribute('content', blendHex(surface, accentRgb, 0.09))
+}
+
+function blendHex(hex: string, rgb: number[], amount: number): string {
+  const [r, g, b] = hexToRgb(hex)
+  const mix = (base: number, tint: number): number =>
+    Math.round(base * (1 - amount) + tint * amount)
+  return `#${mix(r, rgb[0]).toString(16).padStart(2, '0')}${mix(g, rgb[1]).toString(16).padStart(2, '0')}${mix(b, rgb[2]).toString(16).padStart(2, '0')}`
+}
+
 function applyVars(vars: Skin['vars']): void {
   const root = document.documentElement
   for (const [key, value] of Object.entries(vars)) root.style.setProperty(key, value)
@@ -34,11 +79,7 @@ function applyVars(vars: Skin['vars']): void {
   for (const key of SKIN_OPTIONAL_VAR_KEYS) {
     if (vars[key] == null) root.style.removeProperty(key)
   }
-  // Keeps the phone status bar / browser chrome tinted to match the app
-  // instead of the static dark gray baked into index.html — otherwise it
-  // stayed plain black regardless of skin or the per-track dynamic palette.
-  const themeColor = document.querySelector('meta[name="theme-color"]')
-  if (themeColor && vars['--surface']) themeColor.setAttribute('content', vars['--surface'])
+  syncThemeColorMeta()
 }
 
 function applyAccentVars(accent: string): void {
@@ -50,6 +91,7 @@ function applyAccentVars(accent: string): void {
   root.style.setProperty('--accent-rgb', `${r} ${g} ${b}`)
   root.style.setProperty('--accent-hover', hover)
   root.style.setProperty('--accent-hover-rgb', `${hr} ${hg} ${hb}`)
+  syncThemeColorMeta()
 }
 
 // ── "Now Playing" dynamic skin ───────────────────────────────────────────────
@@ -237,6 +279,7 @@ export function useThemeEffects(): void {
   // the flat palette, so toggling never changes any skin's base colors.
   useEffect(() => {
     document.documentElement.classList.toggle('gradients', gradientsEnabled)
+    syncThemeColorMeta()
   }, [gradientsEnabled])
 
   // Same idea, split into its own class so bg-surface-overlay boxes (toggle

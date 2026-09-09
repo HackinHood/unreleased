@@ -1512,7 +1512,7 @@ export default function PlaylistsView(): JSX.Element {
             controls live in the bottom bar instead. */}
         <div
           className="relative shrink-0 flex items-center gap-1 px-2"
-          style={{ paddingTop: ownsTopInset ? 'max(0.25rem, env(safe-area-inset-top, 0px))' : '0.25rem' }}
+          style={{ paddingTop: ownsTopInset ? 'max(0.25rem, var(--top-inset))' : '0.25rem' }}
         >
           <button
             onClick={() => (reorderMode ? setReorderMode(false) : goBackToLibrary())}
@@ -1800,7 +1800,7 @@ export default function PlaylistsView(): JSX.Element {
         {art && <HeroBackdrop src={art} />}
         <div
           className="relative shrink-0 flex items-center gap-1 px-2"
-          style={{ paddingTop: ownsTopInset ? 'max(0.25rem, env(safe-area-inset-top, 0px))' : '0.25rem' }}
+          style={{ paddingTop: ownsTopInset ? 'max(0.25rem, var(--top-inset))' : '0.25rem' }}
         >
           <button
             onClick={() => setGuestSelectedId(null)}

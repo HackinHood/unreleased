@@ -308,7 +308,10 @@ export default function Settings(): JSX.Element {
   // ── Menu items (Appearance) ──────────────────────────────────────────────
   // Every nav item in saved order — visible ones and the toggled-off extras
   // alike — so the list is where you both reorder and show/hide.
-  const navRows = orderedNavItems(navOrder)
+  // Mobile-only destinations are dropped here, not just hidden by
+  // isNavItemVisible below: offering a reorder/show row for a tab this menu
+  // can never render would read as a broken toggle.
+  const navRows = orderedNavItems(navOrder).filter((i) => !i.mobileOnly)
   const navOrderIsDefault = navOrder.length === DEFAULT_NAV_ORDER.length && navOrder.every((v, i) => v === DEFAULT_NAV_ORDER[i])
   const navVisIsDefault = navRows.every((i) => (navVisibility[i.view] ?? true) === (DEFAULT_NAV_VISIBILITY[i.view] ?? true))
   const navIsDefault = navOrderIsDefault && navVisIsDefault
@@ -751,16 +754,16 @@ export default function Settings(): JSX.Element {
                 <Row
                   icon={Waves}
                   iconColor="#8b5cf6"
-                  label="Gradient surfaces"
-                  sub="Accent-tinted gradients behind the app, sidebar, and player"
+                  label="App gradients"
+                  sub="Accent-tinted gradients behind the app and sidebar"
                 >
                   <Toggle on={gradientsEnabled} onClick={() => setGradientsEnabled(!gradientsEnabled)} />
                 </Row>
                 <Row
                   icon={Waves}
                   iconColor="#8b5cf6"
-                  label="Surface gradients"
-                  sub="Accent-tinted gradients on toggle groups, search bars, badges, and menus"
+                  label="Control gradients"
+                  sub="Accent-tinted gradients on the player bar, toggle groups, search bars, badges, and menus"
                 >
                   <Toggle on={surfaceGradientsEnabled} onClick={() => setSurfaceGradientsEnabled(!surfaceGradientsEnabled)} />
                 </Row>

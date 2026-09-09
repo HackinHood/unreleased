@@ -405,8 +405,9 @@ export default function Settings(): JSX.Element {
     appFont, setAppFont,
     lyricsFont, setLyricsFont,
     gradientsEnabled, setGradientsEnabled,
+    surfaceGradientsEnabled, setSurfaceGradientsEnabled,
     fullEraNames, setFullEraNames,
-  } = useStorePick('setShowSettings', 'setActiveView', 'openProfile', 'account', 'setShowUserAuth', 'logoutAccount', 'theme', 'setTheme', 'customSkins', 'saveCustomSkin', 'deleteCustomSkin', 'accentColor', 'setAccentColor', 'settingsTab', 'setSettingsTab', 'sidebarPosition', 'setSidebarPosition', 'navOrder', 'setNavOrder', 'navVisibility', 'setNavItemVisible', 'audioOutput', 'setAudioOutput', 'crossfadeEnabled', 'crossfadeDuration', 'setCrossfade', 'pauseFadeEnabled', 'setPauseFade', 'preferOgVersion', 'setPreferOgVersion', 'rotateSuggestedCovers', 'setRotateSuggestedCovers', 'mediaOverlayEnabled', 'setMediaOverlayEnabled', 'lyricsOffset', 'setLyricsOffset', 'sleepTimerEnd', 'setSleepTimer', 'developerMode', 'setDeveloperMode', 'lastfmUser', 'setLastfmUser', 'lastfmEnabled', 'setLastfmEnabled', 'appTextScale', 'setAppTextScale', 'lyricsScale', 'setLyricsScale', 'lyricsAlign', 'setLyricsAlign', 'lyricsBlur', 'setLyricsBlur', 'lyricsBlurAmount', 'setLyricsBlurAmount', 'lyricsColorActive', 'setLyricsColorActive', 'lyricsColorInactive', 'setLyricsColorInactive', 'appFont', 'setAppFont', 'lyricsFont', 'setLyricsFont', 'gradientsEnabled', 'setGradientsEnabled', 'fullEraNames', 'setFullEraNames')
+  } = useStorePick('setShowSettings', 'setActiveView', 'openProfile', 'account', 'setShowUserAuth', 'logoutAccount', 'theme', 'setTheme', 'customSkins', 'saveCustomSkin', 'deleteCustomSkin', 'accentColor', 'setAccentColor', 'settingsTab', 'setSettingsTab', 'sidebarPosition', 'setSidebarPosition', 'navOrder', 'setNavOrder', 'navVisibility', 'setNavItemVisible', 'audioOutput', 'setAudioOutput', 'crossfadeEnabled', 'crossfadeDuration', 'setCrossfade', 'pauseFadeEnabled', 'setPauseFade', 'preferOgVersion', 'setPreferOgVersion', 'rotateSuggestedCovers', 'setRotateSuggestedCovers', 'mediaOverlayEnabled', 'setMediaOverlayEnabled', 'lyricsOffset', 'setLyricsOffset', 'sleepTimerEnd', 'setSleepTimer', 'developerMode', 'setDeveloperMode', 'lastfmUser', 'setLastfmUser', 'lastfmEnabled', 'setLastfmEnabled', 'appTextScale', 'setAppTextScale', 'lyricsScale', 'setLyricsScale', 'lyricsAlign', 'setLyricsAlign', 'lyricsBlur', 'setLyricsBlur', 'lyricsBlurAmount', 'setLyricsBlurAmount', 'lyricsColorActive', 'setLyricsColorActive', 'lyricsColorInactive', 'setLyricsColorInactive', 'appFont', 'setAppFont', 'lyricsFont', 'setLyricsFont', 'gradientsEnabled', 'setGradientsEnabled', 'surfaceGradientsEnabled', 'setSurfaceGradientsEnabled', 'fullEraNames', 'setFullEraNames')
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [customAccent, setCustomAccent] = useState(accentColor)
@@ -1076,10 +1077,18 @@ export default function Settings(): JSX.Element {
                   <Row
                     icon={Waves}
                     iconColor="#8b5cf6"
-                    label="Gradient surfaces"
-                    sub="Accent-tinted gradients behind the app, nav, and player"
+                    label="App gradients"
+                    sub="Accent-tinted gradients behind the app and nav"
                   >
                     <Toggle on={gradientsEnabled} onClick={() => setGradientsEnabled(!gradientsEnabled)} />
+                  </Row>
+                  <Row
+                    icon={Waves}
+                    iconColor="#8b5cf6"
+                    label="Control gradients"
+                    sub="Accent-tinted gradients on the player bar, toggle groups, search bars, badges, and menus"
+                  >
+                    <Toggle on={surfaceGradientsEnabled} onClick={() => setSurfaceGradientsEnabled(!surfaceGradientsEnabled)} />
                   </Row>
                 </SettingsCard>
 
@@ -1197,7 +1206,7 @@ export default function Settings(): JSX.Element {
                         being mistaken for the start of a drag. */}
                     <div className="rounded-xl bg-[var(--surface-highest)] overflow-hidden">
                       {navRows.map((item, idx) => {
-                        const shown = isNavItemVisible(item, navVisibility, false)
+                        const shown = isNavItemVisible(item, navVisibility, false, true)
                         const dragging = navDrag.dragIndex === idx
                         return (
                           <div

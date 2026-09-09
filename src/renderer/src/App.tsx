@@ -2,14 +2,20 @@ import { useEffect, Suspense } from 'react'
 import { useStore, useStorePick } from './store/useStore'
 import { setToken, getToken } from './lib/userApi'
 import { useThemeEffects } from './lib/themeEffects'
-import { runWhenIdle } from './lib/platform'
+import { runWhenIdle, isStandalonePWA } from './lib/platform'
 import { applySeo } from './lib/seo'
 import { lazyView } from './lib/lazyView'
 import { useIsMobile } from './hooks/useIsMobile'
 import { ViewType } from './types'
 
 function getViewFromPath(pathname: string): ViewType {
-  if (pathname === '/' || pathname === '/tracker') return 'api-tracker'
+  if (pathname === '/home') return 'home'
+  // Installed apps land on Home; a browser tab still gets the Tracker. `/` is
+  // the canonical, indexed URL for the catalog (lib/seo.ts) and Google crawls
+  // mobile-first, so serving a personal dashboard there would put Home in the
+  // search index in place of the catalog. Crawlers never run standalone.
+  if (pathname === '/') return isStandalonePWA() ? 'home' : 'api-tracker'
+  if (pathname === '/tracker') return 'api-tracker'
   if (pathname.startsWith('/files')) return 'api-files'
   if (pathname === '/editor') return 'editor'
   if (pathname === '/contributor') return 'contributor'
@@ -52,6 +58,7 @@ import QueuePanel from './components/QueuePanel'
 import UploadManager from './components/UploadManager'
 import ErrorBoundary from './components/ErrorBoundary'
 import SandboxNotch from './components/SandboxNotch'
+import MoreNavSheet from './components/MoreNavSheet'
 
 // Rarely-visited views load on first navigation instead of inflating the
 // startup bundle. Suspense fallback is null: these chunks are local (Electron)
@@ -74,6 +81,7 @@ const DownloadAppView = lazyView(() => import('./components/DownloadAppView'))
 const AlbumsAdminView = lazyView(() => import('./components/AlbumsAdminView'))
 const ContributorPage = lazyView(() => import('./components/ContributorPage'))
 const ContributorProfileView = lazyView(() => import('./components/ContributorProfileView'))
+const HomeView = lazyView(() => import('./components/HomeView'))
 const Settings = lazyView(() => import('./components/Settings'))
 const DiagnosticsModal = lazyView(() => import('./components/DiagnosticsModal'))
 
@@ -184,7 +192,8 @@ export default function App(): JSX.Element {
           <div className="flex-1 overflow-hidden flex">
             <ErrorBoundary>
             <Suspense fallback={null}>
-            {bgView === 'settings' ? <Settings />
+            {bgView === 'home' ? <HomeView />
+              : bgView === 'settings' ? <Settings />
               : bgView === 'api-tracker' ? <ApiTrackerView />
               : bgView === 'api-files' ? <ApiFilesView />
               : bgView === 'editor' ? <EditorPage />
@@ -255,6 +264,7 @@ export default function App(): JSX.Element {
       <ErrorBoundary fallback={null}><LastfmScrobbler /></ErrorBoundary>
       <ErrorBoundary fallback={null}><NewsNotifier /></ErrorBoundary>
       <ErrorBoundary fallback={null}><BottomNav /></ErrorBoundary>
+      <ErrorBoundary fallback={null}><MoreNavSheet /></ErrorBoundary>
       {showDiagnostics && (
         <ErrorBoundary variant="overlay" onDismiss={() => setShowDiagnostics(false)}>
           <Suspense fallback={null}><DiagnosticsModal /></Suspense>

@@ -91,7 +91,7 @@ export default function QueuePanel(): JSX.Element {
           style={{
             // Clears the status bar when running edge-to-edge on mobile —
             // this panel is fixed, so the shell's inset doesn't reach it.
-            paddingTop: isMobile ? 'max(20px, env(safe-area-inset-top, 0px))' : 20,
+            paddingTop: isMobile ? 'max(20px, var(--top-inset))' : 20,
           }}
         >
           <div className="flex items-center gap-2">

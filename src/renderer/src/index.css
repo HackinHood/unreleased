@@ -139,8 +139,12 @@ html.theme-animate {
 }
 
 /* ─── Gradient surfaces ──────────────────────────────────────────────────────────
-   Opt-in (Settings → Appearance → Gradient surfaces; useThemeEffects toggles
-   the `gradients` class). Accent-tinted washes layered as background-image on
+   Two independent opt-ins, both toggled by useThemeEffects:
+     .gradients          → Settings → Appearance → "App gradients"
+     .surface-gradients  → Settings → Appearance → "Control gradients"
+   (the class names predate the UI labels; the storage keys are load-bearing
+   for already-saved preferences, so only the labels were reworded.)
+   Accent-tinted washes layered as background-image on
    top of the existing flat background-color, so no skin's palette changes —
    and because they ride rgb(var(--accent-rgb) / α), they recolor with the
    accent, follow the Now Playing skin's per-song accent, and animate through
@@ -149,9 +153,11 @@ html.theme-animate {
 /* App shell: a glow from the top-right + a faint answering one bottom-left.
    Sidebar/player paint over their own strips, so this reads as depth behind
    the main content area. */
+.app-shell { height: var(--app-height); }
+
 html.gradients .app-shell {
   background-image:
-    radial-gradient(100% 80% at 100% 0%, rgb(var(--accent-rgb) / 0.14), transparent 55%),
+    radial-gradient(100% 80% at 100% 0%, rgb(var(--accent-rgb) / 0.09), transparent 55%),
     radial-gradient(80% 70% at 0% 100%, rgb(var(--accent-rgb) / 0.08), transparent 55%);
 }
 
@@ -160,8 +166,10 @@ html.gradients .app-sidebar {
   background-image: linear-gradient(180deg, rgb(var(--accent-rgb) / 0.10), rgb(var(--accent-rgb) / 0.03) 45%, transparent 75%);
 }
 
-/* Player bar: mirror of the sidebar, rising from the bottom edge. */
-html.gradients .app-player {
+/* Player bar: mirror of the sidebar, rising from the bottom edge. Grouped
+   with the controls below rather than the shell above — it reads as a
+   control strip, not as app chrome, so it follows that toggle. */
+html.surface-gradients .app-player {
   background-image: linear-gradient(0deg, rgb(var(--accent-rgb) / 0.10), transparent 80%);
 }
 
@@ -192,12 +200,55 @@ html.surface-gradients .bg-surface-overlay {
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Every full-height box (html/body/#root and .app-shell) sizes off this, so
+   the dvh/lvh choice is made once. See main.tsx for why installed apps need
+   the other unit. */
+html { --app-height: 100dvh; }
+html.standalone { --app-height: 100lvh; }
+
+/* Top inset for anything that parks itself below the status bar, with a bit
+   of breathing room past it: iOS softens the top band of the screen in every
+   installed web app (not something this page causes or can turn off — see the
+   status-bar meta in index.html), and nothing moves content out of that band
+   entirely, so this just keeps titles and icon buttons off the worst of it.
+
+   Measured on a 59px-inset iPhone: the blur is total for the first ~60px,
+   fades through ~75px, and is gone by ~90px — i.e. it runs about 30px past
+   the inset itself. 1.6 lands just clear of that (~94px). Only those last
+   ~30px are a real cost; the 59px below the status bar was never usable
+   anyway. Dial the factor down to reclaim space at the price of a softer
+   first line.
+
+   The multiplier is what gates it — deliberately, rather than a standalone
+   check. The inset is only non-zero where content actually renders under a
+   status bar, so scaling it adds room exactly there and stays 0×n = 0 on
+   desktop and in browser tabs. */
+html { --top-inset: calc(env(safe-area-inset-top, 0px) * 1.6); }
+
 html, body, #root {
-  height: 100dvh;
+  height: var(--app-height);
   width: 100%;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   user-select: none;
+  /* Belt-and-suspenders: if either value still under-reports on some
+     device, this makes any exposed strip blend in instead of showing as an
+     obvious black bar. */
+  background: var(--surface, #121212);
+}
+
+/* Same wash as .app-shell (above), mirrored onto html/body/#root themselves.
+   iOS standalone mode extends content under the status bar/notch via
+   safe-area insets, and .app-shell doesn't always cover that sliver — without
+   this, Gradient Surfaces users see a flat patch there instead of the glow
+   the rest of the shell has. Keeping both copies in sync is fine: they're
+   cheap and only one is ever visible at a time. */
+html.gradients,
+html.gradients body,
+html.gradients #root {
+  background-image:
+    radial-gradient(100% 80% at 100% 0%, rgb(var(--accent-rgb) / 0.09), transparent 55%),
+    radial-gradient(80% 70% at 0% 100%, rgb(var(--accent-rgb) / 0.08), transparent 55%);
 }
 
 /* Custom scrollbar */

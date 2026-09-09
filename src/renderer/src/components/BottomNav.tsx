@@ -1,10 +1,9 @@
-import { ReactNode, useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
-import { Settings, MoreHorizontal } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { Settings } from 'lucide-react'
 import { useStorePick } from '../store/useStore'
 import { ViewType } from '../types'
-import { orderedNavItems, isNavItemVisible, navTabFor, tabEntryView } from '../lib/navItems'
-import { useBackToClose } from '../hooks/useBackToClose'
+import { navTabFor, tabEntryView } from '../lib/navItems'
+import { useMobileNavSplit } from '../hooks/useMobileNavTabs'
 
 // The mobile nav bar — the counterpart to the desktop Sidebar, which it now
 // shares its destination list with. It used to hardcode its own four tabs,
@@ -16,52 +15,20 @@ import { useBackToClose } from '../hooks/useBackToClose'
 // `atTop` flips the border, the safe-area inset, and the active marker to the
 // opposite edge.
 //
-// Hard-capped at 6 tabs total, Settings always the last of them — a phone-width
-// row scrolling to reach an 8th or 9th enabled item (the original behavior) is
-// worse than just not offering that many at once. When more items are enabled
-// than fit, a "More" tab takes one of the direct slots and the rest live in a
-// bottom sheet off of it — see moreTabs below. Nothing enabled on this device
-// is ever unreachable on mobile the way it used to be (there's no Sidebar
-// fallback here, unlike desktop).
-const MAX_TABS = 6
-
-interface Tab { view: ViewType; icon: ReactNode; label: string }
+// Hard-capped (see MAX_MOBILE_TABS in lib/navItems), Settings always last —
+// a phone-width row scrolling to reach an 8th or 9th enabled item (the
+// original behavior) is worse than not offering that many at once. Anything
+// past the cap doesn't get a button here at all any more: it lives in the
+// "More" sheet (MoreNavSheet.tsx), opened from a button on Home rather than a
+// tab in this bar — see useMobileNavSplit for the shared tabs/moreTabs split.
 
 export default function BottomNav(): JSX.Element {
-  const { activeView, setActiveView, toggleSettings, navVisibility, navOrder, sidebarPosition } =
-    useStorePick('activeView', 'setActiveView', 'toggleSettings', 'navVisibility', 'navOrder', 'sidebarPosition')
+  const { activeView, setActiveView, toggleSettings, sidebarPosition } =
+    useStorePick('activeView', 'setActiveView', 'toggleSettings', 'sidebarPosition')
   const showSettings = activeView === 'settings'
   const atTop = sidebarPosition === 'top'
+  const { tabs } = useMobileNavSplit()
 
-  // Shared with the side menu: orderedNavItems sanitizes the saved order,
-  // isNavItemVisible drops anything toggled off.
-  // NAV_ITEMS icons are sized for the 18px side menu; scale them up to a
-  // touch-appropriate 24 without forking the definitions.
-  // WRLD excluded here only — tapping the mini player already opens it, so a
-  // second entry point in the tab bar is redundant on mobile. Desktop's
-  // Sidebar has no now-playing bar to tap, so it keeps its own WRLD row.
-  const navItemTabs: Tab[] = orderedNavItems(navOrder)
-    .filter((i) => i.view !== 'wrld' && isNavItemVisible(i, navVisibility, false))
-    .map((item) => ({
-      view: item.view,
-      label: item.label,
-      icon: <span className="[&_svg]:w-6 [&_svg]:h-6 [&_img]:w-7 [&_img]:h-7 flex items-center justify-center">{item.icon}</span>,
-    }))
-
-  // Settings has a guaranteed slot (it's the only route into Settings on
-  // mobile), so the rest compete for the remaining MAX_TABS - 1 spots. Only
-  // when that's not enough does "More" claim one of those spots for itself —
-  // with few enough items enabled, every tab still shows directly and no
-  // "More" button appears at all.
-  const allTabs = navItemTabs
-  const overflow = allTabs.length > MAX_TABS - 1
-  const tabs = overflow ? allTabs.slice(0, MAX_TABS - 2) : allTabs
-  const moreTabs = overflow ? allTabs.slice(MAX_TABS - 2) : []
-  const moreActive = moreTabs.some((t) => navTabFor(activeView) === t.view)
-  const [moreOpen, setMoreOpen] = useState(false)
-  useBackToClose(() => setMoreOpen(false), moreOpen)
-
-  // Shared by both the direct tabs and the "More" sheet's rows.
   const navigateTo = (view: ViewType): void => {
     // Re-tapping the already-active Playlists tab dispatches a back event
     // instead of going through setActiveView (it's a no-op there — same view).
@@ -109,9 +76,13 @@ export default function BottomNav(): JSX.Element {
       // Hidden on WRLD (mobile) — that tab wants full-screen immersion, and
       // its own layout already reclaims the freed space (see
       // --bottom-nav-height, published below and read there).
-      className={`md:hidden ${activeView === 'wrld' ? 'hidden' : 'flex'} items-stretch bg-sidebar shrink-0`}
+      // bg-surface, not bg-sidebar: on the dark skin --sidebar is pure black,
+      // noticeably blacker than the app's own --surface — stacked with the
+      // safe-area-inset-bottom padding below the icons, that read as a stark,
+      // "dead" slab distinct from the rest of the app instead of part of it.
+      className={`md:hidden ${activeView === 'wrld' ? 'hidden' : 'flex'} items-stretch bg-surface shrink-0`}
       style={atTop
-        ? { borderBottom: '1px solid var(--border)', paddingTop: 'env(safe-area-inset-top, 0px)' }
+        ? { borderBottom: '1px solid var(--border)', paddingTop: 'var(--top-inset)' }
         : { borderTop: '1px solid var(--border)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
       {tabs.map((tab) => {
@@ -119,19 +90,13 @@ export default function BottomNav(): JSX.Element {
         return (
           <button key={tab.view} onClick={() => navigateTo(tab.view)} className={tabCls(active)}>
             {marker(active)}
-            {tab.icon}
+            {/* NAV_ITEMS icons are sized for the 18px side menu; scale them up
+                to a touch-appropriate 24 without forking the definitions. */}
+            <span className="[&_svg]:w-6 [&_svg]:h-6 [&_img]:w-7 [&_img]:h-7 flex items-center justify-center">{tab.icon}</span>
             <span className={labelCls}>{tab.label}</span>
           </button>
         )
       })}
-
-      {moreTabs.length > 0 && (
-        <button onClick={() => setMoreOpen(true)} className={tabCls(moreActive)}>
-          {marker(moreActive)}
-          <MoreHorizontal size={24} />
-          <span className={labelCls}>More</span>
-        </button>
-      )}
 
       {/* Never hideable or counted against the cap: on mobile this is the
           only route into Settings. */}
@@ -140,38 +105,6 @@ export default function BottomNav(): JSX.Element {
         <Settings size={24} />
         <span className={labelCls}>Settings</span>
       </button>
-
-      {moreOpen && createPortal(
-        <>
-          <div className="fixed inset-0 z-[60] bg-black/40" onClick={() => setMoreOpen(false)} />
-          <div
-            className="fixed z-[61] left-0 right-0 bottom-0 rounded-t-2xl bg-surface border border-[var(--border)] border-b-0 shadow-2xl max-h-[75svh] overflow-y-auto"
-            style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
-          >
-            <div className="px-4 pt-4 pb-1">
-              <h3 className="text-text-primary font-bold text-base">More</h3>
-            </div>
-            <div className="pb-2">
-              {moreTabs.map((tab) => {
-                const active = navTabFor(activeView) === tab.view
-                return (
-                  <button
-                    key={tab.view}
-                    onClick={() => { navigateTo(tab.view); setMoreOpen(false) }}
-                    className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors ${
-                      active ? 'text-accent bg-accent/10' : 'text-text-primary hover:bg-[var(--surface-overlay)] active:bg-[var(--surface-overlay)]'
-                    }`}
-                  >
-                    {tab.icon}
-                    <span className="text-sm font-medium">{tab.label}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        </>,
-        document.body
-      )}
     </nav>
   )
 }

@@ -1205,7 +1205,7 @@ export default function HeardleView(): JSX.Element {
           click in these corners and left the buttons visible but dead. */}
       <div
         className="absolute left-2 z-20"
-        style={{ top: ownsTopInset ? 'calc(env(safe-area-inset-top, 0px) + 0.5rem)' : '0.5rem' }}
+        style={{ top: ownsTopInset ? 'calc(var(--top-inset) + 0.5rem)' : '0.5rem' }}
       >
         <button
           onClick={() => setActiveView('wrld')}
@@ -1217,7 +1217,7 @@ export default function HeardleView(): JSX.Element {
       </div>
       <div
         className="absolute right-2 z-20 flex items-center gap-1"
-        style={{ top: ownsTopInset ? 'calc(env(safe-area-inset-top, 0px) + 0.5rem)' : '0.5rem' }}
+        style={{ top: ownsTopInset ? 'calc(var(--top-inset) + 0.5rem)' : '0.5rem' }}
       >
         <button
           onClick={() => setShowSettings(true)}
@@ -1249,7 +1249,7 @@ export default function HeardleView(): JSX.Element {
           {/* Clears the corner buttons (0.5rem + h-11 → bottom edge at 3.25rem)
               plus the safe-area inset they now sit below, since this view
               bleeds its own backdrop under the status bar. */}
-          <div style={{ marginTop: ownsTopInset ? 'calc(env(safe-area-inset-top, 0px) + 3.5rem)' : '3.5rem' }}>
+          <div style={{ marginTop: ownsTopInset ? 'calc(var(--top-inset) + 3.5rem)' : '3.5rem' }}>
             <GameSwitcher current="heardle" />
           </div>
 
