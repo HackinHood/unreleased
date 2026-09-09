@@ -1436,12 +1436,6 @@ export default function Settings(): JSX.Element {
             {/* ── About ── */}
             {!settingsQueryTrimmed && tab === 'about' && (
               <div>
-                <p className="text-text-muted text-xs mb-1">
-                  unreleased v{APP_VERSION} &mdash; powered by{' '}
-                  <a href="https://juicewrldapi.com" target="_blank" rel="noopener noreferrer" className="text-accent">
-                    juicewrldapi.com
-                  </a>
-                </p>
                 <p className="text-text-muted text-xs mb-3">
                   Last updated to commit{' '}
                   <a

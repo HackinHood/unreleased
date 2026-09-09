@@ -159,7 +159,7 @@ export default function LyricsDisplay({ getTime, onSeek, compact, override }: Ly
             opacity: isActive ? 1 : isPast ? 0.35 : 0.2,
             color: isActive ? activeColor : inactiveColor,
             // Every line except the one playing — played and upcoming alike.
-            filter: (!isActive && lyricsBlur) ? `blur(${lyricsBlurAmount.toFixed(2)}px)` : 'blur(0px)',
+            filter: (!isActive && lyricsBlur) ? `blur(${lyricsBlurAmount.toFixed(2)}px)` : 'none',
             transition: 'opacity 0.35s ease, color 0.35s ease, filter 0.35s ease',
             fontSize: `${(compact ? 1.125 : 1.5) * lyricsScale}rem`,
             textAlign: lyricsAlign,
