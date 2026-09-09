@@ -1238,11 +1238,16 @@ function QueueSheet({ onClose }: { onClose: () => void }): JSX.Element {
 
 // A press held on the row for LONG_PRESS_MS (without moving past the slop)
 // starts a reorder drag — no separate "Reorder" mode toggle or dedicated grip
-// handle. `onDragStart`'s own timing/slop is handled right here since the row
-// itself is the touch target; once it fires, useDragReorder's document-level
-// listeners (see mobile/useDragReorder.ts) take over the rest of the drag.
+// handle. A deliberate leftward swipe removes the track instead, revealing a
+// red backdrop as it goes. Both gestures start from the same touchstart, so
+// the first real movement has to arbitrate: mostly-horizontal commits to the
+// swipe, mostly-vertical (or none at all, within the hold) leaves the
+// long-press timer running for reorder, and unmistakable vertical movement
+// before the timer fires cancels it outright so the list still scrolls.
 const QUEUE_LONG_PRESS_MS = 420
-const QUEUE_LONG_PRESS_SLOP = 10
+const QUEUE_AXIS_SLOP = 10
+const QUEUE_SWIPE_REVEAL = 72
+const QUEUE_SWIPE_THRESHOLD = 56
 
 function QueueRow({ track, active, playing, dragging, anyDragging, rowStyle, onDragStart, onPlay, onRemove }: {
   track: Track
@@ -1261,72 +1266,125 @@ function QueueRow({ track, active, playing, dragging, anyDragging, rowStyle, onD
   const rowRef = useRef<HTMLDivElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const originRef = useRef<{ x: number; y: number } | null>(null)
+  const axisRef = useRef<'swipe' | 'scroll' | 'reorder' | null>(null)
   const suppressClickRef = useRef(false)
+  const [dragX, setDragX] = useState(0)
+  const [swiping, setSwiping] = useState(false)
+  const [removing, setRemoving] = useState(false)
 
   const cancelPress = (): void => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
-    originRef.current = null
   }
   const handleTouchStart = (e: React.TouchEvent): void => {
-    if (!onDragStart || e.touches.length !== 1) return
+    if (e.touches.length !== 1) return
     const t = e.touches[0]
     originRef.current = { x: t.clientX, y: t.clientY }
-    timerRef.current = setTimeout(() => {
-      suppressClickRef.current = true
-      onDragStart(t.clientY, rowRef.current)
-    }, QUEUE_LONG_PRESS_MS)
+    axisRef.current = null
+    if (onDragStart) {
+      timerRef.current = setTimeout(() => {
+        axisRef.current = 'reorder'
+        suppressClickRef.current = true
+        onDragStart(t.clientY, rowRef.current)
+      }, QUEUE_LONG_PRESS_MS)
+    }
   }
   const handleTouchMove = (e: React.TouchEvent): void => {
     const origin = originRef.current
     if (!origin) return
     const t = e.touches[0]
-    if (Math.abs(t.clientX - origin.x) > QUEUE_LONG_PRESS_SLOP || Math.abs(t.clientY - origin.y) > QUEUE_LONG_PRESS_SLOP) cancelPress()
+    const dx = t.clientX - origin.x
+    const dy = t.clientY - origin.y
+    if (!axisRef.current) {
+      if (Math.abs(dx) < QUEUE_AXIS_SLOP && Math.abs(dy) < QUEUE_AXIS_SLOP) return
+      // Any deliberate movement before the long-press timer fires means this
+      // wasn't a hold — cancel it either way, then decide swipe vs. scroll.
+      cancelPress()
+      if (onRemove && Math.abs(dx) > Math.abs(dy)) {
+        axisRef.current = 'swipe'
+        setSwiping(true)
+      } else {
+        axisRef.current = 'scroll'
+      }
+    }
+    if (axisRef.current !== 'swipe') return
+    e.preventDefault()
+    const raw = Math.min(dx, 0)
+    setDragX(raw < -QUEUE_SWIPE_REVEAL ? -QUEUE_SWIPE_REVEAL + (raw + QUEUE_SWIPE_REVEAL) / 4 : raw)
+  }
+  const handleTouchEnd = (): void => {
+    cancelPress()
+    if (axisRef.current === 'swipe') {
+      if (dragX < -QUEUE_SWIPE_THRESHOLD && onRemove) {
+        suppressClickRef.current = true
+        setRemoving(true)
+        setDragX(-window.innerWidth)
+        window.setTimeout(onRemove, 180)
+      } else {
+        setDragX(0)
+      }
+    }
+    setSwiping(false)
+    originRef.current = null
+    axisRef.current = null
   }
 
   return (
-    <div
-      ref={rowRef}
-      data-drag-row
-      style={rowStyle}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={cancelPress}
-      onTouchCancel={cancelPress}
-      className={`flex items-center gap-3 px-5 py-2 transition-colors ${
-        active ? 'bg-accent/10' : dragging ? 'bg-white/10 shadow-xl rounded-xl' : onPlay ? 'active:bg-surface-overlay' : ''
-      }`}
-      onClick={() => {
-        if (suppressClickRef.current) { suppressClickRef.current = false; return }
-        if (!anyDragging && onPlay && !active) onPlay()
-      }}
-    >
-      <div className="w-11 h-11 rounded-lg shrink-0 overflow-hidden bg-surface-overlay">
-        <AlbumArtThumbnail track={track} size={44} fill className="w-full h-full" shimmer={false} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className={`text-[15px] truncate leading-snug ${active ? 'text-accent font-semibold' : 'text-text-primary'}`}>{track.title}</p>
-        <p className="text-text-muted text-xs truncate mt-0.5">{track.artist}</p>
-      </div>
-      {playing ? (
-        <span className="flex gap-[3px] items-end h-3.5 shrink-0">
-          {[0, 1, 2].map(i => (
-            <span key={i} className="w-[3px] h-full rounded-full bg-accent eq-bar" style={{ animationDelay: `${i * 0.18}s` }} />
-          ))}
-        </span>
-      ) : (
-        <>
-          <span className="text-text-muted text-[11px] tabular-nums shrink-0">
-            {track.duration ? formatDuration(track.duration) : ''}
-          </span>
-          {onRemove && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onRemove() }}
-              aria-label="Remove from queue"
-              className="w-10 h-11 -mr-2 shrink-0 flex items-center justify-center text-text-muted active:text-red-400"
-            ><X size={17} /></button>
-          )}
-        </>
+    <div ref={rowRef} data-drag-row style={rowStyle} className="relative overflow-hidden">
+      {onRemove && (
+        <div
+          className="absolute inset-0 bg-red-500 flex items-center justify-end pr-6 pointer-events-none"
+          style={{ opacity: dragX < 0 ? Math.min(1, -dragX / QUEUE_SWIPE_THRESHOLD) : 0 }}
+        >
+          <Trash2 size={16} className="text-white" />
+        </div>
       )}
+      <div
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
+        className={`flex items-center gap-3 px-5 py-2 transition-colors ${
+          active ? 'bg-accent/10' : dragging ? 'bg-white/10 shadow-xl rounded-xl' : onPlay ? 'active:bg-surface-overlay' : ''
+        }`}
+        style={{
+          transform: dragX ? `translateX(${dragX}px)` : undefined,
+          transition: swiping ? 'none' : 'transform 0.2s ease-out, opacity 0.2s ease-out',
+          opacity: removing ? 0 : 1,
+          background: dragX ? 'var(--surface)' : undefined,
+        }}
+        onClick={() => {
+          if (suppressClickRef.current) { suppressClickRef.current = false; return }
+          if (!anyDragging && onPlay && !active) onPlay()
+        }}
+      >
+        <div className="w-11 h-11 rounded-lg shrink-0 overflow-hidden bg-surface-overlay">
+          <AlbumArtThumbnail track={track} size={44} fill className="w-full h-full" shimmer={false} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className={`text-[15px] truncate leading-snug ${active ? 'text-accent font-semibold' : 'text-text-primary'}`}>{track.title}</p>
+          <p className="text-text-muted text-xs truncate mt-0.5">{track.artist}</p>
+        </div>
+        {playing ? (
+          <span className="flex gap-[3px] items-end h-3.5 shrink-0">
+            {[0, 1, 2].map(i => (
+              <span key={i} className="w-[3px] h-full rounded-full bg-accent eq-bar" style={{ animationDelay: `${i * 0.18}s` }} />
+            ))}
+          </span>
+        ) : (
+          <>
+            <span className="text-text-muted text-[11px] tabular-nums shrink-0">
+              {track.duration ? formatDuration(track.duration) : ''}
+            </span>
+            {onRemove && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onRemove() }}
+                aria-label="Remove from queue"
+                className="w-10 h-11 -mr-2 shrink-0 flex items-center justify-center text-text-muted active:text-red-400"
+              ><X size={17} /></button>
+            )}
+          </>
+        )}
+      </div>
     </div>
   )
 }

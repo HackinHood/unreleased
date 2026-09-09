@@ -66,10 +66,10 @@ function EmptyNote({ children }: { children: React.ReactNode }): JSX.Element {
 export default function HomeViewMobile(): JSX.Element {
   const {
     account, playlists, guestPlaylists, followedPlaylists, likedTrackIds,
-    listeningPlays, setActiveView, setPendingPlaylistId, playTrack, setShowMoreNav, openSettings,
+    listeningPlays, setActiveView, setPendingPlaylistId, playTrack, setShowMoreNav, openProfile,
   } = useStorePick(
     'account', 'playlists', 'guestPlaylists', 'followedPlaylists', 'likedTrackIds',
-    'listeningPlays', 'setActiveView', 'setPendingPlaylistId', 'playTrack', 'setShowMoreNav', 'openSettings',
+    'listeningPlays', 'setActiveView', 'setPendingPlaylistId', 'playTrack', 'setShowMoreNav', 'openProfile',
   )
   // Whatever doesn't fit the bottom nav directly — its old in-bar "More" tab
   // moved here, since fitting it AND a Home tab both in the bar pushed the
@@ -134,7 +134,7 @@ export default function HomeViewMobile(): JSX.Element {
     <div className="flex-1 min-h-0 overflow-y-auto pt-2 pb-4">
       <div className="flex items-center gap-2 px-4 pb-4">
         <button
-          onClick={() => openSettings('account')}
+          onClick={openProfile}
           aria-label="Profile"
           className="w-9 h-9 shrink-0 rounded-full overflow-hidden bg-[var(--surface-overlay)] flex items-center justify-center text-text-muted active:bg-surface-highest transition-colors"
         >
