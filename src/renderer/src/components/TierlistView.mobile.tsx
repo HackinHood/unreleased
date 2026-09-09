@@ -1,12 +1,10 @@
 // Tier List — rank songs into S/A/B/C/D (or whatever tiers the user builds)
-// by tapping a song, then tapping the row it belongs in. Unlike Heardle/
-// Wordle there's no daily puzzle or score: it's a personal ranking, persisted
-// locally (see lib/tierlist) with no server round-trip.
-//
-// Desktop also supports HTML5 drag-and-drop; this is a touch surface, so that
-// path is dropped entirely and tap-to-select-then-tap-a-row (which desktop
-// already offers as a fallback) is the only interaction.
-import { useEffect, useMemo, useState } from 'react'
+// by dragging a song into a row (touch drag via Pointer Events, since HTML5
+// drag-and-drop doesn't fire on touch), or by tapping a song then tapping the
+// row it belongs in. Unlike Heardle/Wordle there's no daily puzzle or score:
+// it's a personal ranking, persisted locally (see lib/tierlist) with no
+// server round-trip.
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronLeft, ChevronUp, ChevronDown, Settings2, Music2, Plus, RotateCcw, Search, X, Check,
 } from 'lucide-react'
@@ -24,22 +22,37 @@ import { GameSwitcher, GameBackdrop } from './gameShell'
 
 const DEFAULT_CATEGORIES: PoolId[] = ['released', 'unreleased']
 
+// Drop-zone id used for the "Unranked" pool, since tier ids are already
+// unique strings and null can't be stuffed into a DOM dataset attribute.
+const POOL_DROP_ZONE = '__pool__'
+
+// Pointer must move this many px before a press counts as a drag rather than
+// a tap — keeps tap-to-select working for a finger that doesn't quite hold still.
+const DRAG_THRESHOLD = 8
+
 // ─── Pieces ───────────────────────────────────────────────────────────────────
 
-function SongChip({ song, selected, onClick }: {
+function SongChip({ song, selected, dragging, onClick, onPointerDown }: {
   song: HeardleSong
   selected: boolean
+  dragging?: boolean
   onClick: () => void
+  onPointerDown: (e: React.PointerEvent) => void
 }): JSX.Element {
   return (
-    <div onClick={onClick} title={song.name} className="shrink-0 w-16 cursor-pointer">
+    <div
+      onClick={onClick}
+      onPointerDown={onPointerDown}
+      title={song.name}
+      className={`shrink-0 w-16 cursor-pointer touch-none ${dragging ? 'opacity-30' : ''}`}
+    >
       <div
         className={`relative w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${
           selected ? 'border-accent ring-2 ring-accent/50 scale-95' : 'border-[var(--border)]'
         }`}
       >
         {song.imageUrl ? (
-          <img src={smallCoverUrl(song.imageUrl)} alt="" className="w-full h-full object-cover" />
+          <img src={smallCoverUrl(song.imageUrl)} alt="" draggable={false} className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full bg-[var(--surface-overlay)] flex items-center justify-center">
             <Music2 size={18} className="text-text-muted" />
@@ -53,14 +66,17 @@ function SongChip({ song, selected, onClick }: {
   )
 }
 
-function TierRow({ tier, songs, isFirst, isLast, selectedSongId, onClickRow, onSelectSong, onMoveUp, onMoveDown, onEdit }: {
+function TierRow({ tier, songs, isFirst, isLast, selectedSongId, draggedSongId, isDropTarget, onClickRow, onSelectSong, onSongPointerDown, onMoveUp, onMoveDown, onEdit }: {
   tier: Tier
   songs: HeardleSong[]
   isFirst: boolean
   isLast: boolean
   selectedSongId: number | null
+  draggedSongId: number | null
+  isDropTarget: boolean
   onClickRow: () => void
   onSelectSong: (id: number) => void
+  onSongPointerDown: (song: HeardleSong) => (e: React.PointerEvent) => void
   onMoveUp: () => void
   onMoveDown: () => void
   onEdit: () => void
@@ -77,16 +93,19 @@ function TierRow({ tier, songs, isFirst, isLast, selectedSongId, onClickRow, onS
       </button>
       <div
         onClick={onClickRow}
-        className={`flex-1 min-h-[6.5rem] bg-[var(--surface-overlay)]/30 p-1.5 flex flex-wrap gap-1.5 content-start ${
+        data-drop-zone={tier.id}
+        className={`flex-1 min-h-[6.5rem] bg-[var(--surface-overlay)]/30 p-1.5 flex flex-wrap gap-1.5 content-start transition-colors ${
           selectedSongId !== null ? 'cursor-copy' : ''
-        }`}
+        } ${isDropTarget ? 'bg-accent/20 outline outline-2 outline-accent/60 -outline-offset-2' : ''}`}
       >
         {songs.map((s) => (
           <SongChip
             key={s.id}
             song={s}
             selected={selectedSongId === s.id}
+            dragging={draggedSongId === s.id}
             onClick={() => onSelectSong(s.id)}
+            onPointerDown={onSongPointerDown(s)}
           />
         ))}
       </div>
@@ -181,6 +200,17 @@ export default function TierlistView(): JSX.Element {
   const [editingTier, setEditingTier] = useState<Tier | null>(null)
   const [showFilters, setShowFilters] = useState(false)
 
+  // Touch drag: a floating copy of the chip follows the pointer while
+  // `drag` is set; `dropTarget` mirrors whichever `[data-drop-zone]` is
+  // currently under it, for the highlight. Actual pointermove/up listeners
+  // live on window (added on pointerdown) so the drag tracks past the
+  // chip's own bounds; `pointerState` is a ref rather than state since it's
+  // read/written on every move and shouldn't trigger re-renders itself.
+  const [drag, setDrag] = useState<{ song: HeardleSong; x: number; y: number } | null>(null)
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const pointerState = useRef<{ song: HeardleSong; startX: number; startY: number; dragging: boolean } | null>(null)
+  const suppressClickRef = useRef(false)
+
   useEffect(() => {
     let cancelled = false
     setPoolLoading(true)
@@ -206,7 +236,9 @@ export default function TierlistView(): JSX.Element {
   // Selecting the tier a song currently belongs to (or the pool, for
   // unassigning) is meant as a no-op, not a nudge to re-render — keeping the
   // state identity-equal skips the save effect that would otherwise fire.
-  const assignSong = (songId: number, tierId: string | null): void => {
+  // useCallback with no deps: the pointer-drag handlers below chain off this
+  // identity, and need it stable across renders (see their comment).
+  const assignSong = useCallback((songId: number, tierId: string | null): void => {
     setState((prev) => {
       const current = prev.assignments[songId] ?? null
       if (current === tierId) return prev
@@ -216,11 +248,73 @@ export default function TierlistView(): JSX.Element {
       return { ...prev, assignments: next }
     })
     setSelectedSongId(null)
-  }
+  }, [])
 
   const clickRow = (tierId: string | null) => (): void => {
     if (selectedSongId !== null) assignSong(selectedSongId, tierId)
   }
+
+  // Chip selection is routed through here (rather than straight to
+  // setSelectedSongId) so a drag's trailing click — fired by the browser
+  // right after pointerup — doesn't also toggle selection.
+  const handleChipClick = (songId: number): void => {
+    if (suppressClickRef.current) { suppressClickRef.current = false; return }
+    setSelectedSongId((cur) => (cur === songId ? null : songId))
+  }
+
+  const zoneUnderPoint = useCallback((x: number, y: number): string | null => {
+    const el = document.elementFromPoint(x, y)
+    const zoneEl = el instanceof Element ? el.closest<HTMLElement>('[data-drop-zone]') : null
+    return zoneEl?.dataset.dropZone ?? null
+  }, [])
+
+  const handleSongPointerMove = useCallback((e: PointerEvent): void => {
+    const ps = pointerState.current
+    if (!ps) return
+    const dx = e.clientX - ps.startX
+    const dy = e.clientY - ps.startY
+    if (!ps.dragging && Math.hypot(dx, dy) > DRAG_THRESHOLD) ps.dragging = true
+    if (ps.dragging) {
+      e.preventDefault()
+      setDrag({ song: ps.song, x: e.clientX, y: e.clientY })
+      setDropTarget(zoneUnderPoint(e.clientX, e.clientY))
+    }
+  }, [zoneUnderPoint])
+
+  // These stay stable across renders (via the useCallback chain down to
+  // assignSong/zoneUnderPoint, which have no deps) so that the add/remove
+  // pairs in handleSongPointerDown and the unmount cleanup below always
+  // refer to the same function identity — addEventListener/removeEventListener
+  // only match on identity, so a handler that changed shape between the
+  // pointerdown and the eventual pointerup would leak a listener.
+  const handleSongPointerUp = useCallback((e: PointerEvent): void => {
+    window.removeEventListener('pointermove', handleSongPointerMove)
+    window.removeEventListener('pointerup', handleSongPointerUp)
+    window.removeEventListener('pointercancel', handleSongPointerUp)
+    const ps = pointerState.current
+    pointerState.current = null
+    if (ps?.dragging) {
+      suppressClickRef.current = true
+      const zone = zoneUnderPoint(e.clientX, e.clientY)
+      if (zone) assignSong(ps.song.id, zone === POOL_DROP_ZONE ? null : zone)
+    }
+    setDrag(null)
+    setDropTarget(null)
+  }, [assignSong, zoneUnderPoint, handleSongPointerMove])
+
+  const handleSongPointerDown = useCallback((song: HeardleSong) => (e: React.PointerEvent): void => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    pointerState.current = { song, startX: e.clientX, startY: e.clientY, dragging: false }
+    window.addEventListener('pointermove', handleSongPointerMove, { passive: false })
+    window.addEventListener('pointerup', handleSongPointerUp)
+    window.addEventListener('pointercancel', handleSongPointerUp)
+  }, [handleSongPointerMove, handleSongPointerUp])
+
+  useEffect(() => () => {
+    window.removeEventListener('pointermove', handleSongPointerMove)
+    window.removeEventListener('pointerup', handleSongPointerUp)
+    window.removeEventListener('pointercancel', handleSongPointerUp)
+  }, [handleSongPointerMove, handleSongPointerUp])
 
   const moveTier = (index: number, dir: -1 | 1): void => {
     setState((prev) => {
@@ -329,7 +423,7 @@ export default function TierlistView(): JSX.Element {
             <p className="text-text-muted text-xs mt-2">
               {selectedSongId !== null
                 ? 'Tap a row to place it — tap the song again to cancel.'
-                : 'Tap a song, then tap the row it belongs in.'}
+                : 'Drag a song into a row, or tap it and then tap a row.'}
             </p>
           </div>
 
@@ -348,8 +442,11 @@ export default function TierlistView(): JSX.Element {
                 isFirst={i === 0}
                 isLast={i === tiers.length - 1}
                 selectedSongId={selectedSongId}
+                draggedSongId={drag?.song.id ?? null}
+                isDropTarget={dropTarget === tier.id}
                 onClickRow={clickRow(tier.id)}
-                onSelectSong={(id) => setSelectedSongId((cur) => (cur === id ? null : id))}
+                onSelectSong={handleChipClick}
+                onSongPointerDown={handleSongPointerDown}
                 onMoveUp={() => moveTier(i, -1)}
                 onMoveDown={() => moveTier(i, 1)}
                 onEdit={() => setEditingTier(tier)}
@@ -381,7 +478,10 @@ export default function TierlistView(): JSX.Element {
             </div>
             <div
               onClick={clickRow(null)}
-              className={`min-h-[7.5rem] flex flex-wrap gap-1.5 content-start ${selectedSongId !== null ? 'cursor-copy' : ''}`}
+              data-drop-zone={POOL_DROP_ZONE}
+              className={`min-h-[7.5rem] flex flex-wrap gap-1.5 content-start rounded-lg transition-colors ${
+                selectedSongId !== null ? 'cursor-copy' : ''
+              } ${dropTarget === POOL_DROP_ZONE ? 'bg-accent/20 outline outline-2 outline-accent/60 -outline-offset-2' : ''}`}
             >
               {poolLoading ? (
                 <span className="text-xs text-text-muted py-4">Loading songs…</span>
@@ -395,7 +495,9 @@ export default function TierlistView(): JSX.Element {
                     key={s.id}
                     song={s}
                     selected={selectedSongId === s.id}
-                    onClick={() => setSelectedSongId((cur) => (cur === s.id ? null : s.id))}
+                    dragging={drag?.song.id === s.id}
+                    onClick={() => handleChipClick(s.id)}
+                    onPointerDown={handleSongPointerDown(s)}
                   />
                 ))
               )}
@@ -403,6 +505,23 @@ export default function TierlistView(): JSX.Element {
           </div>
         </div>
       </div>
+
+      {drag && (
+        <div
+          className="fixed z-[300] pointer-events-none w-16"
+          style={{ left: drag.x - 32, top: drag.y - 32 }}
+        >
+          <div className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-accent shadow-xl scale-110">
+            {drag.song.imageUrl ? (
+              <img src={smallCoverUrl(drag.song.imageUrl)} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full bg-[var(--surface-overlay)] flex items-center justify-center">
+                <Music2 size={18} className="text-text-muted" />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {showFilters && (
         <Sheet onClose={() => setShowFilters(false)} title="Song pool">

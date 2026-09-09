@@ -1137,7 +1137,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
   lyricsColorActive: ls.get<string>('lyricsColorActive'),
   lyricsColorInactive: ls.get<string>('lyricsColorInactive'),
   gradientsEnabled: ls.get<boolean>('gradientsEnabled') ?? true,
-  surfaceGradientsEnabled: ls.get<boolean>('surfaceGradientsEnabled') ?? true,
+  surfaceGradientsEnabled: ls.get<boolean>('surfaceGradientsEnabled') ?? false,
   wrldThemeBackground: ls.get<boolean>('wrldThemeBackground') ?? false,
   preferOgVersion: ls.get<boolean>('preferOgVersion') ?? false,
   rotateSuggestedCovers: ls.get<boolean>('rotateSuggestedCovers') ?? false,
