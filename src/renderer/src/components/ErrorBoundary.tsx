@@ -1,5 +1,6 @@
 import { Component, ReactNode } from 'react'
-import { AlertTriangle, Copy, Check } from 'lucide-react'
+import { AlertTriangle, Copy, Check, Flag, Loader2, CloudOff } from 'lucide-react'
+import { useStore } from '../store/useStore'
 
 interface Props {
   children: ReactNode
@@ -15,17 +16,25 @@ interface Props {
   variant?: 'inline' | 'overlay'
   onDismiss?: () => void
 }
-interface State { error: Error | null; copied: boolean }
+// 'sending' covers the queue + first delivery attempt; 'delivered' means it
+// actually reached the server this round; 'queued' means it only made it to
+// the local outbox (offline, API disabled, etc.) — same three-way status
+// ReportForm shows, so a crash report doesn't silently claim success when it
+// hasn't actually gone out yet.
+type ReportStatus = 'idle' | 'sending' | 'delivered' | 'queued'
+interface State { error: Error | null; copied: boolean; reportStatus: ReportStatus }
 
 export default class ErrorBoundary extends Component<Props, State> {
-  state: State = { error: null, copied: false }
+  state: State = { error: null, copied: false, reportStatus: 'idle' }
+  private componentStack: string | null = null
 
   static getDerivedStateFromError(error: Error): Partial<State> {
-    return { error }
+    return { error, reportStatus: 'idle' }
   }
 
   componentDidCatch(error: Error, info: { componentStack: string }): void {
     console.error('ErrorBoundary caught:', error, info)
+    this.componentStack = info.componentStack
   }
 
   private copyError = (): void => {
@@ -36,6 +45,21 @@ export default class ErrorBoundary extends Component<Props, State> {
       this.setState({ copied: true })
       setTimeout(() => this.setState({ copied: false }), 2000)
     }).catch(() => {/* ignore */})
+  }
+
+  private reportError = async (): Promise<void> => {
+    const { error } = this.state
+    if (!error || this.state.reportStatus === 'sending') return
+    this.setState({ reportStatus: 'sending' })
+    const message = [
+      `Crash: ${error.message}`,
+      error.stack ? `\nStack:\n${error.stack}` : '',
+      this.componentStack ? `\nComponent stack:\n${this.componentStack}` : '',
+      `\nURL: ${window.location.href}`,
+      `User agent: ${navigator.userAgent}`,
+    ].join('\n')
+    const delivered = await useStore.getState().submitFeedback('bug', message)
+    this.setState({ reportStatus: delivered ? 'delivered' : 'queued' })
   }
 
   private dismiss = (): void => {
@@ -66,6 +90,25 @@ export default class ErrorBoundary extends Component<Props, State> {
                 {this.state.copied ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
               </button>
             </div>
+            {this.state.reportStatus === 'delivered' ? (
+              <p className="flex items-center gap-1.5 text-xs text-accent mt-1">
+                <Check size={13} /> Reported — thanks
+              </p>
+            ) : this.state.reportStatus === 'queued' ? (
+              <p className="flex items-center gap-1.5 text-xs text-amber-500 mt-1">
+                <CloudOff size={13} /> Saved — will send once back online
+              </p>
+            ) : (
+              <button
+                onClick={this.reportError}
+                disabled={this.state.reportStatus === 'sending'}
+                className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary underline mt-1 disabled:opacity-50"
+              >
+                {this.state.reportStatus === 'sending'
+                  ? <><Loader2 size={13} className="animate-spin" /> Reporting…</>
+                  : <><Flag size={13} /> Report this error</>}
+              </button>
+            )}
             <div className="flex items-center gap-4 mt-1">
               <button
                 className="text-xs text-accent hover:text-accent-hover underline"
