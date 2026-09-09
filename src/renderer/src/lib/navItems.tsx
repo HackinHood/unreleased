@@ -35,8 +35,13 @@ export const NAV_ITEMS: NavItemDef[] = [
   // Same as Games: hidden from mobile entirely, since Home's own Playlists
   // section is the real mobile entry point now.
   { view: 'playlists', label: 'Playlists', icon: <ListMusic size={18} /> },
-  { view: 'stats', label: 'Wrapped', icon: <BarChart3 size={18} />, mobileOverflow: true },
-  { view: 'news', label: 'News', icon: <Newspaper size={18} />, mobileOverflow: true },
+  // Off by default, addable from Settings → Menu items — same as Liked/Docs
+  // below. (No mobileOverflow: that flag forces a tab into the "More" sheet
+  // even once the user has explicitly turned it on, which reads as "I
+  // enabled this and it still isn't in the bar." Once shown, these behave
+  // like any other optional tab — a direct bar slot, subject to the cap.)
+  { view: 'stats', label: 'Wrapped', icon: <BarChart3 size={18} />, defaultHidden: true },
+  { view: 'news', label: 'News', icon: <Newspaper size={18} />, defaultHidden: true },
   // Extras — off by default, addable from Settings → Appearance → Menu items.
   { view: 'liked', label: 'Liked Songs', icon: <Heart size={18} />, defaultHidden: true },
   { view: 'docs', label: 'API Docs', icon: <BookOpen size={18} />, defaultHidden: true },

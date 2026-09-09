@@ -764,9 +764,9 @@ export default function Settings(): JSX.Element {
           <h1 className="text-text-primary text-[20px] font-bold leading-tight truncate">
             {inSection ? (activeTab?.label ?? 'Settings') : 'Settings'}
           </h1>
-          <p className="text-text-muted text-xs truncate">
-            {inSection ? (activeTab?.sub ?? '') : `unreleased v${APP_VERSION}`}
-          </p>
+          {inSection && (
+            <p className="text-text-muted text-xs truncate">{activeTab?.sub ?? ''}</p>
+          )}
         </div>
       </div>
 
@@ -1436,6 +1436,12 @@ export default function Settings(): JSX.Element {
             {/* ── About ── */}
             {!settingsQueryTrimmed && tab === 'about' && (
               <div>
+                <p className="text-text-muted text-xs mb-1">
+                  unreleased v{APP_VERSION} &mdash; powered by{' '}
+                  <a href="https://juicewrldapi.com" target="_blank" rel="noopener noreferrer" className="text-accent">
+                    juicewrldapi.com
+                  </a>
+                </p>
                 <p className="text-text-muted text-xs mb-3">
                   Last updated to commit{' '}
                   <a

@@ -144,7 +144,7 @@ export default function LyricsDisplay({ getTime, onSeek, compact, override }: Ly
         ref={containerRef}
         onContextMenu={handleContextMenu}
         className={`h-full overflow-y-auto ${compact ? 'py-10 px-5 space-y-3' : 'py-16 px-8 space-y-4'}`}
-        style={{ scrollbarWidth: 'none' } as React.CSSProperties}
+        style={{ scrollbarWidth: 'none', WebkitTapHighlightColor: 'transparent' } as React.CSSProperties}
       >
         <style>{`::-webkit-scrollbar { display: none; }`}</style>
         {syncedLines.map((line, i) => {
@@ -161,18 +161,20 @@ export default function LyricsDisplay({ getTime, onSeek, compact, override }: Ly
             opacity: isActive ? 1 : isPast ? 0.35 : 0.2,
             color: isActive ? activeColor : inactiveColor,
             filter: isBlurred ? `blur(${lyricsBlurAmount.toFixed(2)}px)` : 'none',
-            // WebKit clips a blurred text layer against a slightly-off compositing
-            // box, leaving a colored hairline at the glyph edge where a wrapped
-            // line ends — most visible over a busy background like the blurred
-            // cover art. Forcing this line onto its own GPU layer (only while it's
-            // actually blurred, so unblurred lines don't pay for it) makes WebKit
-            // compute that box correctly instead of clipping it.
-            transform: isBlurred ? 'translateZ(0)' : undefined,
-            WebkitBackfaceVisibility: isBlurred ? 'hidden' : undefined,
             transition: 'opacity 0.35s ease, color 0.35s ease, filter 0.35s ease',
             fontSize: `${(compact ? 1.125 : 1.5) * lyricsScale}rem`,
             textAlign: lyricsAlign,
             fontFamily: 'var(--font-lyrics)',
+            // iOS Safari's tap-highlight overlay on this clickable line can get
+            // stuck showing (a known WebKit quirk when a touch is interrupted by
+            // the container's own scrolling) and, since the highlight repaints
+            // independently of React, it only clears once something else forces
+            // this element to repaint — which is exactly what happens when a
+            // line's own opacity/color/filter changes as it goes active → past.
+            // Lines that never go active never repaint, so a stuck highlight on
+            // one of them lingers indefinitely. Disabling the highlight outright
+            // is the standard fix.
+            WebkitTapHighlightColor: 'transparent',
           }
 
           return (
