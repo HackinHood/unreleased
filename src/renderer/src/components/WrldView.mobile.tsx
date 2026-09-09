@@ -29,6 +29,7 @@ import { getSkin } from '../lib/skins'
 import { Sheet, SheetItem, SheetDivider } from './mobile/Sheet'
 import { useDragReorder } from './mobile/useDragReorder'
 import { useBackToClose } from '../hooks/useBackToClose'
+import { useDragToDismiss } from '../hooks/useDragToDismiss'
 
 /* ══════════════════════════════════════════════════════════════════════════════
    WRLD — the full-screen player, and since the mini bar now expands into it,
@@ -333,26 +334,7 @@ export default function WrldView(): JSX.Element {
   // drag handling. Touch events keep targeting the element the touch started
   // on even once the finger moves past its bounds, so this stays live for
   // the whole gesture.
-  const dragStartY = useRef<number | null>(null)
-  const [dragY, setDragY] = useState(0)
-  const [dragging, setDragging] = useState(false)
-  const DISMISS_THRESHOLD = 110
-  const onDragStart = (e: React.TouchEvent): void => {
-    if (e.touches.length !== 1) return
-    dragStartY.current = e.touches[0].clientY
-    setDragging(true)
-  }
-  const onDragMove = (e: React.TouchEvent): void => {
-    if (dragStartY.current == null) return
-    const dy = e.touches[0].clientY - dragStartY.current
-    if (dy > 0) setDragY(dy)
-  }
-  const onDragEnd = (): void => {
-    if (dragY > DISMISS_THRESHOLD) collapse()
-    setDragY(0)
-    setDragging(false)
-    dragStartY.current = null
-  }
+  const { dragY, dragging, handlers: dragHandlers } = useDragToDismiss(collapse)
 
   const voteActive = !!radioFmVote?.active && !voteDismissed
 
@@ -373,10 +355,7 @@ export default function WrldView(): JSX.Element {
       // curtain style, instead of leaving the opaque backdrop covering it
       // while only the text/controls slide.
       className="relative flex-1 h-full w-full overflow-hidden flex flex-col"
-      onTouchStart={onDragStart}
-      onTouchMove={onDragMove}
-      onTouchEnd={onDragEnd}
-      onTouchCancel={onDragEnd}
+      {...dragHandlers}
       style={{
         transform: dragY ? `translateY(${dragY}px)` : undefined,
         borderRadius: dragY ? Math.min(dragY, 32) : 0,
@@ -392,7 +371,7 @@ export default function WrldView(): JSX.Element {
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <div
           className="shrink-0 flex items-center gap-1 px-2"
-          style={{ paddingTop: ownsTopInset ? 'max(0.25rem, env(safe-area-inset-top, 0px))' : '0.25rem' }}
+          style={{ paddingTop: ownsTopInset ? 'max(0.25rem, var(--top-inset))' : '0.25rem' }}
         >
           {/* Three equal flex-1 columns, not a fixed-width button flanking a
               flex-1 middle — the right side can hold one or two 44px icon
@@ -1434,7 +1413,7 @@ function LyricsScreen({
 
       <div
         className="relative shrink-0 flex items-center gap-1 px-2"
-        style={{ paddingTop: 'max(0.25rem, env(safe-area-inset-top, 0px))' }}
+        style={{ paddingTop: 'max(0.25rem, var(--top-inset))' }}
       >
         <button
           onClick={onClose}

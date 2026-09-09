@@ -2,15 +2,18 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   Info, ListPlus, ListEnd, Plus, Folder, Pencil, Download, PackageOpen,
   ChevronDown, ChevronRight, Check, Loader2, CheckSquare2, Heart, Trash2, ListMusic, Flag,
+  Layers, Star,
 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { useShallow } from 'zustand/react/shallow'
 import * as userApi from '../lib/userApi'
-import { buildStreamUrl, findSessionZips, songToTrack, JWApiSong, JWApiFileEntry } from '../lib/juicewrldApi'
+import { buildStreamUrl, findSessionZips, songToTrack, apiFetch, JWApiSong, JWApiFileEntry } from '../lib/juicewrldApi'
 import { Track } from '../types'
 import ChangeVersionMenuItem from './ChangeVersionMenuItem'
 import { placeFlyout } from '../lib/menuFlyout'
-import { versionsEnabled } from '../lib/versionsApi'
+import { versionsEnabled, getVersionGroup } from '../lib/versionsApi'
+import { useIsMobile } from '../hooks/useIsMobile'
+import { Sheet, SheetItem, SheetDivider } from './mobile/Sheet'
 
 // The one context menu used everywhere a song can be right-clicked (Tracker,
 // Liked Songs, Playlists, the bottom Player bar, WRLD). Built around `Track`
@@ -115,13 +118,15 @@ export default function SongContextMenu({
   onPlay, onPlayNext, onAddToQueue, onShowInFiles, onSelect,
   liked, onToggleLike, removeAction, song, disableChangeVersion,
 }: Props): JSX.Element {
-  const { playlists, account, refreshPlaylists, setShowUserAuth, playTrack, localPlaylists, addToLocalPlaylist, createLocalPlaylist } = useStore(
+  const { playlists, account, refreshPlaylists, setShowUserAuth, playTrack, localPlaylists, addToLocalPlaylist, createLocalPlaylist, songPrefs, setSongDefaultVersion } = useStore(
     useShallow(s => ({
       playlists: s.playlists, account: s.account, refreshPlaylists: s.refreshPlaylists,
       setShowUserAuth: s.setShowUserAuth, playTrack: s.playTrack,
       localPlaylists: s.localPlaylists, addToLocalPlaylist: s.addToLocalPlaylist, createLocalPlaylist: s.createLocalPlaylist,
+      songPrefs: s.songPrefs, setSongDefaultVersion: s.setSongDefaultVersion,
     }))
   )
+  const isMobile = useIsMobile()
   const { track, songId } = state
   const menuRef = useRef<HTMLDivElement>(null)
   const [panel, setPanel] = useState<'main' | 'zip'>('main')
@@ -143,6 +148,64 @@ export default function SongContextMenu({
   const [contained, setContained] = useState<Set<number>>(new Set())
   const [zipLoading, setZipLoading] = useState(false)
   const [zipCandidates, setZipCandidates] = useState<JWApiFileEntry[] | null>(null)
+
+  // Mobile only: "Add to playlist" and "Change version" replace the whole
+  // sheet's content instead of opening a desktop-style flyout (there's no
+  // room beside a full-width bottom sheet, and PlaylistsView.mobile/
+  // ApiTrackerView.mobile already establish "swap the sheet's content"
+  // as this app's mobile drill-down pattern). The zip picker reuses
+  // `panel`/`zipCandidates` above since that state is already
+  // platform-agnostic.
+  const [mobileSub, setMobileSub] = useState<'playlists' | 'versions' | null>(null)
+  const [mobileVersions, setMobileVersions] = useState<{ song: JWApiSong; label: string | null; version: string | null }[] | null>(null)
+  const [mobileVersionsLoading, setMobileVersionsLoading] = useState(false)
+
+  useEffect(() => {
+    if (!isMobile || mobileSub !== 'versions' || songId == null || mobileVersions != null || mobileVersionsLoading) return
+    let cancelled = false
+    setMobileVersionsLoading(true)
+    ;(async () => {
+      try {
+        const metas = await getVersionGroup(songId)
+        const fetched = await Promise.all(metas.map(m =>
+          apiFetch<JWApiSong>(`/songs/${m.songId}/`)
+            .then(song => ({
+              song,
+              version: m.version,
+              label: m.version ? (m.versionTitle ? `${m.version} — ${m.versionTitle}` : m.version) : m.versionTitle,
+            }))
+            .catch(() => null)
+        ))
+        if (!cancelled) {
+          setMobileVersions(fetched.filter((v): v is { song: JWApiSong; label: string | null; version: string | null } => !!v && !!v.song.path))
+        }
+      } finally {
+        if (!cancelled) setMobileVersionsLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [isMobile, mobileSub, songId, mobileVersions, mobileVersionsLoading])
+
+  const mobileDefaultVersion = (() => {
+    if (songId == null) return null
+    const own = songPrefs[songId]?.default_version
+    if (own) return own
+    for (const v of mobileVersions ?? []) {
+      const d = songPrefs[v.song.id]?.default_version
+      if (d) return d
+    }
+    return null
+  })()
+
+  const toggleMobileDefaultVersion = (version: string): void => {
+    if (songId == null) return
+    const isDefault = mobileDefaultVersion?.toLowerCase() === version.toLowerCase()
+    if (!isDefault) { setSongDefaultVersion(songId, version); return }
+    if (songPrefs[songId]?.default_version?.toLowerCase() === version.toLowerCase()) setSongDefaultVersion(songId, null)
+    for (const v of mobileVersions ?? []) {
+      if (songPrefs[v.song.id]?.default_version?.toLowerCase() === version.toLowerCase()) setSongDefaultVersion(v.song.id, null)
+    }
+  }
 
   useEffect(() => {
     const handle = (e: MouseEvent): void => {
@@ -268,6 +331,184 @@ export default function SongContextMenu({
     const { top, left } = placeFlyout(item, menu, sub)
     setSubPos(prev => (prev.top === top && prev.left === left ? prev : { top, left }))
   }, [playlistsOpen, creating, pos, playlists.length, localPlaylists.length, contained])
+
+  if (isMobile) {
+    if (panel === 'zip') {
+      return (
+        <Sheet onClose={() => setPanel('main')} title="Download session">
+          {zipCandidates && zipCandidates.length > 0 ? (
+            <>
+              <p className="px-5 pb-1 text-xs text-text-muted">Multiple matches found — pick one:</p>
+              {zipCandidates.map(c => (
+                <SheetItem key={c.path} icon={PackageOpen} label={c.name} onClick={() => { downloadZipEntry(c); onClose() }} />
+              ))}
+            </>
+          ) : (
+            <p className="px-5 py-6 text-sm text-text-muted text-center">No matching ZIP found for this session.</p>
+          )}
+        </Sheet>
+      )
+    }
+
+    if (mobileSub === 'playlists') {
+      return (
+        <Sheet onClose={() => setMobileSub(null)} title="Add to playlist">
+          {isLocalOnly ? (
+            <>
+              {localPlaylists.length === 0 && <p className="px-5 py-3 text-sm text-text-muted">No playlists yet.</p>}
+              {localPlaylists.map((p) => {
+                const alreadyIn = p.trackIds.includes(track.id)
+                return (
+                  <SheetItem
+                    key={p.id} icon={ListMusic} label={p.name} active={alreadyIn || localDoneId === p.id}
+                    trailing={(alreadyIn || localDoneId === p.id) ? <Check size={16} className="text-accent" /> : undefined}
+                    onClick={() => { addToLocalPlaylist(p.id, track.id); setLocalDoneId(p.id) }}
+                  />
+                )
+              })}
+            </>
+          ) : !account ? (
+            <div className="px-5 pb-4">
+              <p className="text-sm text-text-muted mb-3">Log in to save to playlists.</p>
+              <button
+                onClick={() => { setShowUserAuth(true); onClose() }}
+                className="w-full py-2.5 rounded-xl bg-accent/15 text-accent text-sm font-semibold"
+              >
+                Log in
+              </button>
+            </div>
+          ) : (
+            <>
+              {playlists.length === 0 && <p className="px-5 py-3 text-sm text-text-muted">No playlists yet.</p>}
+              {playlists.map((p) => {
+                const alreadyIn = contained.has(p.id)
+                return (
+                  <SheetItem
+                    key={p.id} icon={ListMusic} label={p.name} active={alreadyIn || doneId === p.id} disabled={busyId === p.id}
+                    trailing={busyId === p.id
+                      ? <Loader2 size={16} className="animate-spin text-text-muted" />
+                      : (alreadyIn || doneId === p.id) ? <Check size={16} className="text-accent" /> : undefined}
+                    onClick={() => addTo(p.id)}
+                  />
+                )
+              })}
+            </>
+          )}
+          {(isLocalOnly || account) && (
+            <>
+              <SheetDivider />
+              {creating ? (
+                <div className="flex gap-2 px-5 py-2">
+                  <input
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && createAndAdd()}
+                    placeholder="Playlist name"
+                    autoFocus
+                    className="flex-1 min-w-0 bg-surface-overlay border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none"
+                  />
+                  <button onClick={createAndAdd} disabled={busyId === -1} className="px-3 rounded-lg bg-accent/15 text-accent">
+                    {busyId === -1 ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                  </button>
+                </div>
+              ) : (
+                <SheetItem icon={Plus} label="New playlist" onClick={() => setCreating(true)} />
+              )}
+            </>
+          )}
+        </Sheet>
+      )
+    }
+
+    if (mobileSub === 'versions') {
+      return (
+        <Sheet onClose={() => setMobileSub(null)} title="Change version">
+          {mobileVersionsLoading ? (
+            <p className="px-5 py-3 text-sm text-text-muted flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Loading…</p>
+          ) : !mobileVersions || mobileVersions.length === 0 ? (
+            <p className="px-5 py-3 text-sm text-text-muted">No other versions linked.</p>
+          ) : mobileVersions.map(({ song: v, label, version }) => {
+            const isDefault = !!version && mobileDefaultVersion?.toLowerCase() === version.toLowerCase()
+            return (
+              <div key={v.id} className="flex items-center gap-1 pl-5 pr-3">
+                <button
+                  onClick={() => { const t = songToTrack(v); playTrack(t, [t]); onClose() }}
+                  className="flex-1 min-w-0 text-left py-3.5 text-[15px] text-text-primary truncate"
+                >
+                  {v.name}
+                  {label && <span className="text-text-muted text-xs"> — {label}</span>}
+                </button>
+                {version && (
+                  <button
+                    onClick={() => toggleMobileDefaultVersion(version)}
+                    title={isDefault ? 'Default version — tap to unset' : `Always play "${version}" for this song`}
+                    className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-full ${isDefault ? 'text-accent' : 'text-text-muted'}`}
+                  >
+                    <Star size={16} fill={isDefault ? 'currentColor' : 'none'} />
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </Sheet>
+      )
+    }
+
+    return (
+      <Sheet
+        onClose={onClose}
+        title={track.title}
+        header={<p className="px-5 -mt-2 pb-1 text-xs text-text-muted truncate">{track.artist}</p>}
+      >
+        {onPlay && canQueue && <SheetItem icon={ListEnd} label="Play" onClick={() => { onPlay(); onClose() }} />}
+        {onPlayNext && canQueue && <SheetItem icon={ListEnd} label="Play next" onClick={() => { onPlayNext(); onClose() }} />}
+        {hasValidSong && <SheetItem icon={Info} label="Song info" onClick={() => { onInfo(); onClose() }} />}
+        {hasValidSong && (
+          <SheetItem
+            icon={Flag} label="Report issue"
+            onClick={() => { useStore.getState().openReport({ kind: 'song', songId: songId as number, songName: track.apiTitle || track.title }); onClose() }}
+          />
+        )}
+        {onSelect && <SheetItem icon={CheckSquare2} label="Select" onClick={() => { onSelect(); onClose() }} />}
+        {onAddToQueue && canQueue && <SheetItem icon={ListPlus} label="Add to queue" onClick={() => { onAddToQueue(); onClose() }} />}
+        {canAddToPlaylist && (
+          <SheetItem icon={Plus} label="Add to playlist" trailing={<ChevronRight size={16} className="text-text-muted" />} onClick={() => setMobileSub('playlists')} />
+        )}
+        {onShowInFiles && track.path && <SheetItem icon={Folder} label="Show in Files" onClick={() => { onShowInFiles(); onClose() }} />}
+        {canEdit && songId != null && songId > 0 && (
+          <SheetItem icon={Pencil} label="Edit" onClick={() => { useStore.getState().openSongEditor(songId); onClose() }} />
+        )}
+        {onToggleLike && (
+          <SheetItem icon={Heart} label={liked ? 'Unlike' : 'Like'} active={liked} onClick={() => { onToggleLike(); onClose() }} />
+        )}
+        {versionsEnabled && !disableChangeVersion && songId != null && songId > 0 && (
+          <SheetItem icon={Layers} label="Change version" trailing={<ChevronRight size={16} className="text-text-muted" />} onClick={() => setMobileSub('versions')} />
+        )}
+        {song && !track.path && track.genre === 'recording_session' && (
+          <>
+            <SheetDivider />
+            <SheetItem
+              icon={PackageOpen} label={zipLoading ? 'Finding files…' : 'Download session (ZIP)'} disabled={zipLoading}
+              trailing={zipLoading ? <Loader2 size={14} className="animate-spin text-text-muted" /> : undefined}
+              onClick={loadSessionZips}
+            />
+          </>
+        )}
+        {track.path && !isLocalOnly && (
+          <>
+            <SheetDivider />
+            <SheetItem icon={Download} label="Download" onClick={() => { downloadTrack(track); onClose() }} />
+          </>
+        )}
+        {removeAction && (
+          <>
+            <SheetDivider />
+            <SheetItem icon={Trash2} label={removeAction.label} danger onClick={() => { removeAction.onClick(); onClose() }} />
+          </>
+        )}
+      </Sheet>
+    )
+  }
 
   return (
     <div

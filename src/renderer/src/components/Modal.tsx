@@ -391,7 +391,7 @@ export function ModalOverlay({
     // or the user turned the sandbox off in Settings.
     return createPortal(
       <div
-        className={`fixed inset-0 ${zIndexClassName} flex items-center justify-center bg-black/60 backdrop-blur-sm px-4`}
+        className={`fixed inset-0 ${zIndexClassName} flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-0 md:px-4`}
         onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
       >
         <div className={`relative overflow-hidden ${panelClassName}`}>

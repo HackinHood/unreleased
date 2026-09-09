@@ -7,6 +7,7 @@ import {
   GitBranch, Info, StickyNote, Quote, Copy, Download, Loader2, LucideIcon
 } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
+import { useDragToDismiss } from '../hooks/useDragToDismiss'
 import { useCanEdit } from '../hooks/useChannelRoles'
 import { JWApiSong, CATEGORY_LABELS, buildImageUrl, parseDuration, apiFetch, resolvePrefCoverUrl } from '../lib/juicewrldApi'
 import { versionsEnabled, getVersionGroup, SongVersionMeta } from '../lib/versionsApi'
@@ -165,6 +166,12 @@ export default function SongInfoModal({ song, onClose, onEdit }: Props): JSX.Ele
     }
   }
 
+  // Swipe-down-to-dismiss on mobile, same curtain gesture as WRLD's full-
+  // screen player. Only armed from the hero (cover/header) area — same
+  // region the desktop drag-handle uses — so it doesn't fight the scrollable
+  // info list below.
+  const { style: dragStyle, handlers: dragHandlers } = useDragToDismiss(onClose)
+
   let notesDisplay: string | null = null
   if (displaySong.notes) {
     try {
@@ -197,10 +204,14 @@ export default function SongInfoModal({ song, onClose, onEdit }: Props): JSX.Ele
       {({ onHandleMouseDown, locked, toggleLock, canLock }) => (
       <div
         className="select-text bg-surface w-full h-full flex flex-col overflow-hidden"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', ...dragStyle }}
       >
 
-        <div className="relative shrink-0 overflow-hidden cursor-grab active:cursor-grabbing" onMouseDown={onHandleMouseDown}>
+        <div
+          className="relative shrink-0 overflow-hidden cursor-grab active:cursor-grabbing"
+          onMouseDown={onHandleMouseDown}
+          {...dragHandlers}
+        >
           {coverUrl && (
             <div
               className="absolute inset-0 bg-cover bg-center scale-110"
@@ -301,7 +312,7 @@ export default function SongInfoModal({ song, onClose, onEdit }: Props): JSX.Ele
         </div>
 
         {/* Scrollable info */}
-        <div className="overflow-y-auto flex-1 px-5 py-4">
+        <div className="overflow-y-auto flex-1 min-h-0 px-5 py-4">
 
           <SongPrefsSection
             songId={displaySong.id}

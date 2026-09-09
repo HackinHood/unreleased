@@ -1,6 +1,7 @@
 import { ElementType, ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { registerBackHandler } from '../../lib/backHandlers'
+import { useDragToDismiss } from '../../hooks/useDragToDismiss'
 
 // ─── Bottom sheet ─────────────────────────────────────────────────────────────
 // The mobile stand-in for every pointer-anchored popup the desktop UI used:
@@ -31,8 +32,6 @@ export function Sheet({ onClose, title, header, children }: SheetProps): JSX.Ele
   // both` transform outranks the inline one the drag writes, so the sheet
   // would be undraggable for as long as the class stayed on.
   const [entered, setEntered] = useState(false)
-  const [dragY, setDragY] = useState(0)
-  const dragFrom = useRef<number | null>(null)
   const closingRef = useRef(false)
   // onClose is typically an inline arrow, so read it through a ref rather than
   // making every callback below depend on its identity.
@@ -54,18 +53,11 @@ export function Sheet({ onClose, title, header, children }: SheetProps): JSX.Ele
   // Swipe the grabber/header down to dismiss — the gesture people already
   // expect from a sheet. Upward drag is rubber-banded rather than blocked so
   // the sheet still feels attached to the finger.
-  const onDragStart = (e: React.TouchEvent): void => { dragFrom.current = e.touches[0].clientY }
-  const onDragMove = (e: React.TouchEvent): void => {
-    if (dragFrom.current == null) return
-    const dy = e.touches[0].clientY - dragFrom.current
-    setDragY(dy > 0 ? dy : dy / 5)
-  }
-  const onDragEnd = (): void => {
-    if (dragFrom.current == null) return
-    dragFrom.current = null
-    if (dragY > 90) requestClose()
-    else setDragY(0)
-  }
+  const { style: dragStyle, handlers: dragHandlers } = useDragToDismiss(requestClose, {
+    threshold: 90,
+    rubberBand: true,
+    transition: 'transform 220ms cubic-bezier(0.16,1,0.3,1)',
+  })
 
   return createPortal(
     <>
@@ -78,19 +70,10 @@ export function Sheet({ onClose, title, header, children }: SheetProps): JSX.Ele
         className={`fixed z-[81] left-0 right-0 bottom-0 flex flex-col max-h-[82svh] bg-surface rounded-t-[22px] border-t border-[var(--border)] shadow-2xl ${
           closing ? 'animate-sheet-out' : entered ? '' : 'animate-sheet-in'
         }`}
-        style={{
-          transform: dragY ? `translateY(${dragY}px)` : undefined,
-          transition: dragFrom.current == null ? 'transform 220ms cubic-bezier(0.16,1,0.3,1)' : 'none',
-        }}
+        style={dragStyle}
         onAnimationEnd={(e) => { if (e.target === e.currentTarget) setEntered(true) }}
       >
-        <div
-          className="shrink-0 pt-3 pb-1 touch-none"
-          onTouchStart={onDragStart}
-          onTouchMove={onDragMove}
-          onTouchEnd={onDragEnd}
-          onTouchCancel={onDragEnd}
-        >
+        <div className="shrink-0 pt-3 pb-1 touch-none" {...dragHandlers}>
           <div className="mx-auto w-9 h-1 rounded-full bg-[var(--text-muted)] opacity-40" />
           {title && <h3 className="px-5 pt-3 text-text-primary font-semibold text-[15px]">{title}</h3>}
           {header}
