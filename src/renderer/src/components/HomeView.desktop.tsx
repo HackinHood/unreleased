@@ -20,9 +20,12 @@ import type { Track } from '../types'
 // keeping reachable, scrolls inside its own tile.
 //
 // Section ids map 1:1 to one place on screen, so hiding a section in Settings
-// removes exactly one thing. Two move relative to mobile: 999 FM and Liked
-// share the second row's side column, and "Your listening" is the hero's row
-// of numbers, where it costs no vertical space of its own.
+// removes exactly one thing. Three move relative to mobile: News, 999 FM and
+// Liked share one narrow right-hand rail (compact cards, News taking whatever
+// height they leave it) rather than each claiming a full-height column of
+// their own, so Recently played and Playlists — the two sections actually
+// worth spending width on — get the rest of the page. "Your listening" is the
+// hero's row of numbers, where it costs no vertical space of its own.
 
 const GAP = 12          // matches gap-3 on the cover grids
 const MIN_TILE = 130    // narrowest a cover may get before dropping a column
@@ -190,7 +193,7 @@ function ShortcutCard({ icon, title, subtitle, tone = 'accent', onClick }: {
   return (
     <button
       onClick={onClick}
-      className="group flex-1 min-h-0 w-full flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-overlay)] px-3.5 py-3 text-left hover:border-[var(--accent)] hover:bg-surface-highest transition-colors"
+      className="group shrink-0 w-full flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-overlay)] px-3.5 py-3 text-left hover:border-[var(--accent)] hover:bg-surface-highest transition-colors"
     >
       <span className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${tone === 'live' ? 'bg-red-600/15' : 'bg-accent/15'}`}>
         {icon}
@@ -278,14 +281,8 @@ export default function HomeViewDesktop(): JSX.Element {
   const showGames = showSection('games')
   const showListening = showSection('listening')
 
-  const hasSide = showRadio || showLiked
-  const rowA = showRecent || showNews
-  const rowB = showPlaylists || hasSide
-
-  // A tile whose partner in the row is hidden takes the whole row rather than
-  // leaving a gap — the grid is 4 columns wide either way.
-  const mainSpan = (withSide: boolean): string => (withSide ? 'col-span-3' : 'col-span-4')
-  const sideSpan = (withMain: boolean): string => (withMain ? 'col-span-1' : 'col-span-4')
+  const mainShown = showRecent || showPlaylists
+  const sideShown = showNews || showRadio || showLiked
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
@@ -325,33 +322,29 @@ export default function HomeViewDesktop(): JSX.Element {
           )}
         </div>
 
-        {/* ── Row A: recently played · news ── */}
-        {rowA && (
-          <div className="flex-1 min-h-0 grid grid-cols-4 gap-4">
-            {showRecent && <RecentTile tracks={recent} onPlay={openTrack} span={mainSpan(showNews)} />}
-            {showNews && (
-              <NewsTile
-                items={newsItems}
-                onOpen={openNewsItem}
-                onAll={() => setActiveView('news')}
-                span={sideSpan(showRecent)}
-              />
+        {/* ── Main: recently played + playlists stacked, full width ──
+            ── Side rail: news, 999 FM, liked — compact, narrow ── */}
+        {(mainShown || sideShown) && (
+          <div className="flex-1 min-h-0 flex gap-4">
+            {mainShown && (
+              <div className="flex-1 min-w-0 flex flex-col gap-4">
+                {showRecent && <RecentTile tracks={recent} onPlay={openTrack} span="flex-1" />}
+                {showPlaylists && (
+                  <PlaylistsTile playlists={playlistRow} onAll={() => setActiveView('playlists')} span="flex-1" />
+                )}
+              </div>
             )}
-          </div>
-        )}
 
-        {/* ── Row B: playlists · 999 FM over liked songs ── */}
-        {rowB && (
-          <div className="flex-1 min-h-0 grid grid-cols-4 gap-4">
-            {showPlaylists && (
-              <PlaylistsTile
-                playlists={playlistRow}
-                onAll={() => setActiveView('playlists')}
-                span={mainSpan(hasSide)}
-              />
-            )}
-            {hasSide && (
-              <div className={`${sideSpan(showPlaylists)} min-w-0 min-h-0 flex flex-col gap-3`}>
+            {sideShown && (
+              <div className="w-[300px] shrink-0 min-h-0 flex flex-col gap-3">
+                {showNews && (
+                  <NewsTile
+                    items={newsItems}
+                    onOpen={openNewsItem}
+                    onAll={() => setActiveView('news')}
+                    span="flex-1 min-h-0"
+                  />
+                )}
                 {showRadio && (
                   <ShortcutCard
                     tone={radioFmIsLive ? 'live' : 'accent'}
@@ -383,14 +376,14 @@ export default function HomeViewDesktop(): JSX.Element {
           </div>
         )}
 
-        {/* ── Row C: games ── */}
+        {/* ── Games: full width ── */}
         {showGames && (
-          <div className="shrink-0 grid grid-cols-4 gap-4">
-            <GamesTile games={games} onOpen={(view) => setActiveView(view)} span="col-span-4" />
+          <div className="shrink-0">
+            <GamesTile games={games} onOpen={(view) => setActiveView(view)} span="w-full" />
           </div>
         )}
 
-        {!rowA && !rowB && !showGames && (
+        {!mainShown && !sideShown && !showGames && (
           <div className="flex-1 flex flex-col items-center justify-center text-center">
             <Music2 size={34} className="text-text-muted mb-3" />
             <p className="text-text-primary text-sm font-semibold mb-1">Nothing to show</p>
