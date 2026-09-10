@@ -30,6 +30,7 @@ import { trackIdToSongId, showStaffProfile, staffProfileView } from '../lib/user
 import { rememberRecentTrack } from '../lib/recentTracks'
 import { useCanEdit } from '../hooks/useChannelRoles'
 import { toFileUrl } from '../lib/fileTypes'
+import { IS_IOS } from '../lib/platform'
 import { FullTrack } from '../types'
 import SongContextMenu from './SongContextMenu'
 import EqualizerPanel from './EqualizerPanel'
@@ -450,8 +451,12 @@ export default function Player(): JSX.Element {
     // frozen — so skip the fade and apply the end state instantly instead of
     // starting a ramp that would sit stuck at the wrong volume until a
     // throttled timer catches up.
+    // iOS Safari also ignores HTMLMediaElement.volume entirely (it's pinned to
+    // the hardware volume buttons), so a ramp there would just no-op every
+    // frame and pause would still snap silent/loud instantly — skip it rather
+    // than run a fade that can never be heard.
     const smoothFade = useStore.getState().pauseFadeEnabled && !cfActive.current
-      && document.visibilityState === 'visible'
+      && document.visibilityState === 'visible' && !IS_IOS
     // Autoplay policy can leave the effects AudioContext suspended until a
     // gesture — kick it on every play so audio never routes into a dead graph.
     if (isPlaying) resumeEffectsContext()

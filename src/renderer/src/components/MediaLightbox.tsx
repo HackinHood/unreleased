@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useState } from 'react'
 import { X, ChevronLeft, ChevronRight, AlertCircle, Download, Loader2 } from 'lucide-react'
 import { smallCoverUrl } from '../lib/juicewrldApi'
+import { syncThemeColorMeta } from '../lib/themeEffects'
 
 export interface LightboxItem {
   url: string
@@ -71,6 +72,18 @@ export default function MediaLightbox({ items, index, onClose, onNav }: Props): 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [onClose, goPrev, goNext])
+
+  // This overlay is `fixed inset-0` with its own black backdrop (deliberate —
+  // photos/video look better against black than the app's theme surface), but
+  // Safari's toolbar tinting samples whatever's actually painted at the top of
+  // the viewport, not the app's theme-color intent. Left alone, that reads the
+  // lightbox's black and turns the status bar/toolbar black too. Pin the meta
+  // tag to match while this is open, then hand it back to the real theme.
+  useEffect(() => {
+    const themeColor = document.querySelector('meta[name="theme-color"]')
+    themeColor?.setAttribute('content', '#000000')
+    return () => syncThemeColorMeta()
+  }, [])
 
   if (!item) return null
 

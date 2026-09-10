@@ -18,6 +18,7 @@ import {
   lastfmConfigured, lastfmGetAuthToken, lastfmAuthUrl, lastfmTryGetSession, lastfmDisconnect,
 } from '../lib/lastfm'
 import { cacheClearAll } from '../lib/apiCache'
+import { IS_IOS } from '../lib/platform'
 import { formatBytes } from '../lib/format'
 import { registerBackHandler } from '../lib/backHandlers'
 import { useBackToClose } from '../hooks/useBackToClose'
@@ -1291,8 +1292,19 @@ export default function Settings(): JSX.Element {
                       <span className="text-text-muted text-xs tabular-nums w-8 text-right shrink-0">{crossfadeDuration}s</span>
                     </div>
                   )}
-                  <Row icon={Waves} iconColor="#0ea5e9" label="Smooth fade when pausing">
-                    <Toggle on={pauseFadeEnabled} onClick={() => setPauseFade(!pauseFadeEnabled)} />
+                  <Row
+                    icon={Waves}
+                    iconColor="#0ea5e9"
+                    label="Smooth fade when pausing"
+                    // iOS Safari ignores <audio>.volume entirely (locked to the
+                    // hardware buttons), so the fade ramp has nothing to animate
+                    // there — same restriction that disables the EQ chain.
+                    sub={IS_IOS ? 'Not available on iOS — volume is locked to the hardware buttons' : undefined}
+                  >
+                    <Toggle
+                      on={pauseFadeEnabled && !IS_IOS}
+                      onClick={() => { if (!IS_IOS) setPauseFade(!pauseFadeEnabled) }}
+                    />
                   </Row>
                   <Row icon={FileText} iconColor="#059669" label="Prefer OG version">
                     <Toggle on={preferOgVersion} onClick={() => setPreferOgVersion(!preferOgVersion)} />

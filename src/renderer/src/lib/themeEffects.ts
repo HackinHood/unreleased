@@ -45,7 +45,12 @@ function hslToHex(h: number, s: number, l: number): string {
 // navigation/reload — it does not live-retint an already-open tab, even
 // though this correctly updates the DOM immediately. Nothing to fix there;
 // it's a WebKit limitation, not a bug in this code.
-function syncThemeColorMeta(): void {
+// Exported so full-screen overlays that paint their own fixed black backdrop
+// (MediaLightbox) can restore the app's real theme color when they close —
+// see the meta[name="theme-color"] override there and the QueuePanel comment
+// about Safari's Liquid Glass toolbar sampling a fixed inset-0 element's
+// background directly.
+export function syncThemeColorMeta(): void {
   const themeColor = document.querySelector('meta[name="theme-color"]')
   if (!themeColor) return
   const root = document.documentElement

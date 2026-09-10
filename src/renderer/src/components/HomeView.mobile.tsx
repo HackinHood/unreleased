@@ -105,21 +105,21 @@ export default function HomeViewMobile(): JSX.Element {
   // show what exists locally rather than prompting to sign in.
   const ownPlaylists = account ? playlists : []
   const playlistRow = [
-    ...ownPlaylists.map((p) => ({
+    ...ownPlaylists.filter((p) => p.track_count > 0).map((p) => ({
       key: `p${p.id}`,
       name: p.name,
       subtitle: `${p.track_count} song${p.track_count === 1 ? '' : 's'}`,
       cover: playlistCoverUrl(p),
       open: () => { setPendingPlaylistId(p.id); setActiveView('playlists') },
     })),
-    ...followedPlaylists.map((p) => ({
+    ...followedPlaylists.filter((p) => p.trackCount > 0).map((p) => ({
       key: `f${p.id}`,
       name: p.name,
       subtitle: `${p.trackCount} song${p.trackCount === 1 ? '' : 's'}`,
       cover: p.coverUrl,
       open: () => { setPendingPlaylistId(p.id); setActiveView('playlists') },
     })),
-    ...guestPlaylists.map((p) => ({
+    ...guestPlaylists.filter((p) => p.tracks.length > 0).map((p) => ({
       key: `g${p.id}`,
       name: p.name,
       subtitle: `${p.tracks.length} song${p.tracks.length === 1 ? '' : 's'}`,
