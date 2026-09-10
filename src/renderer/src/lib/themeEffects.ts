@@ -68,6 +68,20 @@ export function syncThemeColorMeta(): void {
   themeColor.setAttribute('content', blendHex(surface, accentRgb, 0.09))
 }
 
+// Same Safari-samples-the-actual-pixels issue as MediaLightbox's fixed black
+// backdrop, but for the translucent black scrim every mobile bottom sheet
+// (mobile/Sheet.tsx) and modal backdrop paints behind it — that darkens
+// whatever's currently in the meta tag by the same amount the scrim itself
+// darkens the page, so the toolbar dims in step with the sheet instead of
+// snapping to black. Call `syncThemeColorMeta()` on close to undo it (it
+// recomputes from the real skin vars rather than trying to "undim").
+export function dimThemeColorMeta(amount: number): void {
+  const themeColor = document.querySelector('meta[name="theme-color"]')
+  const current = themeColor?.getAttribute('content')
+  if (!themeColor || !current || !current.startsWith('#')) return
+  themeColor.setAttribute('content', blendHex(current, [0, 0, 0], amount))
+}
+
 function blendHex(hex: string, rgb: number[], amount: number): string {
   const [r, g, b] = hexToRgb(hex)
   const mix = (base: number, tint: number): number =>

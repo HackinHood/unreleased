@@ -2,6 +2,7 @@ import { ElementType, ReactNode, useCallback, useEffect, useRef, useState } from
 import { createPortal } from 'react-dom'
 import { registerBackHandler } from '../../lib/backHandlers'
 import { useDragToDismiss } from '../../hooks/useDragToDismiss'
+import { dimThemeColorMeta, syncThemeColorMeta } from '../../lib/themeEffects'
 
 // ─── Bottom sheet ─────────────────────────────────────────────────────────────
 // The mobile stand-in for every pointer-anchored popup the desktop UI used:
@@ -49,6 +50,17 @@ export function Sheet({ onClose, title, header, children }: SheetProps): JSX.Ele
   // Registered here (not via useBackToClose) so the press animates out through
   // the same path as a tap on the scrim.
   useEffect(() => registerBackHandler(() => { requestClose(); return true }), [requestClose])
+
+  // The scrim below is `fixed inset-0`, same as MediaLightbox's backdrop —
+  // Safari's toolbar tinting samples it directly rather than reading the
+  // app's theme-color intent, so left alone every sheet (context menus
+  // included) reads as a hard black status bar instead of the scrim's actual
+  // 50% dim. Match it for as long as the scrim is on screen, then hand the
+  // meta tag back to the real theme.
+  useEffect(() => {
+    dimThemeColorMeta(0.5)
+    return () => syncThemeColorMeta()
+  }, [])
 
   // Swipe the grabber/header down to dismiss — the gesture people already
   // expect from a sheet. Upward drag is rubber-banded rather than blocked so
