@@ -243,8 +243,16 @@ interface AppState {
   // track.
   wrldThemeBackground: boolean
   // Playlist detail header's full-bleed blurred-cover backdrop (Apple Music
-  // style). On by default; off falls back to a plain flat surface header.
-  playlistHeroEnabled: boolean
+  // style). Off falls back to a plain flat surface header. Tracked
+  // separately per skin darkness (not one flag) — the backdrop was designed
+  // dark-first and defaults off on a light skin, on for a dark one, and a
+  // choice made while on, say, a dark skin shouldn't silently carry over and
+  // turn it on the next time a light skin is active. setPlaylistHeroEnabled
+  // writes whichever of these matches the *current* skin; components read
+  // the matching one via isDarkSkin rather than a combined getter, since they
+  // already need isDarkSkin themselves to pair the hero's text colors.
+  playlistHeroEnabledDark: boolean
+  playlistHeroEnabledLight: boolean
   // When enabled, if a track has a linked "OG" version (same song, grouped via
   // the versions system, labeled e.g. "OG"/"OG File"), play that version's
   // file instead of the currently selected one.
@@ -503,6 +511,8 @@ interface AppActions {
   setGradientsEnabled: (enabled: boolean) => void
   setSurfaceGradientsEnabled: (enabled: boolean) => void
   setWrldThemeBackground: (enabled: boolean) => void
+  // Writes to playlistHeroEnabledDark or ...Light, whichever matches the
+  // skin active right now.
   setPlaylistHeroEnabled: (enabled: boolean) => void
   setPreferOgVersion: (enabled: boolean) => void
   setRotateSuggestedCovers: (enabled: boolean) => void
@@ -1150,7 +1160,8 @@ export const useStore = create<AppStore>((set, get, store) => ({
   gradientsEnabled: ls.get<boolean>('gradientsEnabled') ?? true,
   surfaceGradientsEnabled: ls.get<boolean>('surfaceGradientsEnabled') ?? false,
   wrldThemeBackground: ls.get<boolean>('wrldThemeBackground') ?? false,
-  playlistHeroEnabled: ls.get<boolean>('playlistHeroEnabled') ?? true,
+  playlistHeroEnabledDark: ls.get<boolean>('playlistHeroEnabledDark') ?? true,
+  playlistHeroEnabledLight: ls.get<boolean>('playlistHeroEnabledLight') ?? false,
   preferOgVersion: ls.get<boolean>('preferOgVersion') ?? false,
   rotateSuggestedCovers: ls.get<boolean>('rotateSuggestedCovers') ?? false,
   eraCovers: ls.get<Record<string, string>>('eraCovers') ?? {},
@@ -1256,7 +1267,13 @@ export const useStore = create<AppStore>((set, get, store) => ({
   setGradientsEnabled: (gradientsEnabled) => { set({ gradientsEnabled }); ls.set('gradientsEnabled', gradientsEnabled) },
   setSurfaceGradientsEnabled: (surfaceGradientsEnabled) => { set({ surfaceGradientsEnabled }); ls.set('surfaceGradientsEnabled', surfaceGradientsEnabled) },
   setWrldThemeBackground: (wrldThemeBackground) => { set({ wrldThemeBackground }); ls.set('wrldThemeBackground', wrldThemeBackground) },
-  setPlaylistHeroEnabled: (playlistHeroEnabled) => { set({ playlistHeroEnabled }); ls.set('playlistHeroEnabled', playlistHeroEnabled) },
+  setPlaylistHeroEnabled: (enabled) => {
+    if (getSkin(get().theme).dark) {
+      set({ playlistHeroEnabledDark: enabled }); ls.set('playlistHeroEnabledDark', enabled)
+    } else {
+      set({ playlistHeroEnabledLight: enabled }); ls.set('playlistHeroEnabledLight', enabled)
+    }
+  },
 
   setHotkeyBinding: (actionId, combo) => {
     const current = get().hotkeyBindings

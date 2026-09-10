@@ -10,18 +10,22 @@ import { SyncedLyricLine } from '../types'
  * collapsing waits a beat in case lyrics show up before it commits to "no
  * lyrics."
  */
-export function useLyricsVisible(hasLyricsNatural: boolean, override: boolean): boolean {
+export function useLyricsVisible(hasLyricsNatural: boolean, override: boolean, pending = false): boolean {
   const wantVisible = hasLyricsNatural !== override
   const [visible, setVisible] = useState(wantVisible)
 
   useEffect(() => {
+    // Lyrics are still being fetched for the current track — hold whatever
+    // arrangement was already on screen instead of collapsing to the
+    // no-lyrics layout just because they haven't loaded yet.
+    if (pending) return
     if (wantVisible) {
       setVisible(true)
       return
     }
     const t = setTimeout(() => setVisible(false), 250)
     return () => clearTimeout(t)
-  }, [wantVisible])
+  }, [wantVisible, pending])
 
   return visible
 }

@@ -386,6 +386,11 @@ export default function Player(): JSX.Element {
       if (cached && Date.now() - cached.ts < LYRICS_CACHE_TTL_MS) {
         setCurrentTrackFull({ ...synthetic, lyrics: cached.lyrics, syncedLyrics: cached.syncedLyrics })
       } else if (lyricsFetchInFlight !== songId) {
+        // Flagged pending so WRLD's layout doesn't read the still-null
+        // lyrics as "this song has none" and snap to the centered,
+        // no-lyrics arrangement before the fetch below has a chance to say
+        // otherwise.
+        setCurrentTrackFull({ ...synthetic, lyricsPending: true })
         lyricsFetchInFlight = songId
         apiFetch<JWApiSong>(`/songs/${songId}/`)
           .then((song) => {
@@ -395,7 +400,7 @@ export default function Player(): JSX.Element {
             if (isStale()) return
             setCurrentTrackFull({ ...synthetic, lyrics, syncedLyrics })
           })
-          .catch(() => {/* no network — leave synthetic lyrics as-is */})
+          .catch(() => { if (!isStale()) setCurrentTrackFull(synthetic) /* no network — treat as no lyrics */ })
       }
     }
   }, [currentTrack?.id, currentTrackFull])

@@ -1,5 +1,6 @@
 import { SearchCode, HardDrive, ListMusic, Heart, BookOpen, Newspaper, Gamepad2, BarChart3, House, User, Download, Upload, Info, Settings } from 'lucide-react'
 import type { ReactNode } from 'react'
+import logo from '../assets/logo.png'
 import type { ViewType } from '../types'
 
 // The primary nav destinations available to the desktop side menu (Sidebar).
@@ -26,6 +27,11 @@ export interface NavItemDef {
 }
 
 export const NAV_ITEMS: NavItemDef[] = [
+  // Desktop-only — mobile reaches WRLD through the mini player, not this
+  // list (see MOBILE_HIDDEN_VIEWS in useMobileNavTabs), same as it always
+  // has. No `mobileOnly` counterpart here since that flag hides an item from
+  // *desktop*; this one just never enters the mobile-eligible set at all.
+  { view: 'wrld', label: 'WRLD', icon: <img src={logo} alt="WRLD" className="w-[24px] h-[24px] object-contain" /> },
   { view: 'home', label: 'Home', icon: <House size={18} />, mobileOnly: true, alwaysVisible: true },
   { view: 'api-tracker', label: 'Tracker', icon: <SearchCode size={18} /> },
   { view: 'api-files', label: 'Files', icon: <HardDrive size={18} /> },

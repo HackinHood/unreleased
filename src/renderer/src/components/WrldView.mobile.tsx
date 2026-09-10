@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import {
   Music, Radio, Search, SkipForward, ThumbsUp, ThumbsDown, X, ChevronDown, Play, Pause,
   SkipBack, SkipForward as SkipFwd, Shuffle, Repeat, Repeat1, Volume2, VolumeX,
-  MoreHorizontal, Heart, ListMusic, Trash2, Download, History, SlidersHorizontal,
+  MoreHorizontal, Heart, ListMusic, Trash2, History, SlidersHorizontal,
   Mic2, Layers, Loader2, RefreshCw, Settings2, AlignLeft, AlignCenter,
 } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
@@ -1601,9 +1601,6 @@ function LyricsScreen({
           className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full active:bg-white/10"
           style={{ color: txtPri }}
         ><ChevronDown size={22} /></button>
-        {/* Balances the two buttons on the right (settings + download) so the
-            title stays centered instead of drifting toward the close button. */}
-        <span className="w-11 shrink-0" />
         <div className="flex-1 min-w-0 text-center">
           <p className="text-[13px] font-semibold truncate" style={{ color: txtPri }}>{title || 'Lyrics'}</p>
           {artist && <p className="text-[11px] truncate" style={{ color: txtTer }}>{artist}</p>}
@@ -1618,17 +1615,6 @@ function LyricsScreen({
           className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full active:bg-white/10"
           style={{ color: txtTer }}
         ><Settings2 size={19} /></button>
-        {/* Downloading the .lrc was a right-click on desktop, with no touch
-            equivalent at all — it's a button now, and only for LRC lyrics
-            since plain text has no timestamps worth exporting. */}
-        {isSynced && rawLyrics ? (
-          <button
-            onClick={() => downloadSyncedLyrics(currentTrack?.title ?? 'lyrics', currentTrack?.artist ?? '', rawLyrics)}
-            aria-label="Download synced lyrics"
-            className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full active:bg-white/10"
-            style={{ color: txtTer }}
-          ><Download size={19} /></button>
-        ) : <span className="w-11 shrink-0" />}
       </div>
 
       <LyricsPanel
@@ -1724,9 +1710,9 @@ function LyricColorRow({ label, presets, value, fallback, onChange }: {
 }
 
 /** The lyric-display controls (text size, alignment, blur, colors, sync
- *  offset) shown right in the full lyrics screen, next to Download — this
- *  used to mean leaving the song to dig through Settings just to nudge the
- *  text size, which is exactly the wrong moment to lose the lyrics view. */
+ *  offset) shown right in the full lyrics screen — this used to mean leaving
+ *  the song to dig through Settings just to nudge the text size, which is
+ *  exactly the wrong moment to lose the lyrics view. */
 function LyricsSettingsSheet({ onClose }: { onClose: () => void }): JSX.Element {
   const {
     lyricsScale, setLyricsScale,
@@ -1980,19 +1966,42 @@ const LyricsPanel = memo(function LyricsPanel({
     return Math.min(Math.max(v, 0), max)
   }
 
+  // Press-and-hold the lyrics to download the .lrc — the touch equivalent of
+  // desktop's right-click menu. Only offered for synced lyrics, since plain
+  // text has no timestamps worth exporting. Cancelled by any real scroll drag
+  // so it doesn't fire mid-swipe, and it swallows the click that would
+  // otherwise land on release and seek to whatever line was under the thumb.
+  const longPressTimerRef = useRef<number | null>(null)
+  const longPressFiredRef = useRef(false)
+  const clearLongPressTimer = (): void => {
+    if (longPressTimerRef.current != null) {
+      window.clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }
+
   const handleTouchStart = (e: React.TouchEvent): void => {
     if (!isSynced || syncedLines.length === 0) return
     dragRef.current = { startY: e.touches[0].clientY, startTranslate: autoFollow ? translateY : manualTranslateY }
+    longPressFiredRef.current = false
+    if (rawLyrics) {
+      longPressTimerRef.current = window.setTimeout(() => {
+        longPressFiredRef.current = true
+        navigator.vibrate?.(10)
+        downloadSyncedLyrics(currentTrack?.title ?? 'lyrics', currentTrack?.artist ?? '', rawLyrics)
+      }, 550)
+    }
   }
 
   const handleTouchMove = (e: React.TouchEvent): void => {
     if (!dragRef.current) return
     const dy = dragRef.current.startY - e.touches[0].clientY
+    if (Math.abs(dy) > 10) clearLongPressTimer()
     setManualTranslateY(clampTranslate(dragRef.current.startTranslate + dy))
     if (autoFollow) setAutoFollow(false)
   }
 
-  const handleTouchEnd = (): void => { dragRef.current = null }
+  const handleTouchEnd = (): void => { dragRef.current = null; clearLongPressTimer() }
 
   useLayoutEffect(() => {
     const vp = viewportRef.current
@@ -2084,7 +2093,7 @@ const LyricsPanel = memo(function LyricsPanel({
               <div
                 key={i}
                 ref={isActive ? activeRef : undefined}
-                onClick={() => seekAudio(line.time)}
+                onClick={() => { if (longPressFiredRef.current) return; seekAudio(line.time) }}
                 className={`select-none ${lyricsAlign === 'center' ? 'origin-center mx-auto text-center' : 'origin-left'}`}
                 style={{
                   // scale() is purely visual and doesn't reflow layout, so a

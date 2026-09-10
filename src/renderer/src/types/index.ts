@@ -28,6 +28,11 @@ export interface FullTrack extends Track {
   albumArt: string | null
   lyrics: string | null
   syncedLyrics: string | null
+  // True for the brief window between a track change and the /songs/ fetch
+  // resolving: lyrics are null but not yet confirmed absent, so WRLD's
+  // layout should hold its current arrangement rather than read this as a
+  // lyrics-less song. See Player's metadata-load effect.
+  lyricsPending?: boolean
   producer: string | null
   notes: string | null
   ext: string

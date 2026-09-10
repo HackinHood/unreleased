@@ -364,7 +364,7 @@ export default function WrldView(): JSX.Element {
   // FM's Radio/Lyrics tabs stand on their own regardless of lyrics
   // availability, so the manual override only applies to normal playback —
   // same scope as the auto-collapse behavior it's overriding.
-  const lyricsVisible = useLyricsVisible(!!rawLyrics, lyricsOverride)
+  const lyricsVisible = useLyricsVisible(!!rawLyrics, lyricsOverride, !radioFmActive && !!currentTrackFull?.lyricsPending)
   const showLyricsColumn = radioFmActive || showQueue || lyricsVisible
 
   // On the theme background these come from the skin's own text vars, so the
