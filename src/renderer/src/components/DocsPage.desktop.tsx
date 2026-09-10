@@ -242,6 +242,7 @@ function OverviewTab() {
           <Endpoint method="PATCH" path="/accounts/account/me/" description="Update user_preferences (custom titles, covers, default version, playcounts) and/or playlist_folders" />
           <Endpoint method="GET" path="/accounts/me/" description="Current user with role — editor/admin dashboards" />
           <Endpoint method="POST" path="/feedback/" description="Submit API feedback (no auth)" />
+          <Endpoint method="GET" path="/feedback/" description="List submitted feedback (requires auth)" />
           <Endpoint method="POST" path="/reports/" description="Report wrong info on a song (no auth)" />
           <Endpoint method="GET" path="/reports/" description="List song reports (editor+)" />
           <Endpoint method="PATCH" path="/reports/{id}/" description="Review a song report (editor+)" />
@@ -1027,8 +1028,8 @@ Authorization: Token <token>`}</Pre>
         <Table
           headers={['Access Level', 'Endpoints']}
           rows={[
-            ['No login', 'Songs, eras, categories, files, radio, stats, shared playlists, play tracking, feedback, report submission'],
-            ['Any logged-in user', '/account/me/ (incl. PATCH), /application/, /library/*'],
+            ['No login', 'Songs, eras, categories, files, radio, stats, shared playlists, play tracking, feedback submission, report submission'],
+            ['Any logged-in user', '/account/me/ (incl. PATCH), /application/, /library/*, GET /feedback/'],
             ['Editor or admin', '/me/, /editor/proposals/, /editor/leaderboard/, /badges/, /reports/ (read + review)'],
             ['Contributor', '/contributor/proposals/ (comp-file proposals — read/write your own)'],
             ['Manager or admin', '/admin/proposals/, /admin/comp-proposals/ (review queues only — not /admin/users/ or /admin/applications/)'],
@@ -1184,7 +1185,9 @@ Content-Type: application/json
   "contact": "optional",
   "automated": "optional — true for a crash report the client sent on its own"
 }`}</Pre>
-        <p className="text-xs text-text-muted">Throttled at <Code>10/min</Code>.</p>
+        <p className="text-xs text-text-muted mb-3">Throttled at <Code>10/min</Code>.</p>
+        <div className="flex items-center gap-2 mb-1"><Badge color="get">GET</Badge><code className="text-xs font-mono text-text-primary">/juicewrld/feedback/</code></div>
+        <p className="text-xs text-text-muted">List submitted feedback. Requires auth.</p>
       </Section>
 
       <Section title="Song Reports">

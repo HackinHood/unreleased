@@ -1184,7 +1184,9 @@ Content-Type: application/json
   "contact": "optional",
   "automated": "optional — true for a crash report the client sent on its own"
 }`}</Pre>
-        <p className="text-xs text-text-muted">Throttled at <Code>10/min</Code>.</p>
+        <p className="text-xs text-text-muted mb-3">Throttled at <Code>10/min</Code>.</p>
+        <div className="flex items-center gap-2 mb-1"><Badge color="get">GET</Badge><code className="text-xs font-mono text-text-primary break-all">/juicewrld/feedback/</code></div>
+        <p className="text-xs text-text-muted">List submitted feedback. Requires auth.</p>
       </Section>
 
       <Section title="Song Reports">

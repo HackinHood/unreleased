@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { create } from 'zustand'
 import { Lock, Unlock } from 'lucide-react'
 import { ls } from '../lib/persist'
+import { dimThemeColorMeta, syncThemeColorMeta } from '../lib/themeEffects'
 
 // Locked panels sit in their own z-index band, comfortably above anything
 // zCounter could reach in a real session — so "locked" always beats
@@ -269,6 +270,18 @@ export function ModalOverlay({
   // whole feature off in Settings — either way it falls back to the plain
   // backdrop below instead of docking into the notch.
   const dockingOff = standalone || !sandboxEnabled
+
+  // Only the dockingOff branch below paints its own fixed inset-0 bg-black/60
+  // backdrop — the docked (sandbox) path has no full-screen scrim of its own,
+  // and a floating pop-out is a real OS window with its own chrome, nothing
+  // shared to tint. Same Safari-samples-the-scrim-pixel issue as
+  // MediaLightbox/mobile Sheet: dim the meta tag to match while this backdrop
+  // is up, then hand it back to the real theme.
+  useEffect(() => {
+    if (floating || !dockingOff) return
+    dimThemeColorMeta(0.6)
+    return () => syncThemeColorMeta()
+  }, [floating, dockingOff])
 
   const [rect, setRect] = useState<Rect | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)

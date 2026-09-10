@@ -94,6 +94,14 @@ export default function App(): JSX.Element {
   useEffect(() => {
     const syncFromPath = (): void => {
       useStore.setState({ activeView: getViewFromPath(window.location.pathname) })
+      // Playlists keeps its open playlist selected across tab switches (it
+      // doesn't unmount cleanly otherwise), so a mount-time read of ?id=
+      // alone can't catch a bare back/forward navigation while already on
+      // the tab — resync it here too, same as the view itself.
+      if (window.location.pathname === '/playlists') {
+        const id = new URLSearchParams(window.location.search).get('id')
+        useStore.setState({ playlistsSelectedId: id ? Number(id) : null })
+      }
     }
     syncFromPath()
     window.addEventListener('popstate', syncFromPath)

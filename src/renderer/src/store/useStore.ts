@@ -1036,7 +1036,14 @@ export const useStore = create<AppStore>((set, get, store) => ({
       'download': '/download',
       'settings': '/settings',
     }
-    window.history.pushState({ view }, '', paths[view] ?? '/tracker')
+    // Returning to Playlists with a playlist already open (it stays selected
+    // across tab switches — see playlistsSelectedId above) should restore its
+    // ?id= too, not just land on the bare list.
+    const selectedPlaylistId = get().playlistsSelectedId
+    const path = view === 'playlists' && selectedPlaylistId != null
+      ? `/playlists?id=${selectedPlaylistId}`
+      : paths[view] ?? '/tracker'
+    window.history.pushState({ view }, '', path)
     set((s) => ({ activeView: view, previousView: view === s.activeView ? s.previousView : s.activeView }))
   },
   setShowNowPlaying: (showNowPlaying) => set({ showNowPlaying }),
@@ -1669,7 +1676,21 @@ export const useStore = create<AppStore>((set, get, store) => ({
   playlistsSelectedLocalId: null,
   playlistsSort: { field: 'default', dir: 'asc' },
   setPlaylistsSort: (sort) => set({ playlistsSort: sort }),
-  setPlaylistsSelectedId: (id) => set({ playlistsSelectedId: id }),
+  setPlaylistsSelectedId: (id) => {
+    set({ playlistsSelectedId: id })
+    // Keep /playlists?id=<id> in sync with whatever's open, the same way News
+    // syncs /news/<id> — so the address bar is always shareable and
+    // survives a refresh. Only touch the URL while actually on the
+    // Playlists page (this setter also fires from background hand-offs like
+    // pendingPlaylistId, whose own effect drives the tab switch + URL).
+    if (window.location.pathname !== '/playlists') return
+    const params = new URLSearchParams(window.location.search)
+    if (id != null) params.set('id', String(id))
+    else { params.delete('id'); params.delete('view') }
+    const qs = params.toString()
+    const path = qs ? `/playlists?${qs}` : '/playlists'
+    if (path !== window.location.pathname + window.location.search) window.history.pushState({}, '', path)
+  },
   setPlaylistsSelectedLocalId: (id) => set({ playlistsSelectedLocalId: id }),
   playlistsOpenFolderId: null,
   setPlaylistsOpenFolderId: (id) => set({ playlistsOpenFolderId: id }),

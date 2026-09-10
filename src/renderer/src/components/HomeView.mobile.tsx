@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { ChevronRight, MoreHorizontal, Play, ListMusic, Gamepad2, Flame, Music2, Disc3, User } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { ChevronRight, MoreHorizontal, Play, ListMusic, Gamepad2, Flame, Music2, Disc3, User, Newspaper } from 'lucide-react'
 import { useStorePick } from '../store/useStore'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { ProgressiveCover } from './ProgressiveCover'
@@ -10,6 +10,7 @@ import { useMobileNavSplit } from '../hooks/useMobileNavTabs'
 import { loadStats as loadHeardleStats, todayKey as heardleToday } from '../lib/heardle'
 import { loadStats as loadWordleStats, todayKey as wordleToday } from '../lib/wordle'
 import { loadTierlistState } from '../lib/tierlist'
+import { ALL_CHANNEL, fetchNews, peekNews, type NewsItem } from '../lib/newsApi'
 import type { Track, ViewType } from '../types'
 
 // A daily puzzle (streak + played-today) vs. Tier List, which is a standing
@@ -80,6 +81,13 @@ export default function HomeViewMobile(): JSX.Element {
   // remounted on every visit (it's a route), which is exactly when this should
   // refresh — a song played while you were on another tab shows up on return.
   const recent = useMemo(() => loadRecentTracks(), [])
+
+  // Same stale-while-revalidate pattern as NewsView: paint the last cached
+  // page instantly, then let the network response replace it.
+  const [newsItems, setNewsItems] = useState<NewsItem[]>(() => peekNews({ channel: ALL_CHANNEL })?.results ?? [])
+  useEffect(() => {
+    fetchNews({ channel: ALL_CHANNEL }).then((res) => setNewsItems(res.results)).catch(() => undefined)
+  }, [])
   const games = useMemo((): GameCard[] => {
     const heardle = loadHeardleStats('daily')
     const wordle = loadWordleStats()
@@ -130,6 +138,14 @@ export default function HomeViewMobile(): JSX.Element {
 
   const openTrack = (track: Track): void => { playTrack(track) }
 
+  // Mirrors NewsNotifier's openPost: NewsView reads this sessionStorage key
+  // on mount to jump straight to the tapped post.
+  const openNewsItem = (item: NewsItem): void => {
+    setActiveView('news')
+    try { sessionStorage.setItem('news:openPostId', String(item.id)) } catch {}
+    window.dispatchEvent(new CustomEvent('news:open', { detail: item.id }))
+  }
+
   return (
     <div className="flex-1 min-h-0 overflow-y-auto pt-2 pb-4">
       <div className="flex items-center gap-2 px-4 pb-4">
@@ -171,6 +187,32 @@ export default function HomeViewMobile(): JSX.Element {
                 </div>
                 <p className="text-text-primary text-xs leading-snug truncate">{track.title}</p>
                 <p className="text-text-muted text-[11px] truncate mt-0.5">{track.artist}</p>
+              </button>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {newsItems.length > 0 && (
+        <Section
+          title="News"
+          icon={<Newspaper size={15} />}
+          action={{ label: 'All', onClick: () => setActiveView('news') }}
+        >
+          <div className="flex gap-3 overflow-x-auto no-scrollbar px-4 pb-1">
+            {newsItems.slice(0, 8).map((item) => (
+              <button
+                key={item.id}
+                onClick={() => openNewsItem(item)}
+                className="w-[200px] shrink-0 text-left active:opacity-70 transition-opacity"
+              >
+                <div className="w-[200px] h-[112px] rounded-xl overflow-hidden bg-surface-overlay mb-1.5 flex items-center justify-center">
+                  {item.image_url
+                    ? <ProgressiveCover src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                    : <Newspaper size={26} className="text-text-muted" />}
+                </div>
+                <p className="text-text-primary text-xs leading-snug line-clamp-2">{item.title}</p>
+                {item.category && <p className="text-text-muted text-[11px] truncate mt-0.5">{item.category}</p>}
               </button>
             ))}
           </div>
