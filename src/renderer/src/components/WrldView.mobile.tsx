@@ -363,7 +363,21 @@ export default function WrldView(): JSX.Element {
   // drag handling. Touch events keep targeting the element the touch started
   // on even once the finger moves past its bounds, so this stays live for
   // the whole gesture.
-  const { dragY, dragging, handlers: dragHandlers } = useDragToDismiss(collapse)
+  //
+  // `elRef` + `applyStyle` write the transform/border-radius straight to the
+  // wrapper's DOM node on every touchmove instead of through setState — this
+  // component's subtree (blurred cover backdrop, lyrics, queue, everything)
+  // is large enough that re-rendering it on every finger move was visibly
+  // janky. `dragging` still comes through state (only flips at drag
+  // start/end, so it's cheap) to drive the transition below.
+  const dragWrapRef = useRef<HTMLDivElement>(null)
+  const { dragging, handlers: dragHandlers } = useDragToDismiss(collapse, {
+    elRef: dragWrapRef,
+    applyStyle: (el, dy) => {
+      el.style.transform = dy ? `translateY(${dy}px)` : ''
+      el.style.borderRadius = dy ? `${Math.min(dy, 32)}px` : '0px'
+    },
+  })
 
   const voteActive = !!radioFmVote?.active && !voteDismissed
 
@@ -393,10 +407,9 @@ export default function WrldView(): JSX.Element {
       // there). LyricsScreen already isolates itself for the identical
       // reason; the main page never needed to until bgView started
       // persisting behind it.
+      ref={dragWrapRef}
       className="relative flex-1 h-full w-full overflow-hidden flex flex-col isolate"
       style={{
-        transform: dragY ? `translateY(${dragY}px)` : undefined,
-        borderRadius: dragY ? Math.min(dragY, 32) : 0,
         transition: dragging ? 'none' : 'transform 0.25s ease-out, border-radius 0.25s ease-out',
       }}
     >
