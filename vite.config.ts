@@ -3,6 +3,18 @@ import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 import { readFileSync, existsSync } from 'fs'
 
+function resolveGitDir(repoRoot: string): string | undefined {
+  const dotGit = resolve(repoRoot, '.git')
+  if (existsSync(resolve(dotGit, 'HEAD'))) return dotGit
+  try {
+    const contents = readFileSync(dotGit, 'utf-8').trim()
+    if (contents.startsWith('gitdir:')) return resolve(repoRoot, contents.slice(7).trim())
+  } catch {
+    return undefined
+  }
+  return undefined
+}
+
 function commitHash() {
   const envSha =
     process.env.COMMIT_HASH ||
@@ -12,13 +24,8 @@ function commitHash() {
   if (envSha) return envSha.slice(0, 7)
 
   try {
-    const dotGit = resolve(__dirname, '.git')
-    // A worktree checkout has a `.git` *file* pointing at the real gitdir
-    // (e.g. `<main-repo>/.git/worktrees/<name>`), rather than a `.git` dir.
-    const dotGitContents = readFileSync(dotGit, 'utf-8')
-    const gitDir = dotGitContents.startsWith('gitdir:')
-      ? resolve(__dirname, dotGitContents.slice(7).trim())
-      : dotGit
+    const gitDir = resolveGitDir(__dirname)
+    if (!gitDir) return 'unknown'
 
     const readRef = (dir: string, ref: string) => {
       const refPath = resolve(dir, ref)
@@ -67,6 +74,7 @@ export default defineConfig({
   envDir: resolve(__dirname, '.'),
   base: './',
   define: {
+    __APP_VERSION__: JSON.stringify(JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8')).version),
     __COMMIT_HASH__: JSON.stringify(commitHash()),
   },
   build: {
