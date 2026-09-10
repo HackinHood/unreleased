@@ -25,7 +25,7 @@ function getViewFromPath(pathname: string): ViewType {
   if (pathname === '/playlists') return 'playlists'
   if (pathname === '/docs') return 'docs'
   if (pathname === '/wrld') return 'wrld'
-  if (pathname === '/news') return 'news'
+  if (pathname === '/news' || pathname.startsWith('/news/')) return 'news'
   if (pathname === '/heardle') return 'heardle'
   if (pathname === '/wordle') return 'wordle'
   if (pathname === '/tierlist') return 'tierlist'
