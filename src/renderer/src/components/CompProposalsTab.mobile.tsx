@@ -103,8 +103,12 @@ function MediaPreview({ label, name, src, loading, error, bytes }: {
   )
 }
 
+const FOLDER_LEVEL_TYPES = new Set(['create_folder', 'rename_folder', 'move_folder', 'delete_folder'])
+const DESTINATION_TYPES = new Set(['move', 'rename_folder', 'move_folder'])
+
 export default function CompProposalsTab({ embedded = false, onChanged }: { embedded?: boolean; onChanged?: () => void }): JSX.Element {
   const activeChannel = useStore((s) => s.activeChannel)
+  const account = useStore((s) => s.account)
   const [status, setStatus] = useState<ProposalStatus | ''>('pending')
   const [proposals, setProposals] = useState<CompFileProposal[]>([])
   const [selected, setSelected] = useState<CompFileProposal | null>(null)
@@ -203,6 +207,18 @@ export default function CompProposalsTab({ embedded = false, onChanged }: { embe
 
   const p = selected
 
+  // delete_folder is gated beyond the normal per-tab role check the rest of
+  // this queue relies on: only a full administrator may approve it, and
+  // never the admin who filed it. Wording matches the backend's 403 `detail`
+  // strings verbatim.
+  const approveBlockedReason = p && p.change_type === 'delete_folder'
+    ? (!account?.is_administrator
+        ? 'Folder deletions require administrator approval'
+        : account?.id === p.contributor_id
+          ? 'Folder deletions must be approved by a different administrator'
+          : null)
+    : null
+
   useBackToClose(() => setSelected(null), p != null)
 
   if (p) return (
@@ -234,7 +250,7 @@ export default function CompProposalsTab({ embedded = false, onChanged }: { embe
           <CopyButton text={p.file_path} label="path" />
         </div>
 
-        {p.change_type === 'move' && p.destination_path && (
+        {DESTINATION_TYPES.has(p.change_type) && p.destination_path && (
           <div className="flex items-center gap-1.5">
             <p className="text-text-muted font-mono text-sm break-all">→ {p.destination_path}</p>
             <CopyButton text={p.destination_path} label="destination path" />
@@ -244,20 +260,23 @@ export default function CompProposalsTab({ embedded = false, onChanged }: { embe
         {/* "Current" is the file already in comp/ — meaningful context for a
             replace, move, or delete (what's about to change or vanish), and
             for a plain upload it's simply not there yet, so the public fetch
-            404s and the slot quietly shows "unavailable". */}
-        <div className="grid grid-cols-1 gap-3">
-          <MediaPreview label="Current file" name={p.file_path} src={buildStreamUrl(p.file_path, activeChannel)} />
-          {p.staging_filename && (
-            <MediaPreview
-              label="Proposed file"
-              name={p.staging_filename}
-              src={staged.src}
-              loading={p.status === 'pending' && staged.loading}
-              error={p.status !== 'pending' || staged.error}
-              bytes={staged.bytes}
-            />
-          )}
-        </div>
+            404s and the slot quietly shows "unavailable". Folder-level ops
+            have no single-file preview. */}
+        {!FOLDER_LEVEL_TYPES.has(p.change_type) && (
+          <div className="grid grid-cols-1 gap-3">
+            <MediaPreview label="Current file" name={p.file_path} src={buildStreamUrl(p.file_path, activeChannel)} />
+            {p.staging_filename && (
+              <MediaPreview
+                label="Proposed file"
+                name={p.staging_filename}
+                src={staged.src}
+                loading={p.status === 'pending' && staged.loading}
+                error={p.status !== 'pending' || staged.error}
+                bytes={staged.bytes}
+              />
+            )}
+          </div>
+        )}
 
         {p.staging_filename && p.status === 'pending' && (
           <button onClick={() => downloadStaging(p)}
@@ -272,6 +291,19 @@ export default function CompProposalsTab({ embedded = false, onChanged }: { embe
               Contributor notes <CopyButton text={p.contributor_notes} label="contributor notes" />
             </p>
             <p className="text-text-secondary text-sm whitespace-pre-wrap">{p.contributor_notes}</p>
+          </div>
+        )}
+        {(p.change_type === 'move_folder' || p.change_type === 'delete_folder') && Array.isArray(p.original_snapshot?.files) && (
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1 flex items-center gap-1.5">
+              Affected files ({(p.original_snapshot.files as string[]).length})
+              <CopyButton text={(p.original_snapshot.files as string[]).join('\n')} label="affected files" />
+            </p>
+            <ul className="text-xs font-mono text-text-muted bg-surface-overlay rounded-lg p-3 max-h-56 overflow-y-auto space-y-0.5">
+              {(p.original_snapshot.files as string[]).map((f) => (
+                <li key={f} className="truncate">{f}</li>
+              ))}
+            </ul>
           </div>
         )}
         {Object.keys(p.original_snapshot || {}).length > 0 && (
@@ -299,6 +331,9 @@ export default function CompProposalsTab({ embedded = false, onChanged }: { embe
           </div>
         )}
 
+        {approveBlockedReason && (
+          <p className="text-xs text-amber-400 flex items-center gap-1.5"><AlertCircle size={12} />{approveBlockedReason}</p>
+        )}
         {error && (
           <p className="text-xs text-red-400 flex items-center gap-1.5"><AlertCircle size={12} />{error}</p>
         )}
@@ -313,10 +348,12 @@ export default function CompProposalsTab({ embedded = false, onChanged }: { embe
               className="flex-1 h-11 rounded-xl bg-red-500/10 active:bg-red-500/20 text-red-400 text-sm font-semibold flex items-center justify-center gap-1.5">
               <XCircle size={15} /> Reject
             </button>
-            <button onClick={() => doReview(p.id, 'approve')}
-              className="flex-1 h-11 rounded-xl bg-emerald-500/15 active:bg-emerald-500/25 text-emerald-400 text-sm font-semibold flex items-center justify-center gap-1.5">
-              <CheckCircle size={15} /> Approve
-            </button>
+            {!approveBlockedReason && (
+              <button onClick={() => doReview(p.id, 'approve')}
+                className="flex-1 h-11 rounded-xl bg-emerald-500/15 active:bg-emerald-500/25 text-emerald-400 text-sm font-semibold flex items-center justify-center gap-1.5">
+                <CheckCircle size={15} /> Approve
+              </button>
+            )}
           </>
         ) : p.status === 'approved' ? (
           <button onClick={() => doReverse(p.id)} disabled={actionId === p.id}
@@ -354,7 +391,7 @@ export default function CompProposalsTab({ embedded = false, onChanged }: { embe
               <span className="text-[9px] text-text-muted bg-surface-raised px-1.5 py-0.5 rounded">{userApi.compChangeTypeLabel(item.change_type)}</span>
             </div>
             <p className="text-[12px] font-mono text-text-primary truncate">{item.file_path}</p>
-            {item.change_type === 'move' && item.destination_path && (
+            {DESTINATION_TYPES.has(item.change_type) && item.destination_path && (
               <p className="text-[10px] font-mono text-text-muted truncate">→ {item.destination_path}</p>
             )}
             <p className="text-[10px] text-text-muted truncate">{item.contributor_username} · {relativeTime(item.created_at)}</p>

@@ -2,6 +2,7 @@
 import {
   Loader2, Check, AlertCircle, LogIn, Clock, XCircle, Upload, Replace, Trash2,
   FolderOpen, ChevronLeft, RefreshCw, FileUp, ArrowRight, FolderSearch, ArrowUpFromLine, X, FolderPlus,
+  Pencil, FolderInput, FolderX,
 } from 'lucide-react'
 import { useStorePick } from '../store/useStore'
 import * as userApi from '../lib/userApi'
@@ -31,7 +32,19 @@ const CHANGE_OPTIONS: { value: CompProposalChangeType; label: string; icon: type
   { value: 'move', label: 'Move', icon: ArrowRight },
   { value: 'delete', label: 'Delete', icon: Trash2 },
   { value: 'create_folder', label: 'New folder', icon: FolderPlus },
+  { value: 'rename_folder', label: 'Rename folder', icon: Pencil },
+  { value: 'move_folder', label: 'Move folder', icon: FolderInput },
+  { value: 'delete_folder', label: 'Delete folder', icon: FolderX },
 ]
+
+// Folder-scoped types: the target is a whole folder, not a single file — no
+// filename field, no file body. Mirrors create_folder's existing shape.
+const FOLDER_SCOPED_TYPES = new Set<CompProposalChangeType>([
+  'create_folder', 'rename_folder', 'move_folder', 'delete_folder',
+])
+// Types that show the destination folder/filename fields (a second path,
+// alongside the source above it).
+const DESTINATION_TYPES = new Set<CompProposalChangeType>(['move', 'rename_folder', 'move_folder'])
 
 function ApplyPanel({ onSubmitted, rejection, channel }: { onSubmitted: () => void; rejection?: EditorApplication | null; channel?: string }): JSX.Element {
   const [motivation, setMotivation] = useState('')
@@ -199,8 +212,10 @@ export default function ContributorPage(): JSX.Element {
   const filtered = filterCompProposals(proposals, filter)
   const cleanFolder = folderPath.trim().replace(/\/+$/, '')
   const isCreateFolder = changeType === 'create_folder'
-  const filePath = isCreateFolder ? cleanFolder : joinPath(cleanFolder, fileName.trim())
-  const carriesFile = changeType !== 'delete' && changeType !== 'move' && !isCreateFolder
+  const isFolderOp = FOLDER_SCOPED_TYPES.has(changeType)
+  const filePath = isFolderOp ? cleanFolder : joinPath(cleanFolder, fileName.trim())
+  const carriesFile = changeType !== 'delete' && changeType !== 'move' && !isFolderOp
+  const needsDestination = DESTINATION_TYPES.has(changeType)
   // Upload is the only type that batches local files: a replace targets one
   // existing file with one new body, and a move renames one path to another.
   const isUpload = changeType === 'upload'
@@ -227,7 +242,7 @@ export default function ContributorPage(): JSX.Element {
   const buildForm = (path: string, file: File | null): FormData => {
     const form = new FormData()
     form.append('file_path', path)
-    if (changeType === 'move') form.append('destination_path', destinationPath)
+    if (needsDestination) form.append('destination_path', destinationPath)
     form.append('change_type', changeType)
     form.append('contributor_notes', notes)
     if (file) form.append('file', file)
@@ -241,16 +256,18 @@ export default function ContributorPage(): JSX.Element {
       setSubmitError('Pick at least one file to delete.')
       return
     }
-    if (isCreateFolder && !cleanFolder) {
+    if (isFolderOp && !cleanFolder) {
       setSubmitError('Enter a folder path.')
       return
     }
-    if (usesPathFields && !isCreateFolder && !isBatch && !fileName.trim()) {
+    if (usesPathFields && !isFolderOp && !isBatch && !fileName.trim()) {
       setSubmitError('Enter a filename.')
       return
     }
-    if (changeType === 'move' && !destFileName.trim()) {
-      setSubmitError('Enter a destination filename for move proposals.')
+    if (needsDestination && !destFileName.trim()) {
+      setSubmitError(changeType === 'rename_folder' || changeType === 'move_folder'
+        ? 'Enter a destination folder name.'
+        : 'Enter a destination filename for move proposals.')
       return
     }
     if (carriesFile && selectedFiles.length === 0) {
@@ -428,21 +445,26 @@ export default function ContributorPage(): JSX.Element {
             {usesPathFields && (
             <div className="space-y-2">
               <label className="text-[11px] font-semibold uppercase tracking-wider text-text-muted block">
-                {changeType === 'move' ? 'Source (relative to comp/)' : isCreateFolder ? 'New folder (relative to comp/)' : 'Target (relative to comp/)'}
+                {changeType === 'move' ? 'Source (relative to comp/)'
+                  : isCreateFolder ? 'New folder (relative to comp/)'
+                  : changeType === 'delete_folder' ? 'Folder to delete (relative to comp/)'
+                  : changeType === 'rename_folder' ? 'Folder to rename (relative to comp/)'
+                  : changeType === 'move_folder' ? 'Folder to move (relative to comp/)'
+                  : 'Target (relative to comp/)'}
               </label>
               <div className="flex gap-2">
                 <input value={folderPath} onChange={e => setFolderPath(e.target.value)} placeholder="Folder — e.g. Compilation/Unreleased"
                   className="flex-1 min-w-0 rounded-xl border border-[var(--border)] bg-surface-overlay px-4 py-2.5 text-sm font-mono text-text-primary focus:outline-none focus:border-accent" />
                 <button
                   type="button"
-                  onClick={() => setPicker(changeType === 'upload' || isCreateFolder ? 'upload-folder' : 'file')}
-                  title={changeType === 'upload' ? 'Pick the folder to upload into' : isCreateFolder ? 'Pick where to create the folder' : 'Pick the file this applies to'}
+                  onClick={() => setPicker(changeType === 'upload' || isFolderOp ? 'upload-folder' : 'file')}
+                  title={changeType === 'upload' ? 'Pick the folder to upload into' : isCreateFolder ? 'Pick where to create the folder' : isFolderOp ? 'Pick the folder this applies to' : 'Pick the file this applies to'}
                   className="shrink-0 px-3 rounded-xl border border-[var(--border)] bg-surface-overlay text-text-secondary hover:text-text-primary hover:border-accent/40 transition-colors flex items-center gap-1.5 text-xs font-semibold"
                 >
                   <FolderSearch size={14} /> Browse
                 </button>
               </div>
-              {!isBatch && !isCreateFolder && (
+              {!isBatch && !isFolderOp && (
                 <input value={fileName} onChange={e => setFileName(e.target.value)} placeholder="Filename — e.g. My Song.mp3"
                   className="w-full rounded-xl border border-[var(--border)] bg-surface-overlay px-4 py-2.5 text-sm font-mono text-text-primary focus:outline-none focus:border-accent" />
               )}
@@ -491,9 +513,11 @@ export default function ContributorPage(): JSX.Element {
                 )}
               </div>
             )}
-            {changeType === 'move' && (
+            {needsDestination && (
               <div className="space-y-2">
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-text-muted block">Destination (relative to comp/)</label>
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-text-muted block">
+                  {changeType === 'rename_folder' ? 'New location — same parent folder (relative to comp/)' : 'Destination (relative to comp/)'}
+                </label>
                 <div className="flex gap-2">
                   <input value={destFolder} onChange={e => setDestFolder(e.target.value)} placeholder="Folder — e.g. Compilation/Released"
                     className="flex-1 min-w-0 rounded-xl border border-[var(--border)] bg-surface-overlay px-4 py-2.5 text-sm font-mono text-text-primary focus:outline-none focus:border-accent" />
@@ -506,11 +530,18 @@ export default function ContributorPage(): JSX.Element {
                     <FolderSearch size={14} /> Browse
                   </button>
                 </div>
-                <input value={destFileName} onChange={e => setDestFileName(e.target.value)} placeholder="Filename — leave as-is to keep the name"
+                <input value={destFileName} onChange={e => setDestFileName(e.target.value)}
+                  placeholder={changeType === 'rename_folder' || changeType === 'move_folder' ? 'New folder name' : 'Filename — leave as-is to keep the name'}
                   className="w-full rounded-xl border border-[var(--border)] bg-surface-overlay px-4 py-2.5 text-sm font-mono text-text-primary focus:outline-none focus:border-accent" />
                 <p className="text-[11px] font-mono text-text-muted truncate" title={destinationPath || undefined}>
                   {destinationPath ? `comp/${destinationPath}` : 'comp/…'}
                 </p>
+                {changeType === 'rename_folder' && (
+                  <p className="text-[11px] text-text-muted leading-relaxed">Rename keeps the folder in the same parent — only the folder name changes.</p>
+                )}
+                {changeType === 'move_folder' && (
+                  <p className="text-[11px] text-text-muted leading-relaxed">Move requires a different parent folder.</p>
+                )}
               </div>
             )}
             <div className="flex flex-wrap gap-2">
@@ -603,9 +634,9 @@ export default function ContributorPage(): JSX.Element {
             )}
             <button onClick={submitProposal}
               disabled={submitState === 'submitting'
-                || (isCreateFolder ? !cleanFolder : isDelete ? deletePaths.length === 0 : !isBatch && !fileName.trim())
+                || (isFolderOp ? !cleanFolder : isDelete ? deletePaths.length === 0 : !isBatch && !fileName.trim())
                 || (carriesFile && selectedFiles.length === 0)
-                || (changeType === 'move' && !destFileName.trim())}
+                || (needsDestination && !destFileName.trim())}
               className="px-4 py-2.5 rounded-xl bg-accent text-white text-sm font-semibold disabled:opacity-40 flex items-center gap-2">
               {submitState === 'submitting' ? <Loader2 size={15} className="animate-spin" /> : submitState === 'submitted' ? <Check size={15} /> : <FileUp size={15} />}
               {submitState === 'submitted' ? (carriesFile ? 'Queued' : 'Submitted')
@@ -647,7 +678,11 @@ export default function ContributorPage(): JSX.Element {
           title={
             picker === 'file' ? 'Pick the file this proposal applies to'
               : picker === 'delete-files' ? 'Pick the files to delete'
-              : picker === 'upload-folder' ? (isCreateFolder ? 'Pick where to create the folder' : 'Pick the folder to upload into')
+              : picker === 'upload-folder' ? (
+                  isCreateFolder ? 'Pick where to create the folder'
+                    : isFolderOp ? 'Pick the folder this applies to'
+                    : 'Pick the folder to upload into'
+                )
               : 'Pick the folder to move it into'
           }
           onClose={() => setPicker(null)}

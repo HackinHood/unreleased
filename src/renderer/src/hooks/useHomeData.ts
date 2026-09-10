@@ -3,6 +3,7 @@ import { useStorePick } from '../store/useStore'
 import { loadRecentTracks } from '../lib/recentTracks'
 import { filterListeningPlaysByDays } from '../lib/listeningPlays'
 import { playlistCoverUrl } from '../lib/juicewrldApi'
+import { peekPlaylistCover } from '../lib/userApi'
 import { loadStats as loadHeardleStats, todayKey as heardleToday } from '../lib/heardle'
 import { loadStats as loadWordleStats, todayKey as wordleToday } from '../lib/wordle'
 import { loadTierlistState } from '../lib/tierlist'
@@ -20,7 +21,11 @@ export interface HomePlaylistCard {
   key: string
   name: string
   subtitle: string
+  // A single cover image, or (mutually exclusive) up to 4 track covers to lay
+  // out as a mosaic — the same fallback a playlist with no cover of its own
+  // gets everywhere else in the app. Exactly one of the two is set.
   cover: string | null
+  mosaic: string[] | null
   open: () => void
 }
 
@@ -88,27 +93,46 @@ export function useHomeData() {
   // show what exists locally rather than prompting to sign in.
   const ownPlaylists = account ? playlists : []
   const playlistRow: HomePlaylistCard[] = [
-    ...ownPlaylists.filter((p) => p.track_count > 0).map((p) => ({
-      key: `p${p.id}`,
-      name: p.name,
-      subtitle: `${p.track_count} song${p.track_count === 1 ? '' : 's'}`,
-      cover: playlistCoverUrl(p) ?? null,
-      open: () => { setPendingPlaylistId(p.id); setActiveView('playlists') },
-    })),
+    ...ownPlaylists.filter((p) => p.track_count > 0).map((p) => {
+      // `playlists` is fetched with omit_cover_image=true (PlaylistsView's own
+      // grid pays that same cost), so a summary object almost never carries
+      // its own cover_image/cover_image_url — peekPlaylistCover's cache is the
+      // real source, warmed in the background by prefetchPlaylistDetails at
+      // startup and by PlaylistsView whenever it's been opened. A miss (cache
+      // still cold) just falls back to the icon, same as before.
+      const cached = peekPlaylistCover(p.id)
+      const cover = cached?.cover_image_url ?? cached?.cover_image ?? playlistCoverUrl(p) ?? null
+      const mosaicUrls = cached?.trackImages?.slice(0, 4) ?? []
+      const useMosaic = !cover && mosaicUrls.length >= 4
+      return {
+        key: `p${p.id}`,
+        name: p.name,
+        subtitle: `${p.track_count} song${p.track_count === 1 ? '' : 's'}`,
+        cover: useMosaic ? null : cover,
+        mosaic: useMosaic ? mosaicUrls : null,
+        open: () => { setPendingPlaylistId(p.id); setActiveView('playlists') },
+      }
+    }),
     ...followedPlaylists.filter((p) => p.trackCount > 0).map((p) => ({
       key: `f${p.id}`,
       name: p.name,
       subtitle: `${p.trackCount} song${p.trackCount === 1 ? '' : 's'}`,
       cover: p.coverUrl,
+      mosaic: null,
       open: () => { setPendingPlaylistId(p.id); setActiveView('playlists') },
     })),
-    ...guestPlaylists.filter((p) => p.tracks.length > 0).map((p) => ({
-      key: `g${p.id}`,
-      name: p.name,
-      subtitle: `${p.tracks.length} song${p.tracks.length === 1 ? '' : 's'}`,
-      cover: p.tracks[0]?.imageUrl ?? null,
-      open: () => setActiveView('playlists'),
-    })),
+    ...guestPlaylists.filter((p) => p.tracks.length > 0).map((p) => {
+      const mosaicUrls = p.tracks.slice(0, 4).map((t) => t.imageUrl).filter((u): u is string => !!u)
+      const useMosaic = mosaicUrls.length >= 4
+      return {
+        key: `g${p.id}`,
+        name: p.name,
+        subtitle: `${p.tracks.length} song${p.tracks.length === 1 ? '' : 's'}`,
+        cover: useMosaic ? null : (p.tracks[0]?.imageUrl ?? null),
+        mosaic: useMosaic ? mosaicUrls : null,
+        open: () => setActiveView('playlists'),
+      }
+    }),
   ].slice(0, 10)
 
   const openTrack = (track: Track): void => { playTrack(track) }

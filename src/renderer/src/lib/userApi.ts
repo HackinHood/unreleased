@@ -505,13 +505,18 @@ export async function removeFromPlaylist(id: number, songId: number): Promise<vo
 }
 
 export type ProposalStatus = 'pending' | 'approved' | 'rejected' | 'reversed'
-export type CompProposalChangeType = 'upload' | 'replace' | 'move' | 'delete' | 'create_folder'
+export type CompProposalChangeType =
+  | 'upload' | 'replace' | 'move' | 'delete' | 'create_folder'
+  | 'rename_folder' | 'move_folder' | 'delete_folder'
 
 // Only the underscored ones need spelling out; everything else reads fine as
 // the raw enum. Lives here rather than in one of the review components because
 // four separate places render this badge.
 const COMP_CHANGE_LABELS: Record<string, string> = {
   create_folder: 'new folder',
+  rename_folder: 'rename folder',
+  move_folder: 'move folder',
+  delete_folder: 'delete folder',
 }
 
 export function compChangeTypeLabel(type: string): string {

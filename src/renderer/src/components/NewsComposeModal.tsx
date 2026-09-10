@@ -121,9 +121,9 @@ export default function NewsComposeModal({ channels, initialChannel, editing, on
       minWidth={420} minHeight={420}
     >
       {({ onHandleMouseDown, locked, toggleLock, canLock }) => (
-      <div className="bg-surface w-full h-full overflow-y-auto">
+      <div className="bg-surface w-full h-full flex flex-col overflow-hidden">
         <div
-          className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] sticky top-0 bg-surface z-10 cursor-grab active:cursor-grabbing"
+          className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-[var(--border)] bg-surface cursor-grab active:cursor-grabbing"
           onMouseDown={onHandleMouseDown}
         >
           <h2 className="flex items-center gap-2 text-text-primary text-sm font-semibold">
@@ -137,7 +137,7 @@ export default function NewsComposeModal({ channels, initialChannel, editing, on
           </div>
         </div>
 
-        <div className="px-5 py-4 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4">
           {/* Lead image */}
           <div>
             <span className={label}>Cover image</span>
@@ -258,7 +258,7 @@ export default function NewsComposeModal({ channels, initialChannel, editing, on
           {error && <p className="text-xs text-red-400">{error}</p>}
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-[var(--border)] sticky bottom-0 bg-surface">
+        <div className="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-[var(--border)] bg-surface">
           <button onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50">
             Cancel
           </button>

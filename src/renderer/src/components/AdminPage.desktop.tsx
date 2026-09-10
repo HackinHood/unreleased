@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, useDeferredValue, memo } from 'react'
+import { useState, useMemo, useDeferredValue, memo, useEffect } from 'react'
 import {
   ChevronLeft, Users, Clock, CheckCircle, XCircle, ShieldCheck, BarChart2,
   Loader2, RefreshCw, FileEdit, KeyRound, Check, AlertCircle, RotateCcw,
@@ -10,18 +10,29 @@ import { apiFetch, songToTrack } from '../lib/juicewrldApi'
 import type { JWApiSong } from '../lib/juicewrldApi'
 import { useStore, useStorePick } from '../store/useStore'
 import * as userApi from '../lib/userApi'
-import { isPrimaryChannelSlug } from '../hooks/useChannelRoles'
 import type { EditorApplication, SongEditProposal, AdminUser, ProposalStatus } from '../lib/userApi'
-import * as reportsApi from '../lib/reportsApi'
-import type { SongReportRow, SongReportStatus } from '../lib/reportsApi'
 import { invalidateLyricsCache } from './Player'
 import { relativeTime, shortDate, STATUS_STYLE, StatusChip, Avatar, Empty, AppSection, QueueSearch, buildHaystack, matchesHaystack, CopyButton } from './adminShared'
 import ReportsTab from './ReportsTab'
 import CompProposalsTab from './CompProposalsTab'
 import ChannelsTab from './ChannelsTab'
-import { CONTRIBUTOR_ENABLED } from '../lib/userApi'
+import { useStaffRoles } from '../hooks/useStaffRoles'
+import { useAdminQueue, type AdminTab, type AdminNavItem } from '../hooks/useAdminQueue'
+import { useOtpGate } from '../hooks/useOtpGate'
+import ProfileTabBar, { type ProfileTabDef } from './ProfileTabBar'
 
-type Tab = 'proposals' | 'comp-proposals' | 'applications' | 'reports' | 'users' | 'stats' | 'security' | 'channels'
+type Tab = AdminTab
+
+const NAV_ICONS: Record<AdminNavItem['iconKey'], React.ReactNode> = {
+  proposals: <FileEdit size={13} />,
+  'comp-proposals': <FileCheck size={13} />,
+  applications: <Clock size={13} />,
+  reports: <Flag size={13} />,
+  users: <Users size={13} />,
+  stats: <TrendingUp size={13} />,
+  channels: <Radio size={13} />,
+  security: <Shield size={13} />,
+}
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -170,57 +181,44 @@ const ProposalDiff = memo(function ProposalDiff({ proposal }: { proposal: SongEd
 export default function AdminPage({ embedded = false }: { embedded?: boolean }): JSX.Element {
   const { account, loadAccount, setActiveView, activeChannel, channels } = useStorePick('account', 'loadAccount', 'setActiveView', 'activeChannel', 'channels')
   const go = setActiveView
-  const isFullAdmin = !!account?.is_administrator
   // Scoped to the active channel, not "any channel" — a manager grant on one
   // channel shouldn't leave this nav/content visible (and then erroring) on
   // a channel they don't actually manage. See useChannelRoles for the same
   // pattern used elsewhere.
-  const isManager = userApi.isChannelManager(account, activeChannel, isPrimaryChannelSlug(channels, activeChannel))
-  const canAccessStaff = isFullAdmin || isManager
+  const { isAdmin: isFullAdmin, canReviewStaff: canAccessStaff } = useStaffRoles(account, activeChannel, channels)
   const otpEnabled = !!account?.otp_enabled
 
-  const [tab,          setTab]          = useState<Tab>('proposals')
-  const [loading,      setLoading]      = useState(false)
-  const [error,        setError]        = useState<string | null>(null)
-  const [refreshKey,   setRefreshKey]   = useState(0)
-  const [applications, setApplications] = useState<EditorApplication[]>([])
-  const [propStatus,   setPropStatus]   = useState<ProposalStatus | ''>('pending')
-  const [proposals,    setProposals]    = useState<SongEditProposal[]>([])
-  const [users,        setUsers]        = useState<AdminUser[]>([])
-  const [reportStatus, setReportStatus] = useState<SongReportStatus | ''>('pending')
-  const [reports,      setReports]      = useState<SongReportRow[]>([])
-
-  const load = useCallback(async () => {
-    if (!canAccessStaff) return
-    setLoading(true); setError(null)
-    try {
-      if (tab === 'proposals') {
-        setProposals(await userApi.adminListProposals(propStatus || undefined, activeChannel))
-      } else if (isFullAdmin && tab === 'applications') {
-        setApplications(await userApi.adminListApplications())
-      } else if (isFullAdmin && tab === 'reports') {
-        setReports(await reportsApi.listSongReports(reportStatus || undefined))
-      } else if (isFullAdmin && (tab === 'users' || tab === 'stats')) {
-        setUsers(await userApi.adminListUsers())
-        if (tab === 'stats') {
-          setApplications(await userApi.adminListApplications())
-          setProposals(await userApi.adminListProposals(undefined, activeChannel))
-        }
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load')
-      // Don't leave the previous channel's/tab's data on screen underneath the
-      // error — it's stale and its action buttons (approve/reject etc.) would
-      // still be live against the wrong channel context.
-      if (tab === 'proposals') setProposals([])
-      else if (tab === 'applications') setApplications([])
-      else if (tab === 'reports') setReports([])
-      else if (tab === 'users' || tab === 'stats') setUsers([])
-    }
-    finally { setLoading(false) }
-  }, [tab, canAccessStaff, isFullAdmin, propStatus, reportStatus, activeChannel])
-
-  useEffect(() => { load() }, [load, refreshKey])
+  const {
+    tab, setTab,
+    loading, error,
+    refreshKey,
+    applications, setApplications,
+    propStatus, setPropStatus,
+    proposals, setProposals,
+    users, setUsers,
+    reportStatus, setReportStatus,
+    reports, setReports,
+    refresh,
+    nav,
+  } = useAdminQueue({
+    canLoad: canAccessStaff,
+    isFullAdmin,
+    gateNonProposalTabs: true,
+    activeChannel,
+    initialTab: 'proposals',
+    // No Security tab for managers: it renders a flat "2FA is enabled", which
+    // the OTP gate below guarantees for admins and can't guarantee for them.
+    managerNavIds: ['proposals', 'comp-proposals'],
+  })
+  // ProfileTabBar wants plain icon nodes, not the iconKey indirection
+  // useAdminQueue's nav returns (that indirection exists so the hook stays
+  // framework/icon-agnostic) — resolved once per nav change, not per render.
+  const navTabs: ProfileTabDef<AdminTab>[] = useMemo(() => nav.map(n => ({
+    id: n.id,
+    label: n.label,
+    icon: NAV_ICONS[n.iconKey],
+    badge: n.badge,
+  })), [nav])
 
   if (!canAccessStaff) return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center">
@@ -245,27 +243,6 @@ export default function AdminPage({ embedded = false }: { embedded?: boolean }):
     </div>
   )
 
-  const pendingApps    = applications.filter(a => a.status === 'pending').length
-  const pendingProps   = tab !== 'proposals' ? proposals.filter(p => p.status === 'pending').length : 0
-  const pendingReports = tab !== 'reports' ? reports.filter(r => r.status === 'pending').length : 0
-
-  type NavItem = { id: Tab; label: string; icon: React.ReactNode; badge?: number }
-  const fullNav: NavItem[] = [
-    { id: 'proposals',    label: 'Song edits',   icon: <FileEdit size={13} />,   badge: pendingProps || undefined },
-    ...(CONTRIBUTOR_ENABLED ? [{ id: 'comp-proposals' as const, label: 'Comp files', icon: <FileCheck size={13} /> }] : []),
-    { id: 'applications', label: 'Applications', icon: <Clock size={13} />,      badge: pendingApps || undefined },
-    { id: 'reports',      label: 'Reports',      icon: <Flag size={13} />,       badge: pendingReports || undefined },
-    { id: 'users',        label: 'Users',        icon: <Users size={13} /> },
-    { id: 'stats',        label: 'Stats',        icon: <TrendingUp size={13} /> },
-    { id: 'channels',     label: 'Channels',     icon: <Radio size={13} /> },
-    { id: 'security',     label: 'Security',     icon: <Shield size={13} /> },
-  ]
-  // No Security tab for managers: it renders a flat "2FA is enabled", which the
-  // gate above guarantees for admins and can't guarantee for them.
-  const nav = isFullAdmin
-    ? fullNav
-    : fullNav.filter(n => n.id === 'proposals' || n.id === 'comp-proposals')
-
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
       {/* Header */}
@@ -285,30 +262,20 @@ export default function AdminPage({ embedded = false }: { embedded?: boolean }):
             )}
           </div>
         )}
-        <button onClick={() => setRefreshKey(k => k + 1)} disabled={loading}
+        <button onClick={() => refresh()} disabled={loading}
           className="p-1.5 rounded-lg hover:bg-surface-overlay transition-colors text-text-muted hover:text-text-primary mb-3 disabled:opacity-40">
           <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
         </button>
 
         {/* Tabs — scroll horizontally rather than wrap/overflow on narrow
             (mobile) widths, where six of them don't fit. */}
-        <div className="flex items-end gap-0 ml-2 min-w-0 flex-1 overflow-x-auto">
-          {nav.map(n => (
-            <button key={n.id} onClick={() => setTab(n.id)}
-              className={`relative flex items-center gap-1.5 px-4 py-3 text-[12px] font-medium transition-colors border-b-2 shrink-0 whitespace-nowrap ${
-                tab === n.id
-                  ? 'text-accent border-accent'
-                  : 'text-text-muted hover:text-text-primary border-transparent'
-              }`}>
-              <span className={tab === n.id ? 'text-accent' : ''}>{n.icon}</span>
-              {n.label}
-              {n.badge ? (
-                <span className="bg-accent text-[var(--bg)] text-[9px] font-bold rounded-full min-w-[16px] h-[16px] flex items-center justify-center px-1">
-                  {n.badge > 9 ? '9+' : n.badge}
-                </span>
-              ) : null}
-            </button>
-          ))}
+        <div className="min-w-0 flex-1 overflow-x-auto ml-2">
+          <ProfileTabBar
+            tabs={navTabs}
+            active={tab}
+            onChange={setTab}
+            variant="underline"
+          />
         </div>
       </div>
 
@@ -334,21 +301,21 @@ export default function AdminPage({ embedded = false }: { embedded?: boolean }):
           proposals={proposals}
           status={propStatus}
           setStatus={setPropStatus}
-          onChanged={() => setRefreshKey(k => k + 1)}
+          onChanged={() => refresh()}
           onReviewed={(updated) => setProposals(prev => {
             const next = prev.map(p => p.id === updated.id ? updated : p)
             return propStatus && updated.status !== propStatus ? next.filter(p => p.id !== updated.id) : next
           })}
           channel={activeChannel}
         />}
-        {tab === 'comp-proposals' && <CompProposalsTab embedded onChanged={() => setRefreshKey(k => k + 1)} />}
+        {tab === 'comp-proposals' && <CompProposalsTab embedded onChanged={() => refresh()} />}
         {tab === 'applications' && <ApplicationsTab
           applications={applications}
-          onChanged={() => setRefreshKey(k => k + 1)}
+          onChanged={() => refresh()}
           onReviewed={(updated) => setApplications(prev => prev.map(a => a.id === updated.id ? updated : a))}
         />}
-        {tab === 'reports'      && <ReportsTab reports={reports} status={reportStatus} setStatus={setReportStatus} onChanged={() => setRefreshKey(k => k + 1)} />}
-        {tab === 'users'        && <UsersTab users={users} onChanged={() => setRefreshKey(k => k + 1)} currentUserId={account?.id} />}
+        {tab === 'reports'      && <ReportsTab reports={reports} status={reportStatus} setStatus={setReportStatus} onChanged={() => refresh()} />}
+        {tab === 'users'        && <UsersTab users={users} onChanged={() => refresh()} currentUserId={account?.id} />}
         {tab === 'stats'        && <StatsTab applications={applications} proposals={proposals} users={users} />}
         {tab === 'channels'     && <ChannelsTab />}
         {tab === 'security'     && <SecurityTab />}
@@ -1412,22 +1379,7 @@ function SecurityTab(): JSX.Element {
 // ── OTP Setup ─────────────────────────────────────────────────────────────────
 
 function OtpSetupPanel({ onEnabled }: { onEnabled: () => Promise<void> }): JSX.Element {
-  const [setup,      setSetup]      = useState<userApi.OtpSetupPayload | null>(null)
-  const [loading,    setLoading]    = useState(true)
-  const [code,       setCode]       = useState('')
-  const [confirming, setConfirming] = useState(false)
-  const [error,      setError]      = useState<string | null>(null)
-
-  useEffect(() => {
-    userApi.getOtpSetup().then(setSetup).catch(e => setError(e instanceof Error ? e.message : 'Could not load')).finally(() => setLoading(false))
-  }, [])
-
-  const confirm = async () => {
-    setConfirming(true); setError(null)
-    try { await userApi.confirmOtpSetup(code); await onEnabled() }
-    catch (e) { setError(e instanceof Error ? e.message : 'Verification failed') }
-    finally { setConfirming(false) }
-  }
+  const { setup, loading, code, setCode, confirming, error, confirm } = useOtpGate(onEnabled)
 
   if (loading) return <div className="flex items-center justify-center h-32"><Loader2 size={20} className="animate-spin text-text-muted" /></div>
   if (!setup) return <p className="text-red-400 text-sm">Could not load OTP setup.</p>
@@ -1452,7 +1404,7 @@ function OtpSetupPanel({ onEnabled }: { onEnabled: () => Promise<void> }): JSX.E
       <div>
         <label className="block text-xs font-semibold text-text-muted mb-1.5">Verification code</label>
         <input type="text" inputMode="numeric" value={code}
-          onChange={e => { setCode(e.target.value); setError(null) }}
+          onChange={e => setCode(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && confirm()} placeholder="123456"
           className="w-full bg-surface-overlay border border-[var(--border)] rounded-xl px-4 py-2.5 text-text-primary text-base focus:outline-none focus:border-accent/50 font-mono tracking-[0.5em] text-center"
         />

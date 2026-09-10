@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { ChevronRight, Play, ListMusic, Gamepad2, Flame, Music2, Disc3, User, Newspaper, Radio, Heart } from 'lucide-react'
+import { ChevronRight, Play, ListMusic, Gamepad2, Flame, Music2, Disc3, User, Newspaper, Radio, Heart, Search } from 'lucide-react'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { ProgressiveCover } from './ProgressiveCover'
 import { useHomeData, type GameCard, type HomePlaylistCard } from '../hooks/useHomeData'
@@ -13,11 +13,13 @@ import type { Track } from '../types'
 //
 // The whole point of the desktop layout is that a desktop screen can hold the
 // entire dashboard at once: the view is height-bound (h-full inside App's
-// fixed-height <main>), the two big rows split the leftover space between
-// them, and each tile fits itself to the box it lands in. Cover grids clamp to
-// whole rows — a half-visible row of covers reads as broken in a way a short
-// grid doesn't — and News, the one section where the extra headlines are worth
-// keeping reachable, scrolls inside its own tile.
+// fixed-height <main>). Cover grids clamp to whole rows and size to their own
+// content (however many rows the actual items need, capped per section — see
+// fitCount's callers) rather than stretching to fill whatever space is left —
+// a card whose border runs on well past its last cover reads as broken the
+// same way a half-visible row would. News, the one section where the extra
+// headlines are worth keeping
+// reachable, is the exception: it fills its rail and scrolls internally.
 //
 // Section ids map 1:1 to one place on screen, so hiding a section in Settings
 // removes exactly one thing. Three move relative to mobile: News, 999 FM and
@@ -29,16 +31,16 @@ import type { Track } from '../types'
 
 const GAP = 12          // matches gap-3 on the cover grids
 const MIN_TILE = 130    // narrowest a cover may get before dropping a column
-const LABEL_H = 38      // the title + subtitle block under each cover
 const MAX_NEWS = 20
 
-// Whole rows only — see the header note. Returns how many items fit the box.
-function fitCount(size: { width: number; height: number }, total: number): { cols: number; count: number } {
-  if (size.width <= 0 || size.height <= 0) return { cols: 1, count: 0 }
-  const cols = Math.max(1, Math.floor((size.width + GAP) / (MIN_TILE + GAP)))
-  const tileW = (size.width - (cols - 1) * GAP) / cols
-  const rowH = tileW + LABEL_H
-  const rows = Math.max(1, Math.floor((size.height + GAP) / (rowH + GAP)))
+// Whole rows only — see the header note. `width` decides how many columns
+// fit; the row count then follows the content itself (capped at `maxRows`)
+// rather than however much vertical space happens to be on offer, so the
+// card's height always matches what's actually inside it.
+function fitCount(width: number, total: number, maxRows: number): { cols: number; count: number } {
+  if (width <= 0 || total === 0) return { cols: 1, count: 0 }
+  const cols = Math.max(1, Math.floor((width + GAP) / (MIN_TILE + GAP)))
+  const rows = Math.min(maxRows, Math.ceil(total / cols))
   return { cols, count: Math.min(total, cols * rows) }
 }
 
@@ -82,7 +84,7 @@ function CoverGrid({ children, cols, bodyRef }: {
   bodyRef: React.RefObject<HTMLDivElement>
 }): JSX.Element {
   return (
-    <div ref={bodyRef} className="flex-1 min-h-0 overflow-hidden">
+    <div ref={bodyRef}>
       <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
         {children}
       </div>
@@ -96,7 +98,8 @@ function RecentTile({ tracks, onPlay, span }: {
   span: string
 }): JSX.Element {
   const bodyRef = useRef<HTMLDivElement>(null)
-  const { cols, count } = fitCount(useElementSize(bodyRef), tracks.length)
+  const { width } = useElementSize(bodyRef)
+  const { cols, count } = fitCount(width, tracks.length, 2)
   return (
     <Tile title="Recently played" icon={<Disc3 size={15} />} span={span}>
       <CoverGrid cols={cols} bodyRef={bodyRef}>
@@ -118,13 +121,31 @@ function RecentTile({ tracks, onPlay, span }: {
   )
 }
 
+// A playlist with no cover of its own falls back to a 2×2 mosaic of its first
+// four tracks' art — same fallback PlaylistsView uses — before the plain icon.
+function PlaylistCoverThumb({ cover, mosaic, alt }: { cover: string | null; mosaic: string[] | null; alt: string }): JSX.Element {
+  if (cover) return <ProgressiveCover src={cover} alt={alt} className="w-full h-full object-cover" />
+  if (mosaic && mosaic.length >= 4) {
+    return (
+      <div className="grid grid-cols-2 w-full h-full" style={{ overflow: 'hidden' }}>
+        {mosaic.slice(0, 4).map((url, i) => <ProgressiveCover key={i} src={url} alt="" className="w-full h-full object-cover" />)}
+      </div>
+    )
+  }
+  return <ListMusic size={26} className="text-text-muted" />
+}
+
 function PlaylistsTile({ playlists, onAll, span }: {
   playlists: HomePlaylistCard[]
   onAll: () => void
   span: string
 }): JSX.Element {
   const bodyRef = useRef<HTMLDivElement>(null)
-  const { cols, count } = fitCount(useElementSize(bodyRef), playlists.length)
+  const { width } = useElementSize(bodyRef)
+  // One row only — Playlists is capped at 10 items upstream (useHomeData), so
+  // a lone leftover on a second row was common and looked unfinished; the
+  // rest is a click away via "All".
+  const { cols, count } = fitCount(width, playlists.length, 1)
   return (
     <Tile title="Playlists" icon={<ListMusic size={15} />} action={{ label: 'All', onClick: onAll }} span={span}>
       {playlists.length === 0 ? (
@@ -134,9 +155,7 @@ function PlaylistsTile({ playlists, onAll, span }: {
           {playlists.slice(0, count).map((p) => (
             <button key={p.key} onClick={p.open} className="group text-left min-w-0">
               <div className="aspect-square rounded-lg overflow-hidden bg-surface-raised mb-1.5 flex items-center justify-center">
-                {p.cover
-                  ? <ProgressiveCover src={p.cover} alt={p.name} className="w-full h-full object-cover" />
-                  : <ListMusic size={26} className="text-text-muted" />}
+                <PlaylistCoverThumb cover={p.cover} mosaic={p.mosaic} alt={p.name} />
               </div>
               <p className="text-text-primary text-xs leading-snug truncate group-hover:text-accent transition-colors">{p.name}</p>
               <p className="text-text-muted text-[11px] truncate mt-0.5">{p.subtitle}</p>
@@ -301,6 +320,14 @@ export default function HomeViewDesktop(): JSX.Element {
           <h1 className="text-text-primary text-xl font-bold leading-tight truncate min-w-0">
             {greeting()}{account ? `, ${account.display_name}` : ''}
           </h1>
+          <button
+            onClick={() => setActiveView('api-tracker')}
+            aria-label="Search the catalog"
+            title="Search the catalog"
+            className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-[var(--surface-overlay)] transition-colors"
+          >
+            <Search size={17} />
+          </button>
           {showListening && (
             <div className="ml-auto flex items-center gap-4 min-w-0">
               {totalPlays === 0 ? (
@@ -327,10 +354,10 @@ export default function HomeViewDesktop(): JSX.Element {
         {(mainShown || sideShown) && (
           <div className="flex-1 min-h-0 flex gap-4">
             {mainShown && (
-              <div className="flex-1 min-w-0 flex flex-col gap-4">
-                {showRecent && <RecentTile tracks={recent} onPlay={openTrack} span="flex-1" />}
+              <div className="flex-1 min-w-0 min-h-0 overflow-y-auto flex flex-col gap-4">
+                {showRecent && <RecentTile tracks={recent} onPlay={openTrack} span="shrink-0" />}
                 {showPlaylists && (
-                  <PlaylistsTile playlists={playlistRow} onAll={() => setActiveView('playlists')} span="flex-1" />
+                  <PlaylistsTile playlists={playlistRow} onAll={() => setActiveView('playlists')} span="shrink-0" />
                 )}
               </div>
             )}
