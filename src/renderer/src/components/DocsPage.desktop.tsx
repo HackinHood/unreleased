@@ -74,7 +74,7 @@ export default function DocsPage(): JSX.Element {
             value={rawQuery}
             onChange={(e) => setRawQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Escape') setRawQuery('') }}
-            placeholder="Search all docs — endpoints, fields, params…"
+            placeholder="Search all docs: endpoints, fields, params…"
             className="w-full bg-[var(--surface-raised)] border border-[var(--border)] rounded-xl pl-9 pr-16 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent/50 transition-colors"
           />
           {rawQuery && (

@@ -198,17 +198,19 @@ export function orderedNavControls(order: string[]): NavControlDef[] {
   return out
 }
 
-export interface NavControlCtx { account: boolean; isElectron: boolean; developerMode: boolean }
+export interface NavControlCtx { account: boolean; isElectron: boolean; developerMode: boolean; hasUploads: boolean }
 
 // Whether a control applies to the current session at all (regardless of the
 // user's show/hide choice): profile needs an account, download is web only,
-// diagnostics needs developer mode, uploads/settings are always available.
+// diagnostics needs developer mode, uploads needs something to show (an
+// active transfer or this session's history) — otherwise it's a button that
+// opens an empty panel — settings is always available.
 export function isNavControlAvailable(id: NavControlId, ctx: NavControlCtx): boolean {
   switch (id) {
     case 'profile': return ctx.account
     case 'download': return !ctx.isElectron
     case 'diagnostics': return ctx.developerMode
-    case 'uploads':
+    case 'uploads': return ctx.hasUploads
     case 'settings': return true
   }
 }

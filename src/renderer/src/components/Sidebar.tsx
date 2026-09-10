@@ -145,7 +145,7 @@ export default function Sidebar(): JSX.Element {
   // Foot-of-menu controls (Profile, Log out, Diagnostics, Settings) —
   // ordered and filtered to what's both available and toggled on in Settings.
   // Log in and the collapse toggle are rendered separately (never hideable).
-  const controlCtx = { account: !!account, isElectron: false, developerMode }
+  const controlCtx = { account: !!account, isElectron: false, developerMode, hasUploads: uploads.length > 0 }
   const controls = orderedNavControls(navControlOrder).filter((c) => isNavControlVisible(c, navControlVisibility, controlCtx))
 
   const rowCls = 'flex items-center w-full py-2 rounded text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors gap-3 px-3'

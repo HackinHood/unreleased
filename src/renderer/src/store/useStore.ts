@@ -37,6 +37,7 @@ import { EQ_BANDS, EQ_PRESETS, FLAT_GAINS } from '../lib/audioEffects'
 import type { CommunityEdit } from '../lib/audioEffects'
 import { HOTKEY_ACTIONS, effectiveBinding, effectiveGlobalBinding, defaultGlobalBinding } from '../lib/hotkeys'
 import { DEFAULT_NAV_ORDER, DEFAULT_NAV_VISIBILITY, DEFAULT_NAV_CONTROL_ORDER, DEFAULT_NAV_CONTROL_VISIBILITY } from '../lib/navItems'
+import { DEFAULT_HOME_SECTION_VISIBILITY } from '../lib/homeSections'
 import { getLastfmSession } from '../lib/lastfm'
 import { useSandboxStore } from '../components/Modal'
 import { runWhenIdle } from '../lib/platform'
@@ -183,6 +184,10 @@ interface AppState {
   // Diagnostics, Download, Settings) — same model as navOrder/navVisibility.
   navControlOrder: string[]
   navControlVisibility: Record<string, boolean>
+  // Per-section visibility on the mobile Home dashboard (section id → shown).
+  // Sparse overrides merged onto DEFAULT_HOME_SECTION_VISIBILITY, same model
+  // as navVisibility.
+  homeSectionVisibility: Record<string, boolean>
 
   // Settings
   crossfadeEnabled: boolean
@@ -491,6 +496,7 @@ interface AppActions {
   setNavItemVisible: (view: ViewType, visible: boolean) => void
   setNavControlOrder: (order: string[]) => void
   setNavControlVisible: (id: string, visible: boolean) => void
+  setHomeSectionVisible: (id: string, visible: boolean) => void
 
   setCrossfade: (enabled: boolean, duration: number) => void
   setPauseFade: (enabled: boolean) => void
@@ -1023,6 +1029,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
     delete merged['return-api']
     return merged
   })(),
+  homeSectionVisibility: { ...DEFAULT_HOME_SECTION_VISIBILITY, ...(ls.get<Record<string, boolean>>('homeSectionVisibility') ?? {}) },
 
   setActiveView: (view) => {
     // Already there: skip, so a repeat call can't stack duplicate history
@@ -1136,6 +1143,11 @@ export const useStore = create<AppStore>((set, get, store) => ({
     const navControlVisibility = { ...get().navControlVisibility, [id]: visible }
     set({ navControlVisibility })
     ls.set('navControlVisibility', navControlVisibility)
+  },
+  setHomeSectionVisible: (id, visible) => {
+    const homeSectionVisibility = { ...get().homeSectionVisibility, [id]: visible }
+    set({ homeSectionVisibility })
+    ls.set('homeSectionVisibility', homeSectionVisibility)
   },
 
   // ── Settings ──────────────────────────────────────────────────────────────

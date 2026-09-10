@@ -5,20 +5,20 @@ import { DocsSearchContext, type DocsSearchValue } from './searchContext'
 import { usePrimitives } from './primitivesContext'
 
 // ─── Tab content ──────────────────────────────────────────────────────────────
-// Single source of truth for API docs content — desktop and mobile both
+// Single source of truth for API docs content. Desktop and mobile both
 // render this, supplying their own Code/Section/Endpoint/MethodPath via
 // DocsPrimitivesProvider so touch vs. hover chrome stays platform-specific
 // without duplicating the actual documentation text.
 
 function OverviewTab() {
-  const { Code, Section, Endpoint } = usePrimitives()
+  const { Code, Section, Endpoint, MethodPath } = usePrimitives()
   return (
     <div className="space-y-6">
       <Section title="Introduction">
         <p className="text-sm text-text-secondary leading-relaxed">
-          The Juice WRLD API provides programmatic access to the most comprehensive Juice WRLD music database —
-          over 2,700 catalogued songs, unreleased tracks, file browsing, and rich metadata. No API key required
-          for public read endpoints.
+          The Juice WRLD API gives programmatic access to the largest Juice WRLD music database: over 2,700
+          catalogued songs, unreleased tracks, file browsing, and rich metadata. Public read endpoints need
+          no API key.
         </p>
         <div className="flex items-center gap-2 mt-2">
           <span className="text-xs text-text-muted">Base URL</span>
@@ -34,15 +34,39 @@ function OverviewTab() {
         </a>
       </Section>
 
+      <Section title="Index & Health Check">
+        <MethodPath method="GET" path={`/`} />
+        <p className="text-xs text-text-muted mb-2">API index. Absolute URIs to the major collections, useful as a quick sanity check or a starting point for API explorers.</p>
+        <Pre>{`{
+  "artists": "https://…/juicewrld/artists/",
+  "albums": "https://…/juicewrld/albums/",
+  "songs": "https://…/juicewrld/songs/",
+  "versions": "https://…/juicewrld/versions/",
+  "eras": "https://…/juicewrld/eras/",
+  "stats": "https://…/juicewrld/stats/",
+  "categories": "https://…/juicewrld/categories/"
+}`}</Pre>
+        <MethodPath method="GET" path={`/health/`} className="mt-3" />
+        <p className="text-xs text-text-muted">Liveness check. <Code>{'{ "status": "ok" }'}</Code>, nothing else.</p>
+      </Section>
+
       <Section title="Endpoint Overview">
         <div className="divide-y divide-[var(--border)]">
+          <Endpoint method="GET" path="/" description="API index with links to the major collections" />
+          <Endpoint method="GET" path="/health/" description="Health check" />
+          <Endpoint method="GET" path="/artists/" description="List artists" />
+          <Endpoint method="GET" path="/artists/{id}/" description="Single artist by ID" />
+          <Endpoint method="GET" path="/albums/" description="List albums" />
+          <Endpoint method="GET" path="/albums/{id}/" description="Single album by ID" />
           <Endpoint method="GET" path="/songs/" description="List, filter, search and paginate songs" />
           <Endpoint method="GET" path="/songs/{id}/" description="Single song by internal ID" />
           <Endpoint method="GET" path="/categories/" description="Available category values with labels" />
-          <Endpoint method="GET" path="/eras/" description="All eras — paginated (34 total, 20 per page)" />
+          <Endpoint method="GET" path="/eras/" description="All eras, paginated (34 total, 20 per page)" />
+          <Endpoint method="GET" path="/eras/{id}/" description="Single era by ID" />
           <Endpoint method="GET" path="/stats/" description="Database-wide counts by category and era" />
           <Endpoint method="GET" path="/radio/random/" description="Random playable song with full metadata" />
-          <Endpoint method="GET" path="/radio/live/" description="Live 999 FM station state — now playing, votes, listeners" />
+          <Endpoint method="GET" path="/radio/live/" description="Live 999 FM station state: now playing, votes, listeners" />
+          <Endpoint method="GET" path="/radio/library/" description="Track list backing the live station, grouped by era" />
           <Endpoint method="GET" path="/radio/stream.mp3" description="Live radio MP3 stream (WebSocket /ws/radio/ carries the same audio + metadata)" />
           <Endpoint method="GET" path="/files/channels/" description="List active comp channels (public)" />
           <Endpoint method="GET" path="/files/browse/" description="Browse the file system" />
@@ -50,18 +74,31 @@ function OverviewTab() {
           <Endpoint method="GET" path="/files/info/" description="Metadata for a single file" />
           <Endpoint method="GET" path="/files/cover-art/" description="Cover art image for an audio file" />
           <Endpoint method="GET" path="/files/thumbnail/" description="Thumbnail image for a file" />
-          <Endpoint method="GET" path="/files/download/" description="Stream/download audio — supports Range requests" />
+          <Endpoint method="GET" path="/files/download/" description="Stream/download audio, supports Range requests" />
+          <Endpoint method="GET" path="/files/download-compressed/" description="Transcoded MP3 stream at a chosen bitrate" />
+          <Endpoint method="GET" path="/files/image-thumbnail/" description="Resized JPEG thumbnail for an image file" />
           <Endpoint method="POST" path="/files/zip-selection/" description="Immediate ZIP stream of selected paths (not a background job)" />
+          <Endpoint method="GET" path="/zip-jobs/{filename}" description="Download the finished ZIP from a background job" />
           <Endpoint method="GET" path="/versions/" description="All song-version rows (bulk mode via ?all=true)" />
-          <Endpoint method="GET" path="/versions/{song_id}/" description="Version row for one song, if linked" />
+          <Endpoint method="GET" path="/versions/{song_id}/" description="Version rows for one song, if linked" />
+          <Endpoint method="GET" path="/versions/{song_id}/{id}/" description="A single version row by its own ID" />
           <Endpoint method="POST" path="/versions/" description="Link a song into a version group (editor+)" />
           <Endpoint method="PATCH" path="/versions/{song_id}/" description="Update a song's version label/title/group (editor+)" />
           <Endpoint method="POST" path="/playlists/share/" description="Create a public shared playlist link" />
           <Endpoint method="GET" path="/playlists/shared/{share_id}/" description="Fetch a shared playlist by ID" />
           <Endpoint method="POST" path="/plays/" description="Record a play event (no auth required)" />
+          <Endpoint method="GET" path="/plays/stats/" description="Site-wide play stats: top songs, albums, eras, recent plays" />
+          <Endpoint method="GET" path="/heardle/leaderboard/" description="Heardle leaderboards: streak, today, versus" />
+          <Endpoint method="GET" path="/heardle/clip/" description="Signed Heardle audio clip (HMAC round token, not a user token)" />
+          <Endpoint method="GET" path="/feeds/tracker.rss" description="RSS feed of approved song edits" />
+          <Endpoint method="GET" path="/feeds/comp.rss" description="RSS feed of comp file commits" />
+          <Endpoint method="GET" path="/feeds/tracker.json" description="JSON feed of approved song edits" />
+          <Endpoint method="GET" path="/feeds/comp.json" description="JSON feed of comp file commits" />
+          <Endpoint method="GET" path="/cover/{name}" description="Static cover art image by filename" />
+          <Endpoint method="GET" path="/media/{path}" description="Static media file (news covers, attachments, etc.)" />
           <Endpoint method="GET" path="/accounts/account/me/" description="Current user info (public-facing), incl. per-song preferences + playlist folders" />
           <Endpoint method="PATCH" path="/accounts/account/me/" description="Update user_preferences (custom titles, covers, default version, playcounts) and/or playlist_folders" />
-          <Endpoint method="GET" path="/accounts/me/" description="Current user with role — editor/admin dashboards" />
+          <Endpoint method="GET" path="/accounts/me/" description="Current user with role, for editor/admin dashboards" />
           <Endpoint method="POST" path="/feedback/" description="Submit API feedback (no auth)" />
           <Endpoint method="GET" path="/feedback/" description="List submitted feedback (requires auth)" />
           <Endpoint method="POST" path="/reports/" description="Report wrong info on a song (no auth)" />
@@ -76,8 +113,8 @@ function OverviewTab() {
           <Endpoint method="DELETE" path="/accounts/editor/proposals/{id}/" description="Withdraw a proposal" />
           <Endpoint method="GET" path="/accounts/editor/leaderboard/" description="Editor approved-count leaderboard with badges" />
           <Endpoint method="GET" path="/accounts/contributor/proposals/" description="List your own comp-file proposals (contributor+)" />
-          <Endpoint method="POST" path="/accounts/contributor/proposals/" description="Submit a comp-file proposal — multipart (contributor+)" />
-          <Endpoint method="PATCH" path="/accounts/contributor/proposals/{id}/" description="Edit a pending comp-file proposal — multipart" />
+          <Endpoint method="POST" path="/accounts/contributor/proposals/" description="Submit a comp-file proposal (multipart, contributor+)" />
+          <Endpoint method="PATCH" path="/accounts/contributor/proposals/{id}/" description="Edit a pending comp-file proposal (multipart)" />
           <Endpoint method="DELETE" path="/accounts/contributor/proposals/{id}/" description="Withdraw a comp-file proposal" />
           <Endpoint method="GET" path="/accounts/admin/comp-proposals/" description="List all comp-file proposals (admin)" />
           <Endpoint method="POST" path="/accounts/admin/comp-proposals/{id}/review/" description="Approve/reject a comp-file proposal (admin)" />
@@ -93,13 +130,13 @@ function OverviewTab() {
           <Endpoint method="GET" path="/news/" description="Paginated news feed. Filter: ?channel=, sort: ?ordering=" />
           <Endpoint method="GET" path="/news/{id}/" description="Single news post" />
           <Endpoint method="POST" path="/news/" description="Create a news post (is_news or admin)" />
-          <Endpoint method="PATCH" path="/news/{id}/" description="Edit a news post — own post only unless admin (is_news or admin)" />
-          <Endpoint method="DELETE" path="/news/{id}/" description="Delete a news post — own post only unless admin (is_news or admin)" />
+          <Endpoint method="PATCH" path="/news/{id}/" description="Edit a news post (own post only unless admin)" />
+          <Endpoint method="DELETE" path="/news/{id}/" description="Delete a news post (own post only unless admin)" />
           <Endpoint method="GET" path="/news/channels/" description="List news channels" />
           <Endpoint method="POST" path="/news/channels/" description="Create a news channel (admin)" />
           <Endpoint method="PATCH" path="/news/channels/{slug}/" description="Rename/describe a news channel (admin)" />
-          <Endpoint method="DELETE" path="/news/channels/{slug}/" description="Delete a news channel — only if empty (admin)" />
-          <Endpoint method="POST" path="/news/uploads/" description="Upload a post attachment — multipart, ≤25MB (is_news or admin)" />
+          <Endpoint method="DELETE" path="/news/channels/{slug}/" description="Delete a news channel, only if empty (admin)" />
+          <Endpoint method="POST" path="/news/uploads/" description="Upload a post attachment (multipart, ≤25MB, is_news or admin)" />
           <Endpoint method="GET" path="/news/attachments/{id}/stream/" description="Stream/download a hosted attachment" />
           <Endpoint method="GET" path="/library/favorites/" description="List personal favorites (any logged-in user)" />
           <Endpoint method="POST" path="/library/favorites/" description="Add a favorite" />
@@ -111,11 +148,11 @@ function OverviewTab() {
           <Endpoint method="DELETE" path="/library/playlists/{id}/" description="Delete a personal playlist" />
           <Endpoint method="POST" path="/library/playlists/{id}/items/" description="Add a track to a playlist" />
           <Endpoint method="DELETE" path="/library/playlists/{id}/items/{song_id}/" description="Remove a track from a playlist" />
-          <Endpoint method="GET" path="/library/playlists/public/{id}/" description="Fetch a playlist marked public — no auth required" />
+          <Endpoint method="GET" path="/library/playlists/public/{id}/" description="Fetch a playlist marked public (no auth required)" />
         </div>
       </Section>
 
-      <Section title="Songs Object — Full Shape">
+      <Section title="Songs Object: Full Shape">
         <Pre>{`{
   "id": 1,
   "public_id": 123,
@@ -168,22 +205,22 @@ function OverviewTab() {
   "versions": []
 }`}</Pre>
         <p className="text-xs text-text-muted">
-          <Code>image_url</Code> is relative — prepend <Code>https://juicewrldapi.com</Code> before use.
+          <Code>image_url</Code> is relative; prepend <Code>https://juicewrldapi.com</Code> before use.
         </p>
         <p className="text-xs text-text-muted">
-          <Code>version_title</Code> / <Code>versions</Code> are omitted unless the request includes <Code>?versions=true</Code> — see the <Code>/songs/</Code> params below.
+          <Code>version_title</Code> and <Code>versions</Code> are omitted unless the request includes <Code>?versions=true</Code>. See the <Code>/songs/</Code> params below.
         </p>
         <p className="text-xs text-text-muted font-semibold mt-3">
-          <Code>synced_lyrics</Code> — no separate param, no opt-in flag
+          <Code>synced_lyrics</Code>: no separate param, no opt-in flag
         </p>
         <p className="text-xs text-text-muted">
           Unlike <Code>version_title</Code>/<Code>versions</Code> above, <Code>synced_lyrics</Code> is a plain field
-          on the song object like <Code>lyrics</Code> — it comes back on every request that returns a song (list,
-          detail, radio, live), with no query param needed to request it. It&apos;s <Code>null</Code> when the song
+          on the song object like <Code>lyrics</Code>. It comes back on every request that returns a song (list,
+          detail, radio, live); no query param requests it. It&apos;s <Code>null</Code> when the song
           has no synced lyrics.
         </p>
         <p className="text-xs text-text-muted">
-          Format is <span className="font-semibold text-text-primary">LRC</span> — one timestamp per line,{' '}
+          Format is <span className="font-semibold text-text-primary">LRC</span>: one timestamp per line,{' '}
           <Code>[mm:ss.xx]</Code> (also accepts <Code>[mm:ss:xx]</Code>), text after the bracket:
         </p>
         <Pre>{`[00:12.50]First line
@@ -199,10 +236,10 @@ function OverviewTab() {
 }
 
 function SongsTab() {
-  const { Code, Section } = usePrimitives()
+  const { Code, Section, MethodPath } = usePrimitives()
   return (
     <div className="space-y-6">
-      <Section title="GET /songs/ — List & Search">
+      <Section title="List & Search (GET /songs/)">
         <p className="text-sm text-text-secondary">Paginated song list with rich filtering. All params are optional.</p>
         <Table
           headers={['Param', 'Type', 'Description']}
@@ -210,13 +247,13 @@ function SongsTab() {
             [<Code>page</Code>, 'number', 'Page number (default: 1)'],
             [<Code>page_size</Code>, 'number', 'Results per page (default: 20)'],
             [<Code>category</Code>, 'string', <><Code>released</Code>, <Code>unreleased</Code>, <Code>unsurfaced</Code>, <Code>recording_session</Code></>],
-            [<Code>era</Code>, 'string', 'Era abbreviation e.g. "GB&GR", "DRFL", "WOD", "OUT", "POST" — use name from /eras/'],
-            [<Code>search</Code>, 'string', 'Search names, artists, track titles (normalizes special chars — "dont" matches "don\'t")'],
+            [<Code>era</Code>, 'string', 'Era abbreviation, e.g. "GB&GR", "DRFL", "WOD", "OUT", "POST". Use the name from /eras/'],
+            [<Code>search</Code>, 'string', 'Search names, artists, track titles (normalizes special chars, so "dont" matches "don\'t")'],
             [<Code>searchall</Code>, 'string', 'Search names, artists, producers, track titles'],
             [<Code>lyrics</Code>, 'string', 'Full-text search within lyrics content'],
-            [<Code>all</Code>, 'string', <>&quot;true&quot; returns the <span className="font-semibold text-text-primary">entire catalogue in one response</span> as a plain array — no pagination envelope, and <Code>page</Code>/<Code>page_size</Code> are ignored. It&apos;s ~2,500 songs, so use it for whole-dataset work (calendars, grouping, offline seeding), not for lists a user scrolls.</>],
+            [<Code>all</Code>, 'string', <>&quot;true&quot; returns the <span className="font-semibold text-text-primary">entire catalogue in one response</span> as a plain array. There's no pagination envelope, and <Code>page</Code>/<Code>page_size</Code> are ignored. It's ~2,500 songs, so use it for whole-dataset work (calendars, grouping, offline seeding), not for lists a user scrolls.</>],
             [<Code>file_names_array</Code>, 'string', '"true" to return file_names as array instead of string'],
-            [<Code>versions</Code>, 'string', <>"true" to add <Code>version_title</Code> and a <Code>versions</Code> array to each song. Collection endpoint only — <Code>{'/songs/{id}/'}</Code> ignores it.</>],
+            [<Code>versions</Code>, 'string', <>"true" to add <Code>version_title</Code> and a <Code>versions</Code> array to each song. Collection endpoint only; <Code>{'/songs/{id}/'}</Code> ignores it.</>],
           ]}
         />
         <p className="text-xs text-text-muted font-semibold mt-2">Response shape:</p>
@@ -226,16 +263,16 @@ function SongsTab() {
   "previous": null,
   "results": [ /* Song objects */ ]
 }`}</Pre>
-        <p className="text-xs text-text-muted font-semibold mt-2">With <Code>?all=true</Code> — bare array, no envelope:</p>
+        <p className="text-xs text-text-muted font-semibold mt-2">With <Code>?all=true</Code>: bare array, no envelope:</p>
         <Pre>{`[ /* every Song object */ ]`}</Pre>
         <p className="text-xs text-text-muted">
           Note there is <span className="font-semibold text-text-primary">no ordering/sort param</span>, and{' '}
-          <Code>category</Code>/<Code>era</Code> each accept only one value per request — sorting, and any
+          <Code>category</Code>/<Code>era</Code> each accept only one value per request. Sorting, and any
           multi-category or multi-era view, has to be assembled client-side.
         </p>
       </Section>
 
-      <Section title="GET /songs/{id}/ — Single Song">
+      <Section title="Single Song (GET /songs/{id}/)">
         <p className="text-sm text-text-secondary">Returns a full song object by internal ID (<Code>song.id</Code>, not <Code>public_id</Code>).</p>
       </Section>
 
@@ -251,7 +288,7 @@ function SongsTab() {
       </Section>
 
       <Section title="GET /eras/">
-        <p className="text-sm text-text-secondary">Paginated — same envelope as /songs/. 34 eras total. Era names use short abbreviation strings.</p>
+        <p className="text-sm text-text-secondary">Paginated, same envelope as /songs/. 34 eras total. Era names use short abbreviation strings.</p>
         <Pre>{`{
   "count": 34,
   "next": "https://juicewrldapi.com/juicewrld/eras/?page=2",
@@ -269,8 +306,44 @@ function SongsTab() {
   ]
 }`}</Pre>
         <p className="text-xs text-text-muted mt-1">
-          Pass <Code>name</Code> as the <Code>era</Code> filter param on /songs/ — e.g. <Code>era=GB%26GR</Code>.
+          Pass <Code>name</Code> as the <Code>era</Code> filter param on /songs/, e.g. <Code>era=GB%26GR</Code>.
         </p>
+        <p className="text-xs text-text-muted mt-1">
+          <Code>{'GET /eras/{id}/'}</Code> returns a single era object with the same fields.
+        </p>
+      </Section>
+
+      <Section title="Artists">
+        <p className="text-sm text-text-secondary">A separate, lighter object from <Code>credited_artists</Code> on the song shape: a proper Artist record with an id and bio.</p>
+        <MethodPath method="GET" path={`/artists/`} className="mt-2" />
+        <p className="text-xs text-text-muted mb-2">Returns a plain array of Artist objects, no pagination envelope.</p>
+        <Pre>{`[
+  { "id": 1, "name": "Juice WRLD", "bio": "..." }
+]`}</Pre>
+        <MethodPath method="GET" path={`/artists/{id}/`} className="mt-3" />
+        <p className="text-xs text-text-muted">Single Artist object by <Code>id</Code>.</p>
+      </Section>
+
+      <Section title="Albums">
+        <p className="text-sm text-text-secondary">Album metadata, distinct from the <Code>album</Code> string on the song shape. Each album links back to its Artist.</p>
+        <MethodPath method="GET" path={`/albums/`} className="mt-2" />
+        <p className="text-xs text-text-muted mb-2">Returns a plain array of Album objects, no pagination envelope.</p>
+        <Pre>{`[
+  {
+    "id": 1,
+    "title": "Goodbye & Good Riddance",
+    "type": "album",
+    "artist": { "id": 1, "name": "Juice WRLD", "bio": "..." },
+    "release_date": "2018-05-23",
+    "description": "...",
+    "play_count": 0
+  }
+]`}</Pre>
+        <p className="text-xs text-text-muted">
+          <Code>artist_id</Code> can also show up on write payloads; the read shape nests the full <Code>artist</Code> object instead.
+        </p>
+        <MethodPath method="GET" path={`/albums/{id}/`} className="mt-3" />
+        <p className="text-xs text-text-muted">Single Album object by <Code>id</Code>.</p>
       </Section>
 
       <Section title="GET /stats/">
@@ -319,16 +392,16 @@ function FilesTab() {
       <Section title="Comp Channels">
         <p className="text-sm text-text-secondary leading-relaxed">
           The file tree can be split into multiple <span className="font-semibold text-text-primary">comp
-          channels</span> (<Code>comp</Code>, <Code>comp_alrdywrld</Code>, …) — each its own root on disk, with its
+          channels</span> (<Code>comp</Code>, <Code>comp_alrdywrld</Code>, …), each its own root on disk, with its
           own staging/archive folders and its own edit-proposal and comp-file-proposal queues. Editor/contributor/manager
           access is a <span className="font-semibold text-text-primary">per-channel membership</span>, not just the
           old global profile flags (see Roles above). These are a completely separate system from News channels
-          (News tab) — different slugs, different roles, different storage; <Code>?channel=</Code> means something
+          (News tab): different slugs, different roles, different storage. <Code>?channel=</Code> means something
           different depending which endpoint it&apos;s on.
         </p>
         <p className="text-xs text-text-muted mt-2">
           Every endpoint on this tab accepts an optional <Code>channel</Code> param (query string on GET, JSON/form
-          field on POST) — omit it, or pass an unrecognized slug, and the API falls back to the primary channel.
+          field on POST). Omit it, or pass an unrecognized slug, and the API falls back to the primary channel.
           Paths are always relative to that one channel&apos;s root, never across trees.
         </p>
         <MethodPath method="GET" path={`/files/channels/`} className="mt-3" />
@@ -341,83 +414,98 @@ function FilesTab() {
         <p className="text-xs text-text-muted">
           For the full list including inactive channels (plus <Code>id</Code>, <Code>is_active</Code>,{' '}
           <Code>sort_order</Code>), see <Code>GET /accounts/admin/channels/</Code> under Admin: Channels
-          (Auth &amp; Accounts tab) — admin-only.
+          (Accounts tab), admin-only.
         </p>
       </Section>
 
-      <Section title="GET /files/browse/ — Directory Listing">
+      <Section title="Directory Listing (GET /files/browse/)">
         <Table
           headers={['Param', 'Required', 'Description']}
           rows={[
             [<Code>path</Code>, 'No', 'Directory path relative to compilation root'],
             [<Code>search</Code>, 'No', 'Filter items by name (e.g. ".mp3")'],
-            [<Code>channel</Code>, 'No', 'Comp channel slug — defaults to the primary channel'],
+            [<Code>channel</Code>, 'No', 'Comp channel slug. Defaults to the primary channel'],
           ]}
         />
       </Section>
 
-      <Section title="GET /files/list-all/ — Flat File List" defaultOpen={false}>
+      <Section title="Flat File List (GET /files/list-all/)" defaultOpen={false}>
         <Table
           headers={['Param', 'Required', 'Description']}
           rows={[
-            [<Code>channel</Code>, 'No', 'Comp channel slug — defaults to the primary channel'],
+            [<Code>channel</Code>, 'No', 'Comp channel slug. Defaults to the primary channel'],
           ]}
         />
       </Section>
 
-      <Section title="GET /files/thumbnail/ — Thumbnail Image" defaultOpen={false}>
-        <Table
-          headers={['Param', 'Required', 'Description']}
-          rows={[
-            [<Code>path</Code>, 'Yes', 'File path relative to compilation root'],
-            [<Code>channel</Code>, 'No', 'Comp channel slug — defaults to the primary channel'],
-          ]}
-        />
-      </Section>
-
-      <Section title="GET /files/info/ — File Metadata">
+      <Section title="Thumbnail Image (GET /files/thumbnail/)" defaultOpen={false}>
         <Table
           headers={['Param', 'Required', 'Description']}
           rows={[
             [<Code>path</Code>, 'Yes', 'File path relative to compilation root'],
-            [<Code>channel</Code>, 'No', 'Comp channel slug — defaults to the primary channel'],
+            [<Code>channel</Code>, 'No', 'Comp channel slug. Defaults to the primary channel'],
           ]}
         />
       </Section>
 
-      <Section title="GET /files/cover-art/ — Cover Art Image">
+      <Section title="File Metadata (GET /files/info/)">
+        <Table
+          headers={['Param', 'Required', 'Description']}
+          rows={[
+            [<Code>path</Code>, 'Yes', 'File path relative to compilation root'],
+            [<Code>channel</Code>, 'No', 'Comp channel slug. Defaults to the primary channel'],
+          ]}
+        />
+      </Section>
+
+      <Section title="Cover Art Image (GET /files/cover-art/)">
         <Table
           headers={['Param', 'Required', 'Description']}
           rows={[
             [<Code>path</Code>, 'Yes', 'Audio file path relative to compilation root'],
-            [<Code>small</Code>, 'No', <>&quot;true&quot; — returns a degraded ~128px JPEG instead of the full-size embedded art</>],
-            [<Code>channel</Code>, 'No', 'Comp channel slug — defaults to the primary channel'],
+            [<Code>small</Code>, 'No', <>&quot;true&quot; returns a degraded ~128px JPEG instead of the full-size embedded art</>],
+            [<Code>channel</Code>, 'No', 'Comp channel slug. Defaults to the primary channel'],
           ]}
         />
         <p className="text-xs text-text-muted">
           The original is often a 600×600 PNG around 1&nbsp;MB. <Code>small=true</Code> serves the same image
-          downscaled to a few KB — use it for anything drawn at thumbnail size, and as a fast first paint
+          downscaled to a few KB. Use it for anything drawn at thumbnail size, and as a fast first paint
           before the full-size one loads.
         </p>
         <Pre>{`GET /files/cover-art/?path=Compilation/…/Lucid Dreams.mp3&small=true`}</Pre>
+        <p className="text-xs text-text-muted mt-1">
+          <Code>{'GET /files/art/'}</Code> is an alias for this same endpoint, same params, same response.
+        </p>
       </Section>
 
-      <Section title="GET /files/download/ — Audio Stream">
+      <Section title="Resized Image Thumbnail (GET /files/image-thumbnail/)" defaultOpen={false}>
+        <Table
+          headers={['Param', 'Required', 'Description']}
+          rows={[
+            [<Code>path</Code>, 'Yes', 'Image file path relative to compilation root'],
+            [<Code>size</Code>, 'No', 'Target size in px, 32-1024 (default 256)'],
+            [<Code>channel</Code>, 'No', 'Comp channel slug. Defaults to the primary channel'],
+          ]}
+        />
+        <p className="text-xs text-text-muted">Returns a resized JPEG. An SVG source passes through unresized.</p>
+      </Section>
+
+      <Section title="Audio Stream (GET /files/download/)">
         <p className="text-sm text-text-secondary">
-          The primary audio streaming endpoint. Supports HTTP Range requests — the browser{' '}
+          The primary audio streaming endpoint. Supports HTTP Range requests; the browser{' '}
           <Code>{'<audio>'}</Code> element handles seeking automatically when you set <Code>src</Code>.
         </p>
         <Table
           headers={['Param', 'Required', 'Description']}
           rows={[
             [<Code>path</Code>, 'Yes', 'File path relative to compilation root'],
-            [<Code>small</Code>, 'No', <>&quot;true&quot; — for an image path, returns a degraded/downscaled version instead of the original</>],
-            [<Code>channel</Code>, 'No', 'Comp channel slug — defaults to the primary channel'],
+            [<Code>small</Code>, 'No', <>&quot;true&quot; for an image path returns a degraded/downscaled version instead of the original</>],
+            [<Code>channel</Code>, 'No', 'Comp channel slug. Defaults to the primary channel'],
           ]}
         />
         <p className="text-xs text-text-muted">
           <Code>small=true</Code> only makes sense when <Code>path</Code> points at an image (e.g. a cover art
-          file) — pass it to shrink a large cover for a thumbnail without fetching the full-size original.
+          file). Pass it to shrink a large cover for a thumbnail without fetching the full-size original.
           For audio, it has no effect.
         </p>
         <Pre>{`GET /files/download/?path=Compilation/cover.jpg&small=true`}</Pre>
@@ -435,17 +523,34 @@ function FilesTab() {
         <p className="text-xs text-text-muted mt-2">Responses: <Code>200 OK</Code> full file · <Code>206 Partial Content</Code> range</p>
       </Section>
 
+      <Section title="Compressed Audio (GET /files/download-compressed/)" defaultOpen={false}>
+        <p className="text-sm text-text-secondary">On-the-fly transcode to a lower bitrate MP3, for bandwidth-constrained playback.</p>
+        <Table
+          headers={['Param', 'Required', 'Description']}
+          rows={[
+            [<Code>path</Code>, 'Yes', 'File path relative to compilation root'],
+            [<Code>bitrate</Code>, 'No', 'Target bitrate, e.g. "160k" (default)'],
+            [<Code>channel</Code>, 'No', 'Comp channel slug. Defaults to the primary channel'],
+          ]}
+        />
+        <p className="text-xs text-text-muted">Response is always served as an attachment, not inline.</p>
+      </Section>
+
       <Section title="ZIP Operations">
         <div className="space-y-3">
           <div>
             <MethodPath method="POST" path={`/start-zip-job/`} />
             <p className="text-xs text-text-muted">Start a background ZIP job. Returns a <Code>job_id</Code> for polling.</p>
             <Pre>{`{ "paths": ["Compilation/song1.mp3", "Compilation/song2.mp3"], "channel": "sessions-comp" }`}</Pre>
-            <p className="text-xs text-text-muted"><Code>channel</Code> is optional — omit it for the primary channel.</p>
+            <p className="text-xs text-text-muted"><Code>channel</Code> is optional; omit it for the primary channel.</p>
           </div>
           <div>
             <MethodPath method="GET" path={`/zip-job-status/{'{job_id}'}/ `} />
-            <p className="text-xs text-text-muted">Poll ZIP job progress.</p>
+            <p className="text-xs text-text-muted">
+              Poll ZIP job progress. Once <Code>status</Code> is <Code>"done"</Code>, the response carries a{' '}
+              <Code>download_url</Code> pointing at <Code>{'GET /zip-jobs/{filename}'}</Code>, which streams the
+              finished archive (supports Range) and deletes it from disk once fully downloaded.
+            </p>
           </div>
           <div>
             <MethodPath method="POST" path={`/cancel-zip-job/{'{job_id}'}/ `} />
@@ -454,11 +559,11 @@ function FilesTab() {
           <div>
             <MethodPath method="POST" path={`/files/zip-selection/`} />
             <p className="text-xs text-text-muted">
-              Immediate ZIP stream (not background) — POST a list of relative paths, get a streaming zip of those
+              Immediate ZIP stream, not background: POST a list of relative paths, get a streaming zip of those
               files/folders from that channel&apos;s tree back directly (no <Code>job_id</Code> polling).
             </p>
             <Pre>{`{ "paths": ["Compilation/Folder"], "channel": "sessions-comp" }`}</Pre>
-            <p className="text-xs text-text-muted"><Code>channel</Code> is optional — omit it for the primary channel.</p>
+            <p className="text-xs text-text-muted"><Code>channel</Code> is optional; omit it for the primary channel.</p>
           </div>
         </div>
       </Section>
@@ -489,14 +594,14 @@ function PlaylistsTab() {
           </div>
           <div>
             <MethodPath method="GET" path={`/playlists/shared/{'{share_id}'}/info/`} />
-            <p className="text-xs text-text-muted">Lightweight preview — name + track count without full fetch.</p>
+            <p className="text-xs text-text-muted">Lightweight preview: name and track count, no full fetch.</p>
           </div>
         </div>
       </Section>
 
       <Section title="Personal Library Playlists (auth required)">
         <p className="text-sm text-text-secondary">
-          Private, account-synced playlists. Any logged-in user (including standard accounts) can use these — does not require editor role.
+          Private, account-synced playlists. Any logged-in user, including standard accounts, can use these; no editor role required.
         </p>
         <Table
           headers={['Method', 'Path', 'Description']}
@@ -511,7 +616,7 @@ function PlaylistsTab() {
           ]}
         />
         <p className="text-xs text-text-muted mt-2">
-          <Code>?omit_cover_image=true</Code> drops the (large, base64) <Code>cover_image</Code> field from the response — use it for
+          <Code>?omit_cover_image=true</Code> drops the (large, base64) <Code>cover_image</Code> field from the response. Use it for
           list views that only need <Code>cover_image_url</Code>.
         </p>
         <p className="text-xs text-text-muted font-semibold mt-3">Create:</p>
@@ -533,7 +638,7 @@ Authorization: Token <token>
   "is_public": true,         // toggle public sharing (see below)
   "order": [123, 456, 789]  // song IDs in desired order
 }`}</Pre>
-        <p className="text-xs text-text-muted font-semibold mt-3">List response — each item:</p>
+        <p className="text-xs text-text-muted font-semibold mt-3">List response, each item:</p>
         <Pre>{`{
   "id": 1,
   "name": "My Playlist",
@@ -545,7 +650,7 @@ Authorization: Token <token>
   "created_at": "...",
   "updated_at": "..."
 }`}</Pre>
-        <p className="text-xs text-text-muted font-semibold mt-3">Detail response — same fields plus <Code>items[]</Code>:</p>
+        <p className="text-xs text-text-muted font-semibold mt-3">Detail response, same fields plus <Code>items[]</Code>:</p>
         <Pre>{`{
   "id": 1,
   "name": "My Playlist",
@@ -567,13 +672,13 @@ Authorization: Token <token>
     }
   ]
 }`}</Pre>
-        <p className="text-xs text-text-muted mt-2">The song object in playlist items is a trimmed shape — no <Code>producers</Code>, <Code>engineers</Code>, or <Code>bitrate</Code>.</p>
+        <p className="text-xs text-text-muted mt-2">The song object in playlist items is a trimmed shape, with no <Code>producers</Code>, <Code>engineers</Code>, or <Code>bitrate</Code>.</p>
       </Section>
 
       <Section title="Public Library Playlists (no auth required)">
         <p className="text-sm text-text-secondary">
           A personal library playlist with <Code>is_public: true</Code> can be fetched anonymously by its numeric{' '}
-          <Code>id</Code> — distinct from the ephemeral, no-account "Shared Playlists" above. Toggle visibility via{' '}
+          <Code>id</Code>, distinct from the ephemeral, no-account "Shared Playlists" above. Toggle visibility via{' '}
           <Code>{'PATCH /library/playlists/{id}/'}</Code> with <Code>{'{ "is_public": true }'}</Code>.
         </p>
         <Table
@@ -582,7 +687,7 @@ Authorization: Token <token>
             ['GET', '/library/playlists/public/{id}/', 'Full playlist detail (same shape as the authed detail response)'],
           ]}
         />
-        <p className="text-xs text-text-muted mt-2">Making a playlist public does not change its owner or contents — it only exposes this read-only endpoint.</p>
+        <p className="text-xs text-text-muted mt-2">Making a playlist public does not change its owner or contents; it only exposes this read-only endpoint.</p>
       </Section>
 
       <Section title="Favorites (auth required)">
@@ -590,7 +695,7 @@ Authorization: Token <token>
           headers={['Method', 'Path', 'Description']}
           rows={[
             ['GET', '/library/favorites/', 'List favorite tracks'],
-            ['POST', '/library/favorites/', 'Add a favorite — body: { song_id }'],
+            ['POST', '/library/favorites/', 'Add a favorite, body: { song_id }'],
             ['DELETE', '/library/favorites/{song_id}/', 'Remove a favorite'],
           ]}
         />
@@ -599,7 +704,7 @@ Authorization: Token <token>
   )
 }
 
-function AuthTab() {
+function AccountsTab() {
   const { Code, Section, MethodPath } = usePrimitives()
   return (
     <div className="space-y-6">
@@ -607,11 +712,11 @@ function AuthTab() {
         <Table
           headers={['Role', 'role string', 'is_editor', 'is_administrator', 'is_contributor', 'is_manager']}
           rows={[
-            ['Standard', <Code>applicant</Code>, '—', '—', '—', '—'],
-            ['Editor', <Code>editor</Code>, '✓', '—', '—', '—'],
-            ['Contributor', <Code>contributor</Code>, '—', '—', '✓', '—'],
-            ['Manager', <Code>manager</Code>, '—', '—', '—', '✓'],
-            ['Admin', <Code>administrator</Code>, '✓', '✓', '—', '—'],
+            ['Standard', <Code>applicant</Code>, '-', '-', '-', '-'],
+            ['Editor', <Code>editor</Code>, '✓', '-', '-', '-'],
+            ['Contributor', <Code>contributor</Code>, '-', '-', '✓', '-'],
+            ['Manager', <Code>manager</Code>, '-', '-', '-', '✓'],
+            ['Admin', <Code>administrator</Code>, '✓', '✓', '-', '-'],
           ]}
         />
         <p className="text-xs text-text-muted mt-2">
@@ -619,16 +724,16 @@ function AuthTab() {
           Admins always have <Code>is_editor: true</Code>.
         </p>
         <p className="text-xs text-text-muted mt-2">
-          <Code>contributor</Code> is a separate track from editor — it grants access to the comp-file proposal
+          <Code>contributor</Code> is a separate track from editor: it grants access to the comp-file proposal
           pipeline below (uploading/replacing/moving/deleting files in the compilation), not to song-data edit
-          proposals. <Code>manager</Code> is likewise independent — a flag (<Code>manager_enabled</Code> on{' '}
+          proposals. <Code>manager</Code> is likewise independent, a flag (<Code>manager_enabled</Code> on{' '}
           <Code>/admin/users/</Code>, <Code>is_manager</Code> on the account payload) that grants the proposal/comp-proposal
           review queues without full admin access (no user management, no security settings). A user can hold any
-          combination of editor/contributor/manager. All three are optional/undefined on older account payloads —
+          combination of editor/contributor/manager. All three are optional/undefined on older account payloads,
           read them defensively.
         </p>
         <p className="text-xs text-text-muted mt-2">
-          <Code>is_news</Code> is a fourth, similarly independent flag — it grants News write access (create posts,
+          <Code>is_news</Code> is a fourth, similarly independent flag: it grants News write access (create posts,
           edit/delete your own) without needing <Code>is_editor</Code>. Admins get News write access regardless of{' '}
           <Code>is_news</Code>. See the News tab.
         </p>
@@ -636,16 +741,38 @@ function AuthTab() {
           On a deployment with multiple comp channels (see Comp Channels, Files &amp; Stream tab), these role
           booleans are the <span className="font-semibold text-text-primary">global</span> grant. A user can
           additionally hold editor/contributor/manager <span className="font-semibold text-text-primary">per
-          comp channel</span> via <Code>account.memberships</Code> — an array of{' '}
+          comp channel</span> via <Code>account.memberships</Code>, an array of{' '}
           <Code>{'{ channel_slug, channel_name, is_primary, is_editor, is_contributor, is_manager, auto_approve_proposals, auto_approve_comp_proposals }'}</Code>{' '}
           rows, one per channel the user has any flag set on. Admins implicitly get every active channel with every
           flag on. Treat a missing global flag as "check memberships for this channel" rather than "denied." This
-          is a completely separate system from News channels below — different slugs, different roles, different
+          is a completely separate system from News channels below: different slugs, different roles, different
           storage.
         </p>
         <p className="text-xs text-text-muted font-semibold mt-3">Attach token to every authenticated request:</p>
         <Pre>{`Authorization: Token YOUR_TOKEN_HERE`}</Pre>
       </Section>
+
+
+      <Section title="Permission Matrix">
+        <Table
+          headers={['Access Level', 'Endpoints']}
+          rows={[
+            ['No login', 'Songs, eras, categories, files, radio, stats, shared playlists, play tracking, feedback submission, report submission'],
+            ['Any logged-in user', '/account/me/ (incl. PATCH), /application/, /library/*, GET /feedback/'],
+            ['Editor or admin', '/me/, /editor/proposals/, /editor/leaderboard/, /badges/, /reports/ (read + review)'],
+            ['Contributor', '/contributor/proposals/ (comp-file proposals, read/write your own)'],
+            ['Manager or admin', '/admin/proposals/, /admin/comp-proposals/ (review queues only, not /admin/users/ or /admin/applications/)'],
+            ['Admin only', '/admin/users/, /admin/applications/, /admin/comp-files/, /admin/channels/'],
+            ['is_news or admin, gated on author for edit/delete', '/news/ (is_news or admin can create; is_news holders can only edit/delete their own posts, admins any)'],
+            ['Beta code (X-Beta-Code)', '/beta/versions, /beta/download (independent of the token/role system)'],
+          ]}
+        />
+        <p className="text-xs text-text-muted mt-2">
+          A 403 response means insufficient role; message text is typically{' '}
+          <Code>"Editor access required."</Code> or <Code>"Administrator access required."</Code>.
+        </p>
+      </Section>
+
 
       <Section title="Discord Login (recommended)">
         <ol className="space-y-3 text-sm text-text-secondary list-decimal list-inside">
@@ -663,16 +790,29 @@ function AuthTab() {
 
 // Response includes token + user object`}</Pre>
         <p className="text-xs text-text-muted">Store the token and attach it as <Code>Authorization: Token &lt;token&gt;</Code> on subsequent requests.</p>
+        <p className="text-xs text-text-muted mt-2">
+          <Code>GET /accounts/discord/login/</Code> and <Code>POST /accounts/discord/callback/</Code> are an
+          older, fixed-redirect variant of the same flow, no <Code>redirect_uri</Code> param on the URL step,
+          same response shapes otherwise. Prefer the two-step flow above for a new integration.
+        </p>
       </Section>
 
-      <Section title="Logout">
-        <Pre>{`POST /accounts/logout/
-Authorization: Token <token>`}</Pre>
-        <p className="text-xs text-text-muted">Invalidates the token server-side. Clear the locally stored token regardless of whether this call succeeds.</p>
+      <Section title="Access Code Login">
+        <p className="text-sm text-text-secondary">
+          A simple shared-password gate, unrelated to Discord OAuth or the token/role system. Used to lock an
+          otherwise-public deployment behind one access code.
+        </p>
+        <Pre>{`POST /juicewrld/auth/login/
+
+{ "password": "required" }`}</Pre>
+        <p className="text-xs text-text-muted font-semibold mt-2">200:</p>
+        <Pre>{`{ "success": true, "message": "Authentication successful" }`}</Pre>
+        <p className="text-xs text-text-muted font-semibold mt-2">401:</p>
+        <Pre>{`{ "success": false, "message": "Invalid access code" }`}</Pre>
       </Section>
 
       <Section title="Admin Login">
-        <p className="text-sm text-text-secondary">Username/password — administrators only. Not needed for a public music player.</p>
+        <p className="text-sm text-text-secondary">Username/password, administrators only. Not needed for a public music player.</p>
         <Pre>{`POST /accounts/login/
 
 {
@@ -682,11 +822,19 @@ Authorization: Token <token>`}</Pre>
 }`}</Pre>
       </Section>
 
-      <Section title="Who Am I — Two Endpoints">
+
+      <Section title="Logout">
+        <Pre>{`POST /accounts/logout/
+Authorization: Token <token>`}</Pre>
+        <p className="text-xs text-text-muted">Invalidates the token server-side. Clear the locally stored token regardless of whether this call succeeds.</p>
+      </Section>
+
+
+      <Section title="Who Am I: Two Endpoints">
         <div className="space-y-4">
           <div>
             <MethodPath method="GET" path={`/accounts/account/me/`} />
-            <p className="text-xs text-text-muted mb-2">Public-facing. No <Code>role</Code> string — booleans only. Use this for music player UI gating.</p>
+            <p className="text-xs text-text-muted mb-2">Public-facing. No <Code>role</Code> string, booleans only. Use this for music player UI gating.</p>
             <Pre>{`{
   "id": 42,
   "display_name": "someuser",
@@ -708,7 +856,7 @@ Authorization: Token <token>`}</Pre>
   "listening_plays": [
     { "song": 94086, "played_at": "2026-08-03T20:14:00Z" }
   ],
-  "news_subscriptions": ["announcements"],   // news-channel slugs the user follows — max 50
+  "news_subscriptions": ["announcements"],   // news-channel slugs the user follows, max 50
   "memberships": [
     { "channel_slug": "alrdywrld", "channel_name": "alrdywrld", "is_primary": false, "is_editor": true, "is_contributor": true, "is_manager": false, "auto_approve_proposals": false, "auto_approve_comp_proposals": false }
   ]
@@ -718,7 +866,7 @@ Authorization: Token <token>`}</Pre>
             </p>
             <p className="text-xs text-text-muted mt-2">
               <Code>listening_plays</Code>, <Code>is_manager</Code>, <Code>is_news</Code>, <Code>news_subscriptions</Code>,
-              and <Code>memberships</Code> aren&apos;t guaranteed present on every account payload yet — read them
+              and <Code>memberships</Code> aren&apos;t guaranteed present on every account payload yet. Read them
               defensively (optional/undefined, not required). <Code>memberships</Code> only lists channels the
               user has at least one flag set on; see Roles above for how per-channel access composes with the
               global booleans. <Code>news_subscriptions</Code> is capped at 50 entries.
@@ -728,7 +876,7 @@ Authorization: Token <token>`}</Pre>
             <MethodPath method="PATCH" path={`/accounts/account/me/`} />
             <p className="text-xs text-text-muted mb-2">
               Updates the logged-in user&apos;s own <Code>user_preferences</Code>, <Code>playlist_folders</Code>, and/or{' '}
-              <Code>listening_plays</Code> blobs — see the sections below for what goes in each.
+              <Code>listening_plays</Code> blobs. See the sections below for what goes in each.
             </p>
           </div>
           <div>
@@ -749,7 +897,7 @@ Authorization: Token <token>`}</Pre>
   "badges": []
 }`}</Pre>
             <p className="text-xs text-text-muted mt-2">
-              <Code>role</Code> is <Code>&quot;applicant&quot; | &quot;editor&quot; | &quot;contributor&quot; | &quot;administrator&quot;</Code> —
+              <Code>role</Code> is <Code>&quot;applicant&quot; | &quot;editor&quot; | &quot;contributor&quot; | &quot;administrator&quot;</Code>,
               widened from three values to four with the contributor track. Don&apos;t treat it as a strict
               editor-vs-admin ladder; check the specific boolean (<Code>is_editor</Code>/<Code>is_contributor</Code>/<Code>is_administrator</Code>)
               for the access you actually need.
@@ -758,13 +906,14 @@ Authorization: Token <token>`}</Pre>
         </div>
       </Section>
 
-      <Section title="Per-Song Preferences — custom titles, covers, playcounts">
+
+      <Section title="Per-Song Preferences: Custom Titles, Covers, Playcounts">
         <p className="text-sm text-text-secondary leading-relaxed">
           <Code>user_preferences</Code> is a per-user, per-song override list carried on the profile: a personal
           display <span className="font-semibold text-text-primary">name</span>, a personal{' '}
           <span className="font-semibold text-text-primary">cover</span>, a preferred{' '}
           <span className="font-semibold text-text-primary">version</span> to play within the song&apos;s version
-          group, and a <span className="font-semibold text-text-primary">playcount</span>. These are personal only —
+          group, and a <span className="font-semibold text-text-primary">playcount</span>. These are personal only:
           they never change the song for anyone else, and editors proposing upstream edits see the API&apos;s own
           untouched values.
         </p>
@@ -781,8 +930,8 @@ Authorization: Token <token>`}</Pre>
             [<Code>song</Code>, 'number', 'Which song this row overrides. The only required field.'],
             [<Code>name</Code>, 'string | null', 'Custom display title. Null falls back to the song\'s own title.'],
             [<Code>cover_url</Code>, 'string | null', 'Custom cover art. Null falls back to the song\'s image_url.'],
-            [<Code>default_version</Code>, 'string | null', <>Preferred version <span className="font-semibold text-text-primary">label</span> (e.g. <Code>v1</Code>, <Code>OG</Code>, <Code>TV Mix</Code>) — matched against the <Code>version</Code> field in the <Code>/versions/</Code> table, not a song id, so it survives songs being relinked or groups merging. A default set on any group member governs the whole group.</>],
-            [<Code>playcount</Code>, 'number', 'How many times this user played the song. Client-owned — there is no server-side increment endpoint.'],
+            [<Code>default_version</Code>, 'string | null', <>Preferred version <span className="font-semibold text-text-primary">label</span> (e.g. <Code>v1</Code>, <Code>OG</Code>, <Code>TV Mix</Code>), matched against the <Code>version</Code> field in the <Code>/versions/</Code> table rather than a song id, so it survives songs being relinked or groups merging. A default set on any group member governs the whole group.</>],
+            [<Code>playcount</Code>, 'number', 'How many times this user played the song. Client-owned; there is no server-side increment endpoint.'],
           ]}
         />
         <p className="text-xs text-text-muted font-semibold mt-3">Resolving <Code>cover_url</Code>:</p>
@@ -790,24 +939,25 @@ Authorization: Token <token>`}</Pre>
           headers={['Form', 'Example', 'Resolves to']}
           rows={[
             ['Absolute URL', 'https://… / data: / blob:', 'Used as-is'],
-            ['Leading slash', '/assets/wod.jpg', <>Site-relative asset — prepend <Code>https://juicewrldapi.com</Code> (same shape as a song&apos;s <Code>image_url</Code>)</>],
-            ['Anything else', 'Compilation/…/cover.jpg', <>A path into file storage — fetch via <Code>/files/cover-art/?path=</Code></>],
+            ['Leading slash', '/assets/wod.jpg', <>Site-relative asset. Prepend <Code>https://juicewrldapi.com</Code> (same shape as a song&apos;s <Code>image_url</Code>)</>],
+            ['Anything else', 'Compilation/…/cover.jpg', <>A path into file storage. Fetch via <Code>/files/cover-art/?path=</Code></>],
           ]}
         />
-        <p className="text-xs text-text-muted font-semibold mt-3">Write semantics — read this before implementing:</p>
+        <p className="text-xs text-text-muted font-semibold mt-3">Write semantics, read this before implementing:</p>
         <ul className="space-y-2 text-sm text-text-secondary">
-          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> It&apos;s <span className="font-semibold text-text-primary">one JSON blob, not per-song rows</span> — there is no per-song save and no delete. The client owns the whole array and PATCHes it in full; sending a shorter array is how a row gets removed.</li>
+          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> It&apos;s <span className="font-semibold text-text-primary">one JSON blob, not per-song rows</span>: there is no per-song save and no delete. The client owns the whole array and PATCHes it in full; sending a shorter array is how a row gets removed.</li>
           <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> Debounce the pushes. A burst of edits (or plays) should collapse into one PATCH rather than one per change.</li>
-          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> On login, merge the server&apos;s copy into the local one taking <Code>max()</Code> of each <Code>playcount</Code> — otherwise plays made while signed out or on another device get overwritten.</li>
-          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> The validator caps the array at <span className="font-semibold text-text-primary">500 rows</span>. Past that, drop playcount-only rows first — rows carrying a real override (name/cover/version) are the ones worth keeping, since every song played creates a playcount row.</li>
-          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> Normalize cleared text fields to <Code>null</Code>, not <Code>""</Code> — an empty string reads as a real override downstream.</li>
+          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> On login, merge the server&apos;s copy into the local one taking <Code>max()</Code> of each <Code>playcount</Code>; otherwise plays made while signed out or on another device get overwritten.</li>
+          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> The validator caps the array at <span className="font-semibold text-text-primary">500 rows</span>. Past that, drop playcount-only rows first. Rows carrying a real override (name/cover/version) are the ones worth keeping, since every song played creates a playcount row.</li>
+          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> Normalize cleared text fields to <Code>null</Code>, not <Code>""</Code>: an empty string reads as a real override downstream.</li>
         </ul>
       </Section>
+
 
       <Section title="Playlist Folders">
         <p className="text-sm text-text-secondary">
           <Code>playlist_folders</Code> groups the user&apos;s playlists into folders. Same blob mechanics as{' '}
-          <Code>user_preferences</Code> above — whole-array PATCH on <Code>/accounts/account/me/</Code>, no per-folder route.
+          <Code>user_preferences</Code> above: whole-array PATCH on <Code>/accounts/account/me/</Code>, no per-folder route.
         </p>
         <Pre>{`{
   "id": "f1",
@@ -817,7 +967,7 @@ Authorization: Token <token>`}</Pre>
         <Table
           headers={['Field', 'Type', 'Meaning']}
           rows={[
-            [<Code>id</Code>, 'string', 'Client-generated folder id — round-trips unchanged'],
+            [<Code>id</Code>, 'string', 'Client-generated folder id, round-trips unchanged'],
             [<Code>name</Code>, 'string', 'Folder display name'],
             [<Code>playlist_ids</Code>, 'number[]', 'Library playlist IDs in this folder'],
           ]}
@@ -825,9 +975,10 @@ Authorization: Token <token>`}</Pre>
         <p className="text-xs text-text-muted">Limits: max 200 folders, max 500 playlist ids per folder.</p>
       </Section>
 
+
       <Section title="Listening History">
         <p className="text-sm text-text-secondary">
-          <Code>listening_plays</Code> is a raw per-play log — one entry per listen, distinct from{' '}
+          <Code>listening_plays</Code> is a raw per-play log, one entry per listen, distinct from{' '}
           <Code>user_preferences[].playcount</Code> which is just a running total per song. Same blob mechanics:
           whole-array PATCH on <Code>/accounts/account/me/</Code>, no per-event route.
         </p>
@@ -843,32 +994,42 @@ Authorization: Token <token>`}</Pre>
           ]}
         />
         <p className="text-xs text-text-muted">
-          Capped at <span className="font-semibold text-text-primary">10,000 events</span> — send the whole array,
+          Capped at <span className="font-semibold text-text-primary">10,000 events</span>. Send the whole array,
           debounced the same way as <Code>user_preferences</Code>, so a burst of plays collapses into one PATCH
           rather than one per play.
         </p>
       </Section>
 
-      <Section title="Permission Matrix">
+
+      <Section title="Two-Factor (OTP)" defaultOpen={false}>
         <Table
-          headers={['Access Level', 'Endpoints']}
+          headers={['Method', 'Path', 'Description']}
           rows={[
-            ['No login', 'Songs, eras, categories, files, radio, stats, shared playlists, play tracking, feedback submission, report submission'],
-            ['Any logged-in user', '/account/me/ (incl. PATCH), /application/, /library/*, GET /feedback/'],
-            ['Editor or admin', '/me/, /editor/proposals/, /editor/leaderboard/, /badges/, /reports/ (read + review)'],
-            ['Contributor', '/contributor/proposals/ (comp-file proposals — read/write your own)'],
-            ['Manager or admin', '/admin/proposals/, /admin/comp-proposals/ (review queues only — not /admin/users/ or /admin/applications/)'],
-            ['Admin only', '/admin/users/, /admin/applications/, /admin/comp-files/, /admin/channels/'],
-            ['is_news or admin, gated on author for edit/delete', '/news/ (is_news or admin can create; is_news holders can only edit/delete their own posts, admins any)'],
-            ['Beta code (X-Beta-Code)', '/beta/versions, /beta/download — independent of the token/role system'],
+            ['GET', '/accounts/otp/setup/', 'Generate a new OTP secret + QR code for enrolling'],
+            ['POST', '/accounts/otp/setup/', 'Confirm enrollment with a code from the authenticator app'],
           ]}
         />
-        <p className="text-xs text-text-muted mt-2">
-          A 403 response means insufficient role — message text is typically{' '}
-          <Code>"Editor access required."</Code> or <Code>"Administrator access required."</Code>.
-        </p>
-      </Section>
+        <Pre>{`// GET response
+{
+  "otp_enabled": false,
+  "account_label": "someuser",
+  "otp_secret": "JBSWY3DPEHPK3PXP",
+  "provisioning_uri": "otpauth://totp/...",
+  "qr_code": "data:image/png;base64,..."
+}
 
+// POST request
+{ "otp_token": "123456" }
+// Response: { "otp_enabled": true }`}</Pre>
+      </Section>
+    </div>
+  )
+}
+
+function EditorWorkflowTab() {
+  const { Code, Section, MethodPath } = usePrimitives()
+  return (
+    <div className="space-y-6">
       <Section title="Edit Proposals (Editor+)">
         <Table
           headers={['Method', 'Path', 'Description']}
@@ -880,10 +1041,10 @@ Authorization: Token <token>`}</Pre>
           ]}
         />
         <p className="text-xs text-text-muted">
-          <Code>change_type</Code> is <Code>"create"</Code>, <Code>"update"</Code>, or <Code>"delete"</Code> — <Code>"update"</Code> is by far the most common in practice.
+          <Code>change_type</Code> is <Code>"create"</Code>, <Code>"update"</Code>, or <Code>"delete"</Code>. <Code>"update"</Code> is by far the most common in practice.
         </p>
         <p className="text-xs text-text-muted">
-          <Code>GET</Code> and <Code>POST</Code> both accept an optional <Code>channel</Code> param/field (slug) —
+          <Code>GET</Code> and <Code>POST</Code> both accept an optional <Code>channel</Code> param/field (slug);
           omit for the primary channel's proposal queue. Channel access is governed by the per-channel{' '}
           <Code>is_editor</Code> membership flag (see Roles above), not just the global one.
         </p>
@@ -904,7 +1065,7 @@ Content-Type: application/json
           headers={['Field', 'Type', 'Description']}
           rows={[
             [<Code>change_type</Code>, 'string', '"create" | "update" | "delete"'],
-            [<Code>song</Code>, 'number | null', 'Internal song ID (song.id, not public_id) — null for a "create" proposal'],
+            [<Code>song</Code>, 'number | null', 'Internal song ID (song.id, not public_id); null for a "create" proposal'],
             [<Code>title</Code>, 'string', 'Song title for display purposes'],
             [<Code>editor_notes</Code>, 'string', 'Optional notes from the editor'],
             [<Code>proposed_data</Code>, 'object', 'Only the fields being changed'],
@@ -940,9 +1101,10 @@ Content-Type: application/json
         <p className="text-xs text-text-muted"><Code>status</Code> is one of <Code>pending</Code>, <Code>approved</Code>, <Code>rejected</Code>, <Code>reversed</Code>.</p>
       </Section>
 
+
       <Section title="Applications (Editor or Contributor)">
         <p className="text-sm text-text-secondary">
-          How a standard user applies for either the editor or the contributor track — same endpoint, distinguished
+          How a standard user applies for either the editor or the contributor track: same endpoint, distinguished
           by <Code>application_type</Code>.
         </p>
         <Table
@@ -959,16 +1121,17 @@ Content-Type: application/json
   "display_name": "optional",
   "contact": "optional",
   "experience": "optional",
-  "motivation": "required — why you want this access",
+  "motivation": "required, why you want this access",
   "areas": "optional",
-  "channel": "optional — applying for a role scoped to one channel rather than globally"
+  "channel": "optional, applying for a role scoped to one channel rather than globally"
 }`}</Pre>
         <p className="text-xs text-text-muted"><Code>status</Code> on the returned application is <Code>pending</Code>, <Code>approved</Code>, or <Code>rejected</Code>.</p>
         <p className="text-xs text-text-muted">
           Approving a <Code>contributor</Code> application should set <Code>is_contributor</Code>, not{' '}
-          <Code>is_editor</Code> — the two tracks are separate (see Roles above).
+          <Code>is_editor</Code>; the two tracks are separate (see Roles above).
         </p>
       </Section>
+
 
       <Section title="Editor Leaderboard">
         <MethodPath method="GET" path={`/accounts/editor/leaderboard/`} />
@@ -997,256 +1160,10 @@ Content-Type: application/json
 ]`}</Pre>
       </Section>
 
-      <Section title="Play Tracking">
-        <p className="text-sm text-text-secondary">Record a listen event — no auth required. Call when a track starts (or after e.g. 30 s).</p>
-        <Pre>{`POST /juicewrld/plays/`}</Pre>
-      </Section>
 
-      <Section title="Feedback">
-        <MethodPath method="POST" path={`/juicewrld/feedback/`} />
-        <p className="text-xs text-text-muted mb-2">General API/app feedback. No auth required. Forwards to a webhook + the mod server.</p>
-        <Pre>{`{
-  "message": "required",
-  "contact": "optional",
-  "automated": "optional — true for a crash report the client sent on its own"
-}`}</Pre>
-        <p className="text-xs text-text-muted mb-3">Throttled at <Code>10/min</Code>.</p>
-        <MethodPath method="GET" path={`/juicewrld/feedback/`} />
-        <p className="text-xs text-text-muted">List submitted feedback. Requires auth.</p>
-      </Section>
-
-      <Section title="Song Reports">
-        <p className="text-sm text-text-secondary">
-          Public-facing way to flag wrong/missing info on a specific song. Submissions go to the DB and are forwarded
-          to the mod server via webhook; editors triage them from the queue.
-        </p>
-        <Table
-          headers={['Method', 'Path', 'Access', 'Description']}
-          rows={[
-            ['POST', '/juicewrld/reports/', 'No auth', 'Submit a report'],
-            ['GET', '/juicewrld/reports/', 'Editor+', 'List reports — filter: ?status=pending|resolved'],
-            ['PATCH', '/juicewrld/reports/{id}/', 'Editor+', 'Set status/review_notes (records reviewer + time)'],
-          ]}
-        />
-        <p className="text-xs text-text-muted font-semibold mt-3">Create:</p>
-        <Pre>{`POST /juicewrld/reports/
-
-{
-  "song_id": 94086,     // or "public_id": 163 — one of the two, not both
-  "message": "required — what's wrong",
-  "contact": "optional"
-}`}</Pre>
-        <p className="text-xs text-text-muted">Throttled at <Code>10/min</Code>.</p>
-        <p className="text-xs text-text-muted font-semibold mt-3">Report row (from the editor list):</p>
-        <Pre>{`{
-  "id": 31,
-  "song": 94086,
-  "song_name": "Maze",
-  "message": "Issues: Wrong era\\n\\nSong: Maze\\n\\n— Unreleased v1.18.0",
-  "contact": "someuser",
-  "status": "pending",
-  "review_notes": "",
-  "reviewer_username": null,
-  "created_at": "...",
-  "reviewed_at": null
-}`}</Pre>
-        <p className="text-xs text-text-muted">
-          Read the list defensively: it may come back as a bare array <span className="font-semibold text-text-primary">or</span> a
-          DRF <Code>{'{ results: [...] }'}</Code> envelope, and the song id has been seen under{' '}
-          <Code>song</Code>, <Code>song_id</Code>, and <Code>public_id</Code> depending on the serializer. Only{' '}
-          <Code>status</Code>, <Code>review_notes</Code>, and the reviewer/timestamp fields are guaranteed.
-        </p>
-        <p className="text-xs text-text-muted">
-          There&apos;s no structured category/issue field on submit — clients fold those into the{' '}
-          <Code>message</Code> text, which is why the messages above look pre-formatted.
-        </p>
-        <p className="text-xs text-text-muted font-semibold mt-3">Review:</p>
-        <Pre>{`PATCH /juicewrld/reports/{id}/
-Authorization: Token <token>
-
-{
-  "status": "resolved",     // "pending" | "resolved"
-  "review_notes": "optional"
-}`}</Pre>
-        <p className="text-xs text-text-muted">
-          The server records the reviewer and review time itself — don&apos;t send those. Note there is no
-          idempotency key on submit, so a client retrying a queued report can double-post.
-        </p>
-      </Section>
-
-      <Section title="Beta App (installer gating)" defaultOpen={false}>
-        <p className="text-sm text-text-secondary">
-          Gates access to in-development desktop builds behind a beta code, separate from the public token/role
-          system above — auth here is the <Code>X-Beta-Code</Code> header, not <Code>Authorization: Token</Code>.
-        </p>
-        <Table
-          headers={['Method', 'Path', 'Auth', 'Description']}
-          rows={[
-            ['GET', '/beta/unlock?code=X', 'None', <>Check a code — returns <Code>{'{ "valid": true|false }'}</Code></>],
-            ['GET', '/beta/versions', <Code>X-Beta-Code</Code>, 'List active beta builds (401 if the code is invalid)'],
-            ['GET', '/beta/download?version=X', <Code>X-Beta-Code</Code>, 'Stream the installer for that build (401/404)'],
-          ]}
-        />
-        <Pre>{`GET /beta/versions
-X-Beta-Code: YOUR_CODE`}</Pre>
-      </Section>
-
-      <Section title="Admin: User Lookup" defaultOpen={false}>
-        <Table
-          headers={['Method', 'Path', 'Description']}
-          rows={[
-            ['GET', '/accounts/admin/users/', 'List all users. Filter: ?role=editor|contributor|manager|administrator|applicant'],
-            ['GET', '/accounts/admin/users/{user_id}/', 'Single user detail — role, is_active, Discord info, proposal counts, badges'],
-            ['PATCH', '/accounts/admin/users/{user_id}/', 'Update role, is_active, auto_approve_proposals, or contributor/manager flags'],
-          ]}
-        />
-        <Pre>{`PATCH /accounts/admin/users/{user_id}/
-
-{
-  "role": "contributor",            // "editor" | "contributor" | "manager" | "applicant"
-  "is_active": true,
-  "auto_approve_proposals": false,
-  "contributor_enabled": true,
-  "manager_enabled": false,
-  "auto_approve_comp_proposals": false
-}`}</Pre>
-        <Table
-          headers={['Field', 'Type', 'Meaning']}
-          rows={[
-            [<Code>contributor_enabled</Code>, 'boolean', 'Whether this user has comp-file proposal access, independent of role string'],
-            [<Code>manager_enabled</Code>, 'boolean', 'Whether this user can review proposals/comp-proposals without full admin access, independent of role string'],
-            [<Code>auto_approve_comp_proposals</Code>, 'boolean', "Skip manual review and apply this user's comp-file proposals automatically"],
-            [<Code>comp_proposal_count</Code>, 'number', "Read-only — this user's total comp-file proposal submissions"],
-            [<Code>comp_approved_count</Code>, 'number', 'Read-only — how many of those were approved'],
-          ]}
-        />
-        <p className="text-xs text-text-muted">
-          These fields grant access <span className="font-semibold text-text-primary">globally</span>. For a
-          per-channel grant instead, use Admin: Channels below.
-        </p>
-        <p className="text-xs text-text-muted">Requires admin token (<Code>is_administrator: true</Code>).</p>
-      </Section>
-
-      <Section title="Admin: Channels" defaultOpen={false}>
+      <Section title="Comp File Proposals: Overview" defaultOpen={false}>
         <p className="text-sm text-text-secondary leading-relaxed">
-          Manages the <span className="font-semibold text-text-primary">comp</span> channels referenced throughout
-          this doc (Files &amp; Stream&apos;s <Code>?channel=</Code>, proposal/comp-proposal scoping, per-channel{' '}
-          <Code>memberships</Code>) — not News channels, a separate system. Exactly one channel has{' '}
-          <Code>is_primary: true</Code>; it can never be deactivated and its <Code>is_active</Code> can&apos;t be
-          changed.
-        </p>
-        <Table
-          headers={['Method', 'Path', 'Description']}
-          rows={[
-            ['GET', '/accounts/admin/channels/', 'List all channels, including inactive ones (adds id/is_active/sort_order over the public /files/channels/ list)'],
-            ['POST', '/accounts/admin/channels/', 'Create a channel and its disk folders'],
-            ['PATCH', '/accounts/admin/channels/{id}/', 'Update name, description, sort_order, is_active'],
-            ['DELETE', '/accounts/admin/channels/{id}/', "Deactivate (not a hard delete — files aren't touched). Primary can't be deleted"],
-            ['GET', '/accounts/admin/channels/{id}/members/', "List the channel's per-user role memberships"],
-            ['POST', '/accounts/admin/channels/{id}/members/', "Create or update one user's editor/contributor/manager flags for this channel"],
-          ]}
-        />
-        <Pre>{`POST /accounts/admin/channels/
-
-{
-  "name": "alrdywrld",
-  "description": "optional",
-  "slug": "optional",
-  "root_dirname": "optional",
-  "sort_order": 0
-}`}</Pre>
-        <p className="text-xs text-text-muted">
-          <Code>slug</Code> and the <Code>comp_&lt;slug&gt;</Code> disk root are generated from{' '}
-          <Code>name</Code> when omitted. A new channel is never primary.
-        </p>
-        <Pre>{`PATCH /accounts/admin/channels/{id}/
-
-{
-  "name": "optional",
-  "description": "optional",
-  "sort_order": "optional",
-  "is_active": true             // reactivate a previously-deactivated channel — no-op/rejected on the primary channel
-}`}</Pre>
-        <Table
-          headers={['Field', 'Type', 'Meaning']}
-          rows={[
-            [<Code>id</Code>, 'number', 'Numeric id — used in the URL, not the slug'],
-            [<Code>slug</Code>, 'string', 'Stable identifier used as the ?channel= query value elsewhere'],
-            [<Code>is_primary</Code>, 'boolean', 'True on exactly one channel — the default when ?channel= is omitted'],
-            [<Code>is_active</Code>, 'boolean', "False after DELETE — deactivated channels are hidden, not erased"],
-          ]}
-        />
-        <p className="text-xs text-text-muted font-semibold mt-3">Set a member&apos;s flags:</p>
-        <Pre>{`POST /accounts/admin/channels/{id}/members/
-
-{
-  "user_id": 42,
-  "editor_enabled": true,
-  "contributor_enabled": true,
-  "manager_enabled": false,
-  "auto_approve_proposals": false,
-  "auto_approve_comp_proposals": false
-}`}</Pre>
-        <p className="text-xs text-text-muted">
-          Adding a member with every flag omitted/false still creates the membership row (visible in the channel&apos;s
-          member list) with no access yet — flags are toggled afterward. On the{' '}
-          <span className="font-semibold text-text-primary">primary</span> channel specifically, setting these
-          flags also mirrors the old global profile flags (<Code>is_editor</Code>, etc).
-        </p>
-        <p className="text-xs text-text-muted">
-          Admins implicitly get every active channel with every role flag on in{' '}
-          <Code>memberships</Code> (see Roles above) — everyone else only sees channels they were explicitly added
-          to.
-        </p>
-        <p className="text-xs text-text-muted">Requires admin token (<Code>is_administrator: true</Code>).</p>
-      </Section>
-
-      <Section title="Admin: Proposal Review" defaultOpen={false}>
-        <Table
-          headers={['Method', 'Path', 'Description']}
-          rows={[
-            ['GET', '/accounts/admin/proposals/', 'List all proposals. Filter: ?status=pending|approved|rejected|reversed&channel='],
-            ['POST', '/accounts/admin/proposals/{id}/review/', 'Approve, reject, or revise-and-approve a proposal'],
-            ['POST', '/accounts/admin/proposals/{id}/reverse/', 'Reverse a previously approved proposal'],
-          ]}
-        />
-        <Pre>{`POST /accounts/admin/proposals/{id}/review/
-
-{
-  "action": "approve",          // "approve" | "reject" | "revise"
-  "review_notes": "optional",
-  "revised_data": { },          // only for action: "revise" — overrides proposed_data
-  "channel": "optional — the proposal's channel slug"
-}`}</Pre>
-        <p className="text-xs text-text-muted">
-          Requires admin or manager token, and — on a channel-scoped deployment — the per-channel{' '}
-          <Code>is_manager</Code>/<Code>is_editor</Code> membership flag for the proposal&apos;s own channel.
-        </p>
-      </Section>
-
-      <Section title="Admin: Applications" defaultOpen={false}>
-        <Table
-          headers={['Method', 'Path', 'Description']}
-          rows={[
-            ['GET', '/accounts/admin/applications/', 'List editor applications. Filter: ?status=pending|approved|rejected'],
-            ['POST', '/accounts/admin/applications/{id}/review/', 'Approve or reject an application'],
-          ]}
-        />
-        <Pre>{`POST /accounts/admin/applications/{id}/review/
-
-{
-  "action": "approve",          // "approve" | "reject"
-  "review_notes": "optional"
-}`}</Pre>
-        <p className="text-xs text-text-muted">
-          Approving promotes the applicant to the role matching the application&apos;s{' '}
-          <Code>application_type</Code> — <Code>editor</Code> or <Code>contributor</Code>.
-        </p>
-      </Section>
-
-      <Section title="Comp File Proposals — Overview" defaultOpen={false}>
-        <p className="text-sm text-text-secondary leading-relaxed">
-          A second, separate proposal pipeline from song-data Edit Proposals above — this one is for changes to the{' '}
+          A second, separate proposal pipeline from song-data Edit Proposals above. This one is for changes to the{' '}
           <span className="font-semibold text-text-primary">compilation&apos;s files themselves</span> (uploading a
           new file, replacing one, moving/renaming, or deleting), submitted by contributors and reviewed by admins
           or managers. Everything under <Code>/accounts/contributor/</Code> requires <Code>is_contributor</Code>{' '}
@@ -1256,33 +1173,34 @@ X-Beta-Code: YOUR_CODE`}</Pre>
         </p>
         <p className="text-xs text-text-muted mt-2">
           Comp-channel scoped: list, create, review, and history calls only see that channel&apos;s proposals and
-          files — pass <Code>?channel=</Code>/a <Code>channel</Code> field on every endpoint below, same as the
+          files. Pass <Code>?channel=</Code>/a <Code>channel</Code> field on every endpoint below, same as the
           Files &amp; Stream tab. Staging storage lives under <Code>comp_staging/&lt;slug&gt;/proposals/</Code> per
           channel (the primary channel keeps the older unprefixed <Code>comp_staging/proposals/</Code> path).
         </p>
       </Section>
+
 
       <Section title="Contributor: Comp File Proposals" defaultOpen={false}>
         <Table
           headers={['Method', 'Path', 'Description']}
           rows={[
             ['GET', '/accounts/contributor/proposals/', "List the logged-in contributor's own comp-file proposals"],
-            ['POST', '/accounts/contributor/proposals/', 'Submit a new comp-file proposal — multipart'],
-            ['PATCH', '/accounts/contributor/proposals/{id}/', 'Edit a still-pending proposal — multipart'],
+            ['POST', '/accounts/contributor/proposals/', 'Submit a new comp-file proposal (multipart)'],
+            ['PATCH', '/accounts/contributor/proposals/{id}/', 'Edit a still-pending proposal (multipart)'],
             ['DELETE', '/accounts/contributor/proposals/{id}/', 'Withdraw a proposal'],
           ]}
         />
         <p className="text-xs text-text-muted">
-          The two write endpoints send <Code>multipart/form-data</Code>, not JSON — the request carries the actual
+          The two write endpoints send <Code>multipart/form-data</Code>, not JSON. The request carries the actual
           file being uploaded/replaced alongside the metadata fields. Send{' '}
           <Code>Authorization: Token &lt;token&gt;</Code> and deliberately{' '}
           <span className="font-semibold text-text-primary">omit</span> <Code>Content-Type</Code> so the browser
-          sets the multipart boundary itself — setting it manually breaks the boundary and the server can&apos;t
+          sets the multipart boundary itself. Setting it manually breaks the boundary, and the server can&apos;t
           parse the body.
         </p>
         <Pre>{`POST /accounts/contributor/proposals/
 Authorization: Token <token>
-Content-Type: multipart/form-data; boundary=... (set automatically — do not set this header yourself)
+Content-Type: multipart/form-data; boundary=... (set automatically, do not set this header yourself)
 
 FormData:
   change_type       "upload" | "replace" | "move" | "delete" | "create_folder"
@@ -1290,10 +1208,10 @@ FormData:
   destination_path  "Compilation/Unreleased/New Name.mp3" // only for "move"
   contributor_notes "optional"
   file              <binary>                              // only for "upload"/"replace"
-  channel           "optional — channel slug, defaults to the primary channel"`}</Pre>
+  channel           "optional, channel slug, defaults to the primary channel"`}</Pre>
         <p className="text-xs text-text-muted mt-2">
           <Code>create_folder</Code> takes only <Code>file_path</Code> (the new folder&apos;s path, with no
-          extension) — no <Code>file</Code> and no <Code>destination_path</Code>. On approval the empty folder is
+          extension), with no <Code>file</Code> and no <Code>destination_path</Code>. On approval the empty folder is
           created under <Code>comp/</Code>, ready to be filled with upload proposals.
         </p>
         <p className="text-xs text-text-muted font-semibold mt-3">Comp file proposal object shape:</p>
@@ -1323,6 +1241,171 @@ FormData:
         </p>
       </Section>
 
+    </div>
+  )
+}
+
+function AdminTab() {
+  const { Code, Section } = usePrimitives()
+  return (
+    <div className="space-y-6">
+      <Section title="Admin: User Lookup" defaultOpen={false}>
+        <Table
+          headers={['Method', 'Path', 'Description']}
+          rows={[
+            ['GET', '/accounts/admin/users/', 'List all users. Filter: ?role=editor|contributor|manager|administrator|applicant'],
+            ['GET', '/accounts/admin/users/{user_id}/', 'Single user detail: role, is_active, Discord info, proposal counts, badges'],
+            ['PATCH', '/accounts/admin/users/{user_id}/', 'Update role, is_active, auto_approve_proposals, or contributor/manager flags'],
+          ]}
+        />
+        <Pre>{`PATCH /accounts/admin/users/{user_id}/
+
+{
+  "role": "contributor",            // "editor" | "contributor" | "manager" | "applicant"
+  "is_active": true,
+  "auto_approve_proposals": false,
+  "contributor_enabled": true,
+  "manager_enabled": false,
+  "auto_approve_comp_proposals": false
+}`}</Pre>
+        <Table
+          headers={['Field', 'Type', 'Meaning']}
+          rows={[
+            [<Code>contributor_enabled</Code>, 'boolean', 'Whether this user has comp-file proposal access, independent of role string'],
+            [<Code>manager_enabled</Code>, 'boolean', 'Whether this user can review proposals/comp-proposals without full admin access, independent of role string'],
+            [<Code>auto_approve_comp_proposals</Code>, 'boolean', "Skip manual review and apply this user's comp-file proposals automatically"],
+            [<Code>comp_proposal_count</Code>, 'number', "Read-only: this user's total comp-file proposal submissions"],
+            [<Code>comp_approved_count</Code>, 'number', 'Read-only: how many of those were approved'],
+          ]}
+        />
+        <p className="text-xs text-text-muted">
+          These fields grant access <span className="font-semibold text-text-primary">globally</span>. For a
+          per-channel grant instead, use Admin: Channels below.
+        </p>
+        <p className="text-xs text-text-muted">Requires admin token (<Code>is_administrator: true</Code>).</p>
+      </Section>
+
+
+      <Section title="Admin: Channels" defaultOpen={false}>
+        <p className="text-sm text-text-secondary leading-relaxed">
+          Manages the <span className="font-semibold text-text-primary">comp</span> channels referenced throughout
+          this doc (Files &amp; Stream&apos;s <Code>?channel=</Code>, proposal/comp-proposal scoping, per-channel{' '}
+          <Code>memberships</Code>), not News channels, a separate system. Exactly one channel has{' '}
+          <Code>is_primary: true</Code>; it can never be deactivated and its <Code>is_active</Code> can&apos;t be
+          changed.
+        </p>
+        <Table
+          headers={['Method', 'Path', 'Description']}
+          rows={[
+            ['GET', '/accounts/admin/channels/', 'List all channels, including inactive ones (adds id/is_active/sort_order over the public /files/channels/ list)'],
+            ['POST', '/accounts/admin/channels/', 'Create a channel and its disk folders'],
+            ['PATCH', '/accounts/admin/channels/{id}/', 'Update name, description, sort_order, is_active'],
+            ['DELETE', '/accounts/admin/channels/{id}/', "Deactivate (not a hard delete; files aren't touched). Primary can't be deleted"],
+            ['GET', '/accounts/admin/channels/{id}/members/', "List the channel's per-user role memberships"],
+            ['POST', '/accounts/admin/channels/{id}/members/', "Create or update one user's editor/contributor/manager flags for this channel"],
+          ]}
+        />
+        <Pre>{`POST /accounts/admin/channels/
+
+{
+  "name": "alrdywrld",
+  "description": "optional",
+  "slug": "optional",
+  "root_dirname": "optional",
+  "sort_order": 0
+}`}</Pre>
+        <p className="text-xs text-text-muted">
+          <Code>slug</Code> and the <Code>comp_&lt;slug&gt;</Code> disk root are generated from{' '}
+          <Code>name</Code> when omitted. A new channel is never primary.
+        </p>
+        <Pre>{`PATCH /accounts/admin/channels/{id}/
+
+{
+  "name": "optional",
+  "description": "optional",
+  "sort_order": "optional",
+  "is_active": true             // reactivate a previously-deactivated channel; no-op/rejected on the primary channel
+}`}</Pre>
+        <Table
+          headers={['Field', 'Type', 'Meaning']}
+          rows={[
+            [<Code>id</Code>, 'number', 'Numeric id, used in the URL, not the slug'],
+            [<Code>slug</Code>, 'string', 'Stable identifier used as the ?channel= query value elsewhere'],
+            [<Code>is_primary</Code>, 'boolean', 'True on exactly one channel, the default when ?channel= is omitted'],
+            [<Code>is_active</Code>, 'boolean', "False after DELETE; deactivated channels are hidden, not erased"],
+          ]}
+        />
+        <p className="text-xs text-text-muted font-semibold mt-3">Set a member&apos;s flags:</p>
+        <Pre>{`POST /accounts/admin/channels/{id}/members/
+
+{
+  "user_id": 42,
+  "editor_enabled": true,
+  "contributor_enabled": true,
+  "manager_enabled": false,
+  "auto_approve_proposals": false,
+  "auto_approve_comp_proposals": false
+}`}</Pre>
+        <p className="text-xs text-text-muted">
+          Adding a member with every flag omitted/false still creates the membership row (visible in the channel&apos;s
+          member list) with no access yet; flags are toggled afterward. On the{' '}
+          <span className="font-semibold text-text-primary">primary</span> channel specifically, setting these
+          flags also mirrors the old global profile flags (<Code>is_editor</Code>, etc).
+        </p>
+        <p className="text-xs text-text-muted">
+          Admins implicitly get every active channel with every role flag on in{' '}
+          <Code>memberships</Code> (see Roles above); everyone else only sees channels they were explicitly added
+          to.
+        </p>
+        <p className="text-xs text-text-muted">Requires admin token (<Code>is_administrator: true</Code>).</p>
+      </Section>
+
+
+      <Section title="Admin: Proposal Review" defaultOpen={false}>
+        <Table
+          headers={['Method', 'Path', 'Description']}
+          rows={[
+            ['GET', '/accounts/admin/proposals/', 'List all proposals. Filter: ?status=pending|approved|rejected|reversed&channel='],
+            ['POST', '/accounts/admin/proposals/{id}/review/', 'Approve, reject, or revise-and-approve a proposal'],
+            ['POST', '/accounts/admin/proposals/{id}/reverse/', 'Reverse a previously approved proposal'],
+          ]}
+        />
+        <Pre>{`POST /accounts/admin/proposals/{id}/review/
+
+{
+  "action": "approve",          // "approve" | "reject" | "revise"
+  "review_notes": "optional",
+  "revised_data": { },          // only for action: "revise"; overrides proposed_data
+  "channel": "optional, the proposal's channel slug"
+}`}</Pre>
+        <p className="text-xs text-text-muted">
+          Requires admin or manager token, and, on a channel-scoped deployment, the per-channel{' '}
+          <Code>is_manager</Code>/<Code>is_editor</Code> membership flag for the proposal&apos;s own channel.
+        </p>
+      </Section>
+
+
+      <Section title="Admin: Applications" defaultOpen={false}>
+        <Table
+          headers={['Method', 'Path', 'Description']}
+          rows={[
+            ['GET', '/accounts/admin/applications/', 'List editor applications. Filter: ?status=pending|approved|rejected'],
+            ['POST', '/accounts/admin/applications/{id}/review/', 'Approve or reject an application'],
+          ]}
+        />
+        <Pre>{`POST /accounts/admin/applications/{id}/review/
+
+{
+  "action": "approve",          // "approve" | "reject"
+  "review_notes": "optional"
+}`}</Pre>
+        <p className="text-xs text-text-muted">
+          Approving promotes the applicant to the role matching the application&apos;s{' '}
+          <Code>application_type</Code>: <Code>editor</Code> or <Code>contributor</Code>.
+        </p>
+      </Section>
+
+
       <Section title="Admin: Comp File Proposal Review" defaultOpen={false}>
         <Table
           headers={['Method', 'Path', 'Description']}
@@ -1338,21 +1421,22 @@ FormData:
 {
   "action": "approve",          // "approve" | "reject"
   "review_notes": "optional",
-  "channel": "optional — the proposal's channel slug"
+  "channel": "optional, the proposal's channel slug"
 }`}</Pre>
         <p className="text-xs text-text-muted">
           <Code>/reverse/</Code> and <Code>/staging/</Code> also accept <Code>?channel=</Code>.
         </p>
         <p className="text-xs text-text-muted">
-          Unlike song-data proposals, there is no <Code>&quot;revise&quot;</Code> action here — a comp-file change
+          Unlike song-data proposals, there is no <Code>&quot;revise&quot;</Code> action here. A comp-file change
           is either accepted as staged or rejected, since there&apos;s no meaningful way to hand-edit a binary file
           upload.
         </p>
         <p className="text-xs text-text-muted">
-          <Code>/staging/</Code> streams the actual staged file (not JSON) — treat it as a download/preview link,
+          <Code>/staging/</Code> streams the actual staged file (not JSON). Treat it as a download/preview link,
           the same way <Code>/files/download/</Code> is used for library audio.
         </p>
       </Section>
+
 
       <Section title="Admin: Comp File History" defaultOpen={false}>
         <Table
@@ -1383,27 +1467,144 @@ FormData:
         </p>
       </Section>
 
-      <Section title="Two-Factor (OTP)" defaultOpen={false}>
-        <Table
-          headers={['Method', 'Path', 'Description']}
-          rows={[
-            ['GET', '/accounts/otp/setup/', 'Generate a new OTP secret + QR code for enrolling'],
-            ['POST', '/accounts/otp/setup/', 'Confirm enrollment with a code from the authenticator app'],
-          ]}
-        />
-        <Pre>{`// GET response
-{
-  "otp_enabled": false,
-  "account_label": "someuser",
-  "otp_secret": "JBSWY3DPEHPK3PXP",
-  "provisioning_uri": "otpauth://totp/...",
-  "qr_code": "data:image/png;base64,..."
+    </div>
+  )
 }
 
-// POST request
-{ "otp_token": "123456" }
-// Response: { "otp_enabled": true }`}</Pre>
+function FeedbackTab() {
+  const { Code, Section, MethodPath } = usePrimitives()
+  return (
+    <div className="space-y-6">
+      <Section title="Play Tracking">
+        <p className="text-sm text-text-secondary">Record a listen event, no auth required. Call when a track starts (or after e.g. 30 s).</p>
+        <MethodPath method="POST" path={`/juicewrld/plays/`} className="mt-2" />
+        <Table
+          headers={['Field', 'Required', 'Notes']}
+          rows={[
+            [<Code>song_id</Code>, 'No', ''],
+            [<Code>public_id</Code>, 'No', ''],
+            [<Code>title</Code>, 'Conditional', 'Required if the song can\'t be resolved from song_id/public_id'],
+            [<Code>era_name</Code>, 'No', ''],
+            [<Code>category</Code>, 'No', ''],
+            [<Code>album_name</Code>, 'No', ''],
+            [<Code>file_path</Code>, 'No', ''],
+            [<Code>source</Code>, 'No', ''],
+          ]}
+        />
+        <p className="text-xs text-text-muted mt-2">201 response is just <Code>{'{ "id": 0 }'}</Code>.</p>
+        <MethodPath method="GET" path={`/juicewrld/plays/stats/`} className="mt-3" />
+        <p className="text-xs text-text-muted mb-2">Site-wide play stats, cached 5 minutes: totals, category breakdown, top songs/albums/eras, and a recent-plays log.</p>
+        <Pre>{`{
+  "total_plays": 0,
+  "total_songs_with_plays": 0,
+  "total_albums_with_plays": 0,
+  "total_eras_with_plays": 0,
+  "category_breakdown": [{ "category": "", "count": 0 }],
+  "top_songs": [{
+    "id": 0, "public_id": 0, "name": "", "era_name": "",
+    "category": "", "play_count": 0
+  }],
+  "top_albums": [{ "id": 0, "title": "", "artist_name": "", "play_count": 0 }],
+  "top_eras": [{ "id": 0, "name": "", "play_count": 0 }],
+  "recent_plays": [{
+    "id": 0, "song_id": 0, "public_id": 0, "title": "", "era_name": "",
+    "category": "", "album_name": "", "source": "", "played_at": "ISO8601"
+  }]
+}`}</Pre>
       </Section>
+
+
+      <Section title="Feedback">
+        <MethodPath method="POST" path={`/juicewrld/feedback/`} />
+        <p className="text-xs text-text-muted mb-2">General API/app feedback. No auth required. Forwards to a webhook + the mod server.</p>
+        <Pre>{`{
+  "message": "required",
+  "contact": "optional",
+  "automated": "optional, true for a crash report the client sent on its own"
+}`}</Pre>
+        <p className="text-xs text-text-muted mb-3">Throttled at <Code>10/min</Code>.</p>
+        <MethodPath method="GET" path={`/juicewrld/feedback/`} />
+        <p className="text-xs text-text-muted">List submitted feedback. Requires auth.</p>
+      </Section>
+
+
+      <Section title="Song Reports">
+        <p className="text-sm text-text-secondary">
+          Public-facing way to flag wrong/missing info on a specific song. Submissions go to the DB and are forwarded
+          to the mod server via webhook; editors triage them from the queue.
+        </p>
+        <Table
+          headers={['Method', 'Path', 'Access', 'Description']}
+          rows={[
+            ['POST', '/juicewrld/reports/', 'No auth', 'Submit a report'],
+            ['GET', '/juicewrld/reports/', 'Editor+', 'List reports, filter: ?status=pending|resolved'],
+            ['PATCH', '/juicewrld/reports/{id}/', 'Editor+', 'Set status/review_notes (records reviewer + time)'],
+          ]}
+        />
+        <p className="text-xs text-text-muted font-semibold mt-3">Create:</p>
+        <Pre>{`POST /juicewrld/reports/
+
+{
+  "song_id": 94086,     // or "public_id": 163, one of the two, not both
+  "message": "required, what's wrong",
+  "contact": "optional"
+}`}</Pre>
+        <p className="text-xs text-text-muted">Throttled at <Code>10/min</Code>.</p>
+        <p className="text-xs text-text-muted font-semibold mt-3">Report row (from the editor list):</p>
+        <Pre>{`{
+  "id": 31,
+  "song": 94086,
+  "song_name": "Maze",
+  "message": "Issues: Wrong era\\n\\nSong: Maze\\n\\n(Unreleased v1.18.0)",
+  "contact": "someuser",
+  "status": "pending",
+  "review_notes": "",
+  "reviewer_username": null,
+  "created_at": "...",
+  "reviewed_at": null
+}`}</Pre>
+        <p className="text-xs text-text-muted">
+          Read the list defensively: it may come back as a bare array <span className="font-semibold text-text-primary">or</span> a
+          DRF <Code>{'{ results: [...] }'}</Code> envelope, and the song id has been seen under{' '}
+          <Code>song</Code>, <Code>song_id</Code>, and <Code>public_id</Code> depending on the serializer. Only{' '}
+          <Code>status</Code>, <Code>review_notes</Code>, and the reviewer/timestamp fields are guaranteed.
+        </p>
+        <p className="text-xs text-text-muted">
+          There&apos;s no structured category/issue field on submit. Clients fold those into the{' '}
+          <Code>message</Code> text, which is why the messages above look pre-formatted.
+        </p>
+        <p className="text-xs text-text-muted font-semibold mt-3">Review:</p>
+        <Pre>{`PATCH /juicewrld/reports/{id}/
+Authorization: Token <token>
+
+{
+  "status": "resolved",     // "pending" | "resolved"
+  "review_notes": "optional"
+}`}</Pre>
+        <p className="text-xs text-text-muted">
+          The server records the reviewer and review time itself; don&apos;t send those. Note there is no
+          idempotency key on submit, so a client retrying a queued report can double-post.
+        </p>
+      </Section>
+
+
+      <Section title="Beta App (installer gating)" defaultOpen={false}>
+        <p className="text-sm text-text-secondary">
+          Gates access to in-development desktop builds behind a beta code, separate from the public token/role
+          system above. Auth here is the <Code>X-Beta-Code</Code> header, not <Code>Authorization: Token</Code>.
+        </p>
+        <Table
+          headers={['Method', 'Path', 'Auth', 'Description']}
+          rows={[
+            ['GET', '/beta/unlock?code=X', 'None', <>Check a code, returns <Code>{'{ "valid": true|false }'}</Code></>],
+            ['GET', '/beta/versions', <Code>X-Beta-Code</Code>, 'List active beta builds (401 if the code is invalid)'],
+            ['GET', '/beta/download?version=X', <Code>X-Beta-Code</Code>, 'Stream the installer for that build (401/404)'],
+          ]}
+        />
+        <Pre>{`GET /beta/versions
+X-Beta-Code: YOUR_CODE`}</Pre>
+      </Section>
+
     </div>
   )
 }
@@ -1414,8 +1615,8 @@ function NewsTab() {
     <div className="space-y-6">
       <Section title="Overview">
         <p className="text-sm text-text-secondary leading-relaxed">
-          Announcement feed — posts belong to a <span className="font-semibold text-text-primary">news
-          channel</span> (freeform editorial feeds like Announcements/Releases/Leaks — a completely different
+          Announcement feed. Posts belong to a <span className="font-semibold text-text-primary">news
+          channel</span> (freeform editorial feeds like Announcements/Releases/Leaks, a completely different
           system from the Comp Channels on the Files &amp; Stream tab; <Code>?channel=</Code> here is a news slug,
           not a file-tree slug), can be featured, and can carry image and audio/file attachments. Posting requires{' '}
           <Code>is_news</Code> or admin; editing/deleting a post is restricted to its author unless the caller is
@@ -1430,14 +1631,14 @@ function NewsTab() {
             ['GET', '/news/', 'No auth', 'Paginated feed. Filter: ?channel=, sort: ?ordering=-published_at|published_at, ?page=, ?page_size='],
             ['GET', '/news/{id}/', 'No auth', 'Single post'],
             ['POST', '/news/', 'is_news or admin', 'Create a post'],
-            ['PATCH', '/news/{id}/', 'is_news or admin', "Edit a post — own post only, unless admin"],
-            ['DELETE', '/news/{id}/', 'is_news or admin', "Delete a post — own post only, unless admin"],
+            ['PATCH', '/news/{id}/', 'is_news or admin', "Edit a post, own post only unless admin"],
+            ['DELETE', '/news/{id}/', 'is_news or admin', "Delete a post, own post only unless admin"],
           ]}
         />
         <Pre>{`GET /news/?channel=announcements&ordering=-published_at
 
 {
-  "results": [ /* NewsItem[] — see shape below */ ],
+  "results": [ /* NewsItem[], see shape below */ ],
   "count": 42,
   "next": "https://juicewrldapi.com/juicewrld/news/?channel=announcements&page=2"
 }`}</Pre>
@@ -1451,13 +1652,13 @@ Authorization: Token <token>
 
 {
   "title": "required",
-  "channel": "announcements",   // a news-channel slug — required
-  "summary": "optional — short plain-text teaser shown in the feed",
-  "body": "optional — full article, Markdown",
-  "category": "optional — freeform label, e.g. \\"Release\\"",
+  "channel": "announcements",   // a news-channel slug, required
+  "summary": "optional, short plain-text teaser shown in the feed",
+  "body": "optional, full article, Markdown",
+  "category": "optional, freeform label, e.g. \\"Release\\"",
   "featured": false,
-  "image_url": "optional — https URL, or a base64 data: image ≤2MB",
-  "attachments": [ /* { name, url } from POST /news/uploads/ — the full desired set */ ]
+  "image_url": "optional, https URL, or a base64 data: image ≤2MB",
+  "attachments": [ /* { name, url } from POST /news/uploads/, the full desired set */ ]
 }`}</Pre>
         <p className="text-xs text-text-muted font-semibold mt-3">Post object shape:</p>
         <Pre>{`{
@@ -1478,11 +1679,11 @@ Authorization: Token <token>
 }`}</Pre>
         <p className="text-xs text-text-muted">
           <Code>author_id</Code> is what the client compares against the logged-in user&apos;s own id to decide
-          whether Edit/Delete show up — this field being absent or wrong on the server response breaks that gating,
+          whether Edit/Delete show up. This field being absent or wrong on the server response breaks that gating,
           so make sure it&apos;s always populated.
         </p>
         <p className="text-xs text-text-muted">
-          Body is rendered client-side as Markdown with raw HTML stripped — links/images are restricted to
+          Body is rendered client-side as Markdown with raw HTML stripped; links/images are restricted to
           http/https/mailto. There is no server-side sanitization requirement beyond that (the client never
           executes raw HTML from <Code>body</Code>).
         </p>
@@ -1493,9 +1694,9 @@ Authorization: Token <token>
           headers={['Method', 'Path', 'Access', 'Description']}
           rows={[
             ['GET', '/news/channels/', 'No auth', 'List news channels'],
-            ['POST', '/news/channels/', 'Admin', 'Create a channel — slug generated from label'],
+            ['POST', '/news/channels/', 'Admin', 'Create a channel, slug generated from label'],
             ['PATCH', '/news/channels/{slug}/', 'Admin', 'Rename/re-describe a channel'],
-            ['DELETE', '/news/channels/{slug}/', 'Admin', 'Delete a channel — only if it has no posts'],
+            ['DELETE', '/news/channels/{slug}/', 'Admin', 'Delete a channel, only if it has no posts'],
           ]}
         />
         <Pre>{`{ "results": [
@@ -1503,7 +1704,7 @@ Authorization: Token <token>
 ] }`}</Pre>
         <p className="text-xs text-text-muted">
           <Code>id</Code> on the returned object <span className="font-semibold text-text-primary">is</span> the
-          slug — used both in the URL for PATCH/DELETE and as the <Code>?channel=</Code> value on the Feed
+          slug, used both in the URL for PATCH/DELETE and as the <Code>?channel=</Code> value on the Feed
           endpoints above.
         </p>
       </Section>
@@ -1511,13 +1712,13 @@ Authorization: Token <token>
       <Section title="Attachments">
         <p className="text-sm text-text-secondary leading-relaxed">
           Cover images ride inline as an https URL or a base64 <Code>data:</Code> image (≤2MB) in the post payload.
-          Everything else — including audio clips — uploads separately through a dedicated endpoint first, and the
+          Everything else, including audio clips, uploads separately through a dedicated endpoint first, and the
           post payload then references the returned hosted <Code>{'{ name, url }'}</Code>.
         </p>
         <Table
           headers={['Method', 'Path', 'Access', 'Description']}
           rows={[
-            ['POST', '/news/uploads/', 'is_news or admin', 'Upload one file — multipart, ≤25MB. Returns a hosted attachment record'],
+            ['POST', '/news/uploads/', 'is_news or admin', 'Upload one file (multipart, ≤25MB). Returns a hosted attachment record'],
             ['GET', '/news/attachments/{id}/stream/', 'No auth', 'Stream/download a hosted attachment. An optional /{name} suffix and ?download=1 (forces a download instead of inline playback) are both supported'],
           ]}
         />
@@ -1538,13 +1739,13 @@ FormData:
         <p className="text-xs text-text-muted">
           The client classifies an attachment as image/audio/generic-file first by <Code>mime</Code>, falling back
           to a guess from <Code>name</Code>&apos;s extension when <Code>mime</Code> is missing or generic (e.g.{' '}
-          <Code>application/octet-stream</Code>) — send an accurate <Code>mime</Code> where possible so that guess
+          <Code>application/octet-stream</Code>). Send an accurate <Code>mime</Code> where possible so that guess
           is never needed.
         </p>
         <p className="text-xs text-text-muted">
           The client builds attachment stream/download URLs from <Code>id</Code> via{' '}
           <Code>{'/news/attachments/{id}/stream/{name}'}</Code> when <Code>id</Code> is present, and falls back
-          to the raw <Code>url</Code> field only for older/id-less rows — a new upload should always come back with
+          to the raw <Code>url</Code> field only for older/id-less rows. A new upload should always come back with
           an <Code>id</Code>.
         </p>
       </Section>
@@ -1558,7 +1759,7 @@ function VersionsTab() {
     <div className="space-y-6">
       <Section title="What is the Versions API?">
         <p className="text-sm text-text-secondary leading-relaxed">
-          Groups multiple song rows together as versions of the same underlying track — e.g. a released mix and a
+          Groups multiple song rows together as versions of the same underlying track: e.g. a released mix and a
           leaked earlier take, or several titled variants like &quot;v1&quot;, &quot;v2&quot;, &quot;TV Mix&quot;.
           Each row links one <Code>song_id</Code> to a shared <Code>group_id</Code>; every song in a group shares
           the same <Code>title</Code> (the display name for the group, e.g. &quot;She&apos;s The One&quot;), while
@@ -1581,15 +1782,15 @@ function VersionsTab() {
   "created_by": "freakypallet"
 }`}</Pre>
         <p className="text-xs text-text-muted">
-          <Code>group_id</Code> is just the <Code>song_id</Code> of whichever song originally anchored the group — it
+          <Code>group_id</Code> is just the <Code>song_id</Code> of whichever song originally anchored the group; it
           has no meaning beyond being a shared key. <Code>title</Code> is <Code>null</Code> until an editor names the
           group; <Code>version</Code> is <Code>null</Code> until an editor labels that specific song.
         </p>
       </Section>
 
-      <Section title="GET /versions/{song_id}/ — This Song's Row">
+      <Section title="This Song's Row (GET /versions/{song_id}/)">
         <p className="text-sm text-text-secondary">
-          The one filtered read the API supports server-side. Returns the paginated envelope with 0 or 1 result —
+          The one filtered read the API supports server-side. Returns the paginated envelope with 0 or 1 result:
           empty means the song isn&apos;t linked into any group.
         </p>
         <Pre>{`{
@@ -1598,12 +1799,15 @@ function VersionsTab() {
   "previous": null,
   "results": [ { "id": 501, "song_id": 94086, "group_id": 94086, "version": "v1", "title": "She's The One", ... } ]
 }`}</Pre>
+        <p className="text-xs text-text-muted mt-2">
+          <Code>{'GET /versions/{song_id}/{id}/'}</Code> fetches a single version row directly by its own <Code>id</Code>, unpaginated, instead of the song-filtered list above.
+        </p>
       </Section>
 
-      <Section title="GET /versions/ — All Rows">
+      <Section title="All Rows (GET /versions/)">
         <p className="text-sm text-text-secondary">
           The list endpoint does <span className="font-semibold text-text-primary">not</span> apply query params
-          (<Code>group_id</Code>, <Code>search</Code>, <Code>title</Code>) server-side — any filtering by group or
+          (<Code>group_id</Code>, <Code>search</Code>, <Code>title</Code>) server-side. Any filtering by group or
           title has to happen client-side. Pass <Code>?all=true</Code> to get every row in one response instead of
           paging through it (same bulk-mode convention <Code>/songs/</Code> supports).
         </p>
@@ -1617,7 +1821,7 @@ function VersionsTab() {
 ]`}</Pre>
       </Section>
 
-      <Section title="POST /versions/ — Create a Row (editor+)">
+      <Section title="Create a Row (POST /versions/, editor+)">
         <Pre>{`POST /versions/
 Authorization: Token <token>
 Content-Type: application/json
@@ -1630,12 +1834,12 @@ Content-Type: application/json
 }`}</Pre>
         <p className="text-xs text-text-muted">
           Used both to link a previously-ungrouped song into an existing group and to seed a brand-new group
-          (pass a <Code>group_id</Code> no other row uses yet — the app conventionally uses one of the two
+          (pass a <Code>group_id</Code> no other row uses yet; the app conventionally uses one of the two
           songs&apos; own <Code>song_id</Code>).
         </p>
       </Section>
 
-      <Section title="PATCH /versions/{song_id}/ — Update a Row (editor+)">
+      <Section title="Update a Row (PATCH /versions/{song_id}/, editor+)">
         <Pre>{`PATCH /versions/{song_id}/
 Authorization: Token <token>
 Content-Type: application/json
@@ -1643,7 +1847,7 @@ Content-Type: application/json
 { "group_id": 94086, "title": "She's The One" }`}</Pre>
         <p className="text-xs text-text-muted">
           Any subset of <Code>group_id</Code>, <Code>version</Code>, <Code>title</Code> may be sent. There is no
-          bulk-write endpoint — merging two groups or renaming a group&apos;s title means sending one
+          bulk-write endpoint. Merging two groups or renaming a group&apos;s title means sending one
           <Code> PATCH</Code> per affected song.
         </p>
       </Section>
@@ -1661,7 +1865,7 @@ Content-Type: application/json
           <li>
             <span className="font-semibold text-text-primary">Merge two existing groups:</span> fetch every row in
             both groups (via <Code>?all=true</Code>), then <Code>PATCH</Code> every row in the losing group to the
-            surviving <Code>group_id</Code> — and if only one side had a <Code>title</Code> set, <Code>PATCH</Code>{' '}
+            surviving <Code>group_id</Code>. If only one side had a <Code>title</Code> set, <Code>PATCH</Code>{' '}
             that title onto every row in the merged group so all members agree.
           </li>
           <li>
@@ -1679,7 +1883,7 @@ function FetchPatternTab() {
   return (
     <div className="space-y-6">
       <Section title="Fetch Utility">
-        <p className="text-sm text-text-secondary">Always use a utility function — never fetch inline in components.</p>
+        <p className="text-sm text-text-secondary">Always use a utility function. Never fetch inline in components.</p>
         <Pre>{`// lib/juicewrld.ts
 const BASE = 'https://juicewrldapi.com/juicewrld'
 
@@ -1731,7 +1935,7 @@ export function useSongs({
       </Section>
 
       <Section title="Audio Streaming">
-        <Pre>{`// Simple — browser handles range/seeking automatically
+        <Pre>{`// Simple: browser handles range/seeking automatically
 <audio
   controls
   src={\`https://juicewrldapi.com/juicewrld/files/download/?path=\${encodeURIComponent(song.path)}\`}
@@ -1745,14 +1949,14 @@ export function useSongs({
 
       <Section title="Tips">
         <ul className="space-y-2 text-sm text-text-secondary">
-          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> Use <Code>song.path</Code> directly as the stream path — it's already in the right format.</li>
-          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> The browser <Code>{'<audio>'}</Code> element handles Range requests automatically — just set <Code>src</Code>.</li>
+          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> Use <Code>song.path</Code> directly as the stream path. It's already in the right format.</li>
+          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> The browser <Code>{'<audio>'}</Code> element handles Range requests automatically. Just set <Code>src</Code>.</li>
           <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> Debounce search inputs 300–500 ms to avoid hammering the API.</li>
-          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> <Code>track_titles</Code> is an array — a song may have multiple alternative titles. Show the first or let users pick.</li>
+          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> <Code>track_titles</Code> is an array; a song may have multiple alternative titles. Show the first or let users pick.</li>
           <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> Not all songs have a <Code>path</Code> (some are metadata-only). Check before rendering a play button.</li>
-          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> <Code>image_url</Code> is relative — prepend <Code>https://juicewrldapi.com</Code>.</li>
-          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> Use <Code>/radio/random/</Code> for a shuffle/discover feature — it already returns a playable file.</li>
-          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> Check <Code>/account/me/</Code> first to know the role — don't probe restricted endpoints and handle 403s.</li>
+          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> <Code>image_url</Code> is relative; prepend <Code>https://juicewrldapi.com</Code>.</li>
+          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> Use <Code>/radio/random/</Code> for a shuffle/discover feature; it already returns a playable file.</li>
+          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> Check <Code>/account/me/</Code> first to know the role; don't probe restricted endpoints and handle 403s.</li>
         </ul>
       </Section>
     </div>
@@ -1770,7 +1974,7 @@ function RadioTab() {
     <div className="space-y-6">
       <Section title="What is 999 FM?">
         <p className="text-sm text-text-secondary leading-relaxed">
-          999 FM is the Juice WRLD API radio — a single endpoint that returns a random, fully playable song
+          999 FM is the Juice WRLD API radio: a single endpoint that returns a random, fully playable song
           on every request. Named after Juice WRLD&apos;s 999 brand, it&apos;s designed for discover or continuous
           playback features: call it, stream the song, call it again for the next one.
         </p>
@@ -1813,11 +2017,11 @@ function RadioTab() {
           rows={[
             [<Code>id</Code>, 'string', 'Internal file path (same as path)'],
             [<Code>title</Code>, 'string', 'Song title'],
-            [<Code>path</Code>, 'string', 'Stream path — pass to /files/download/?path='],
+            [<Code>path</Code>, 'string', 'Stream path, pass to /files/download/?path='],
             [<Code>size</Code>, 'number', 'File size in bytes'],
             [<Code>modified</Code>, 'string', 'ISO 8601 last-modified timestamp'],
             [<Code>hash</Code>, 'string', 'MD5 file hash (use for deduplication or cache-busting)'],
-            [<Code>song</Code>, 'object', 'Full song object — same shape as GET /songs/{id}/'],
+            [<Code>song</Code>, 'object', 'Full song object, same shape as GET /songs/{id}/'],
           ]}
         />
       </Section>
@@ -1849,7 +2053,7 @@ audioElement.src = track.streamUrl;
 audioElement.play();`}</Pre>
       </Section>
 
-      <Section title="React hook — useRadio">
+      <Section title="React hook: useRadio">
         <Pre>{`import { useState, useCallback } from 'react';
 
 const BASE = 'https://juicewrldapi.com/juicewrld';
@@ -1891,7 +2095,7 @@ function RadioPlayer() {
       {track ? (
         <>
           <img src={track.coverUrl} alt={track.title} />
-          <p>{track.title} — {track.artist}</p>
+          <p>{track.title} by {track.artist}</p>
           <audio
             src={track.streamUrl}
             autoPlay
@@ -1909,27 +2113,27 @@ function RadioPlayer() {
 }`}</Pre>
       </Section>
 
-      <Section title="Live Radio — one shared broadcast">
+      <Section title="Live Radio: one shared broadcast">
         <p className="text-sm text-text-secondary leading-relaxed">
           Separate from <Code>/radio/random/</Code> above. That endpoint hands each client its own random song;
-          this is a single <span className="font-semibold text-text-primary">shared station</span> — every listener
+          this is a single <span className="font-semibold text-text-primary">shared station</span>: every listener
           hears the same audio at the same time, with listener counts and community skip/queue votes. No auth required.
         </p>
         <Table
           headers={['Transport', 'Endpoint', 'Purpose']}
           rows={[
-            ['REST', 'GET /radio/live/', 'One-shot snapshot of station state — now playing, up next, vote, listener counts'],
+            ['REST', 'GET /radio/live/', 'One-shot snapshot of station state: now playing, up next, vote, listener counts'],
             ['WebSocket', '/ws/radio/', 'Live metadata pushes, vote participation, and (optionally) the audio itself'],
-            ['HTTP', 'GET /radio/stream.mp3', 'Plain MP3 stream — the fallback when MediaSource is unavailable'],
+            ['HTTP', 'GET /radio/stream.mp3', 'Plain MP3 stream, the fallback when MediaSource is unavailable'],
           ]}
         />
         <p className="text-xs text-text-muted">
           The websocket URL is the API base with its scheme swapped to <Code>ws</Code>/<Code>wss</Code> and{' '}
-          <Code>/ws/radio/</Code> appended — e.g. <Code>wss://juicewrldapi.com/juicewrld/ws/radio/</Code>.
+          <Code>/ws/radio/</Code> appended, e.g. <Code>wss://juicewrldapi.com/juicewrld/ws/radio/</Code>.
         </p>
       </Section>
 
-      <Section title="GET /radio/live/ — Station State">
+      <Section title="Station State (GET /radio/live/)">
         <Pre>{`{
   "is_live": true,
   "station": "999 FM",
@@ -1939,7 +2143,7 @@ function RadioPlayer() {
     "title": "Maze",
     "artist": "Juice WRLD",
     "album": "...",
-    "display": "Juice WRLD — Maze",
+    "display": "Juice WRLD - Maze",
     "elapsed_ms": 41000,
     "duration_ms": 144000,
     "image_url": "/assets/wod.jpg",
@@ -1967,9 +2171,23 @@ function RadioPlayer() {
         <p className="text-xs text-text-muted">
           <Code>song_id</Code> on a track is the numeric API song id, so a live track can be looked up via{' '}
           <Code>{'/songs/{id}/'}</Code> for full metadata, lyrics, or cover art. <Code>image_url</Code> is
-          relative — prepend <Code>https://juicewrldapi.com</Code>. <Code>vote.active: false</Code> means no vote
+          relative; prepend <Code>https://juicewrldapi.com</Code>. <Code>vote.active: false</Code> means no vote
           is running and the other vote fields may be absent.
         </p>
+      </Section>
+
+      <Section title="Track Library (GET /radio/library/)" defaultOpen={false}>
+        <p className="text-sm text-text-secondary">The pool of tracks 999 FM draws from, grouped by era. Useful for building a "what's in rotation" view without polling <Code>/radio/live/</Code>.</p>
+        <Pre>{`{
+  "eras": [
+    {
+      "name": "WOD",
+      "tracks": [
+        { "id": "94086", "title": "Maze", "artist": "Juice WRLD" }
+      ]
+    }
+  ]
+}`}</Pre>
       </Section>
 
       <Section title="WebSocket /ws/radio/">
@@ -1983,9 +2201,9 @@ ws.binaryType = 'arraybuffer'
 
 ws.onmessage = (e) => {
   if (typeof e.data === 'string') {
-    const state = JSON.parse(e.data)   // RadioLiveState — update the UI
+    const state = JSON.parse(e.data)   // RadioLiveState, update the UI
   } else {
-    // MP3 chunk — feed to a MediaSource SourceBuffer('audio/mpeg')
+    // MP3 chunk, feed to a MediaSource SourceBuffer('audio/mpeg')
   }
 }`}</Pre>
         <p className="text-xs text-text-muted font-semibold mt-3">Client → server messages:</p>
@@ -1994,26 +2212,167 @@ ws.onmessage = (e) => {
           rows={[
             [<Code>{'{ type: "listening", value, audio }'}</Code>, <>Join/leave the listener count. <Code>audio</Code> is <Code>&quot;ws&quot;</Code> or <Code>&quot;http&quot;</Code> depending on which stream you&apos;re consuming. Re-send on reconnect if still listening.</>],
             [<Code>{'{ type: "propose_skip" }'}</Code>, 'Start a vote to skip the current track'],
-            [<Code>{'{ type: "propose_queue", song_id }'}</Code>, <>Start a vote to queue a song. <Code>song_id</Code> must be the <span className="font-semibold text-text-primary">number</span> — a stringified id is silently ignored and the vote never starts.</>],
+            [<Code>{'{ type: "propose_queue", song_id }'}</Code>, <>Start a vote to queue a song. <Code>song_id</Code> must be the <span className="font-semibold text-text-primary">number</span>; a stringified id is silently ignored and the vote never starts.</>],
             [<Code>{'{ type: "vote", value }'}</Code>, <><Code>&quot;yes&quot;</Code> or <Code>&quot;no&quot;</Code> on the active vote</>],
           ]}
         />
         <p className="text-xs text-text-muted font-semibold mt-3">Playback notes:</p>
         <ul className="space-y-2 text-sm text-text-secondary">
-          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> Binary frames only make sense with MediaSource (<Code>audio/mpeg</Code>). Where it&apos;s unsupported, ignore them and point an <Code>{'<audio>'}</Code> element at <Code>/radio/stream.mp3</Code> instead — tell the server which you chose via the <Code>audio</Code> field.</li>
+          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> Binary frames only make sense with MediaSource (<Code>audio/mpeg</Code>). Where it&apos;s unsupported, ignore them and point an <Code>{'<audio>'}</Code> element at <Code>/radio/stream.mp3</Code> instead. Tell the server which you chose via the <Code>audio</Code> field.</li>
           <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> Because it&apos;s a live stream, buffered audio drifts behind. Seek forward when you fall more than a few seconds behind the buffered end, and evict old buffered ranges or the SourceBuffer eventually throws <Code>QuotaExceededError</Code>.</li>
-          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> Reconnect on close — background tabs get their socket closed and audio paused silently, with no event fired, so a periodic health check is worth having.</li>
+          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> Reconnect on close. Background tabs get their socket closed and audio paused silently, with no event fired, so a periodic health check is worth having.</li>
         </ul>
       </Section>
 
       <Section title="Notes">
         <ul className="space-y-2 text-sm text-text-secondary">
-          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> Calls are not seeded — every request is independent. Repeats are possible but rare given the 2,452-song catalogue.</li>
-          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> The <Code>song</Code> object is identical to <Code>{`/songs/{id}/`}</Code> — full producers, engineers, lyrics, synced lyrics, and groupbuy info included.</li>
-          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> <Code>image_url</Code> is a relative path (e.g. <Code>/assets/wod.jpg</Code>) — prepend <Code>https://juicewrldapi.com</Code> for use in <Code>&lt;img&gt;</Code> tags.</li>
-          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> The stream endpoint supports HTTP Range requests — the browser <Code>&lt;audio&gt;</Code> element handles seeking automatically.</li>
-          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> No rate limiting on public endpoints, but call once per track end — not on a tight loop.</li>
+          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> Calls are not seeded; every request is independent. Repeats are possible but rare given the 2,452-song catalogue.</li>
+          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> The <Code>song</Code> object is identical to <Code>{`/songs/{id}/`}</Code>: full producers, engineers, lyrics, synced lyrics, and groupbuy info included.</li>
+          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> <Code>image_url</Code> is a relative path (e.g. <Code>/assets/wod.jpg</Code>); prepend <Code>https://juicewrldapi.com</Code> for use in <Code>&lt;img&gt;</Code> tags.</li>
+          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> The stream endpoint supports HTTP Range requests; the browser <Code>&lt;audio&gt;</Code> element handles seeking automatically.</li>
+          <li className="flex items-start gap-2"><span className="text-accent mt-0.5">•</span> No rate limiting on public endpoints, but call once per track end, not on a tight loop.</li>
         </ul>
+      </Section>
+    </div>
+  )
+}
+
+function HeardleTab() {
+  const { Code, Section, MethodPath } = usePrimitives()
+  return (
+    <div className="space-y-6">
+      <Section title="What is Heardle?">
+        <p className="text-sm text-text-secondary leading-relaxed">
+          A daily song-guessing game: a short clip plays, and each wrong guess unlocks a little more of it. The
+          leaderboards and the signed audio clip below are the only Heardle endpoints that work without a user
+          token; the puzzle itself (fetching today's round, submitting a guess, skipping, personal stats) needs
+          an authenticated account and isn't covered on this tab.
+        </p>
+      </Section>
+
+      <Section title="Leaderboard (GET .../heardle/leaderboard/)">
+        <p className="text-sm text-text-secondary">
+          Mounted at <Code>/juicewrld/heardle/leaderboard/</Code> and mirrored under{' '}
+          <Code>/accounts/heardle/leaderboard/</Code> and <Code>/juicewrld/accounts/heardle/leaderboard/</Code>.
+        </p>
+        <Table
+          headers={['Param', 'Default', 'Values']}
+          rows={[
+            [<Code>board</Code>, <Code>streak</Code>, <><Code>streak</Code>, <Code>today</Code>, <Code>versus</Code></>],
+            [<Code>mode</Code>, <Code>daily</Code>, <>Also <Code>personal</Code>; ignored for <Code>versus</Code></>],
+            [<Code>day</Code>, 'today', <><Code>YYYY-MM-DD</Code></>],
+            [<Code>limit</Code>, '50', 'Max 100'],
+            [<Code>offset</Code>, '0', ''],
+          ]}
+        />
+        <Pre>{`{
+  "board": "streak",
+  "mode": "daily",
+  "day": "2026-09-10",
+  "entries": [ /* row shape depends on board, see below */ ],
+  "me": null
+}`}</Pre>
+        <p className="text-xs text-text-muted">
+          <Code>me</Code> is only populated when an auth token is sent; sending one is optional here.
+        </p>
+        <p className="text-xs text-text-muted font-semibold mt-3">Row shapes by board:</p>
+        <Table
+          headers={['Board', 'Fields']}
+          rows={[
+            ['streak', 'rank, user_id, display_name, discord_username, discord_avatar, played, won, win_rate, current_streak, max_streak, distribution'],
+            ['today', 'rank, user_id, display_name, discord_avatar, guesses, won'],
+            ['versus', 'rank, user_id, display_name, discord_avatar, played, won, lost, drawn, win_rate'],
+          ]}
+        />
+      </Section>
+
+      <Section title="Signed Clip (GET /heardle/clip/)">
+        <p className="text-sm text-text-secondary">
+          Serves the round's audio clip. Auth here is a signed <Code>round_token</Code>/<Code>sig</Code> pair
+          (HMAC) handed out when the puzzle round was fetched, not an <Code>Authorization</Code> header.
+        </p>
+        <Table
+          headers={['Param', 'Required', 'Description']}
+          rows={[
+            [<Code>round_token</Code>, 'Yes', ''],
+            [<Code>sig</Code>, 'Yes', 'HMAC signature over the round token'],
+            [<Code>unlock</Code>, 'No', 'Integer, how much of the clip to unlock (default 0)'],
+          ]}
+        />
+        <p className="text-xs text-text-muted font-semibold mt-2">403 on a bad signature:</p>
+        <Pre>{`{ "error": "Invalid signature" }`}</Pre>
+        <p className="text-xs text-text-muted">Otherwise streams the audio file with <Code>Accept-Ranges: bytes</Code>.</p>
+      </Section>
+    </div>
+  )
+}
+
+function FeedsMediaTab() {
+  const { Code, Section } = usePrimitives()
+  return (
+    <div className="space-y-6">
+      <Section title="RSS & JSON Feeds">
+        <p className="text-sm text-text-secondary leading-relaxed">
+          Activity feeds under <Code>/juicewrld/feeds/</Code>, one pair each for the two edit pipelines: song-data
+          edits (<Code>tracker</Code>) and comp-file changes (<Code>comp</Code>). Each comes as RSS XML for feed
+          readers and as JSON for anything that wants the data directly. All four accept a <Code>limit</Code>{' '}
+          param, 1-200, default 50.
+        </p>
+        <Table
+          headers={['Route', 'Content']}
+          rows={[
+            [<Code>GET /feeds/tracker.rss</Code>, 'RSS XML of approved song edits'],
+            [<Code>GET /feeds/comp.rss</Code>, 'RSS XML of comp file commits'],
+            [<Code>GET /feeds/tracker.json</Code>, 'JSON of approved song edits'],
+            [<Code>GET /feeds/comp.json</Code>, 'JSON of comp file commits'],
+          ]}
+        />
+        <p className="text-xs text-text-muted font-semibold mt-2"><Code>tracker.json</Code> row shape:</p>
+        <Pre>{`{
+  "results": [{
+    "id": "song-proposal-0",
+    "proposal_id": 0,
+    "song_id": 0,
+    "action": "",
+    "name": "",
+    "user": "",
+    "fields": [],
+    "notes": "",
+    "timestamp": "datetime",
+    "link": "url"
+  }]
+}`}</Pre>
+        <p className="text-xs text-text-muted font-semibold mt-2"><Code>comp.json</Code> row shape:</p>
+        <Pre>{`{
+  "results": [{
+    "id": "",
+    "action": "",
+    "is_folder": false,
+    "path": "",
+    "name": "",
+    "folder": "",
+    "user": "",
+    "size": 0,
+    "md5": "",
+    "source_path": "",
+    "timestamp": "datetime",
+    "link": "url"
+  }]
+}`}</Pre>
+      </Section>
+
+      <Section title="Static Files">
+        <p className="text-sm text-text-secondary">
+          Two plain static-file routes outside the main file browser: cover art served straight off disk, and
+          general media (news covers, attachments) served from the app's media root.
+        </p>
+        <Table
+          headers={['Route', 'Description']}
+          rows={[
+            [<Code>{'GET /cover/{name}'}</Code>, 'Image from the Cover Art directory. jpg/jpeg/png/webp/gif only'],
+            [<Code>{'GET /media/{path}'}</Code>, "Any file under the app's MEDIA_ROOT, e.g. news covers and attachments"],
+          ]}
+        />
       </Section>
     </div>
   )
@@ -2026,8 +2385,13 @@ export const TABS = [
   { id: 'files',     label: 'Files & Stream' },
   { id: 'playlists', label: 'Playlists' },
   { id: 'radio',     label: '999 FM' },
-  { id: 'auth',      label: 'Auth & Accounts' },
+  { id: 'heardle',   label: 'Heardle' },
+  { id: 'accounts',  label: 'Accounts' },
+  { id: 'editor',    label: 'Editor Workflow' },
+  { id: 'admin',     label: 'Admin' },
+  { id: 'feedback',  label: 'Feedback & Reports' },
   { id: 'news',      label: 'News' },
+  { id: 'feeds',     label: 'Feeds & Media' },
   { id: 'patterns',  label: 'Code Patterns' },
 ] as const
 
@@ -2040,13 +2404,18 @@ const TAB_CONTENT: Record<TabId, () => JSX.Element> = {
   files:     FilesTab,
   playlists: PlaylistsTab,
   radio:     RadioTab,
-  auth:      AuthTab,
+  heardle:   HeardleTab,
+  accounts:  AccountsTab,
+  editor:    EditorWorkflowTab,
+  admin:     AdminTab,
+  feedback:  FeedbackTab,
   news:      NewsTab,
+  feeds:     FeedsMediaTab,
   patterns:  FetchPatternTab,
 }
 
 // One tab's worth of content. Kept mounted even when hidden so its Sections
-// stay registered with the search index — `hidden` (not unmounting) is what
+// stay registered with the search index. `hidden` (not unmounting) is what
 // makes cross-tab search possible without duplicating the content as data.
 export function TabPanel({ tab, query, register, visible, showLabel }: {
   tab: typeof TABS[number]

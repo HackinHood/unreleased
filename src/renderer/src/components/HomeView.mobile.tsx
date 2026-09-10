@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronRight, MoreHorizontal, Play, ListMusic, Gamepad2, Flame, Music2, Disc3, User, Newspaper } from 'lucide-react'
+import { ChevronRight, MoreHorizontal, Play, ListMusic, Gamepad2, Flame, Music2, Disc3, User, Newspaper, Radio } from 'lucide-react'
 import { useStorePick } from '../store/useStore'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { ProgressiveCover } from './ProgressiveCover'
@@ -11,6 +11,7 @@ import { loadStats as loadHeardleStats, todayKey as heardleToday } from '../lib/
 import { loadStats as loadWordleStats, todayKey as wordleToday } from '../lib/wordle'
 import { loadTierlistState } from '../lib/tierlist'
 import { ALL_CHANNEL, fetchNews, peekNews, type NewsItem } from '../lib/newsApi'
+import { isHomeSectionVisible } from '../lib/homeSections'
 import type { Track, ViewType } from '../types'
 
 // A daily puzzle (streak + played-today) vs. Tier List, which is a standing
@@ -68,10 +69,13 @@ export default function HomeViewMobile(): JSX.Element {
   const {
     account, playlists, guestPlaylists, followedPlaylists, likedTrackIds,
     listeningPlays, setActiveView, setPendingPlaylistId, playTrack, setShowMoreNav, openProfile,
+    radioFmIsLive, radioFmNowPlaying, homeSectionVisibility,
   } = useStorePick(
     'account', 'playlists', 'guestPlaylists', 'followedPlaylists', 'likedTrackIds',
     'listeningPlays', 'setActiveView', 'setPendingPlaylistId', 'playTrack', 'setShowMoreNav', 'openProfile',
+    'radioFmIsLive', 'radioFmNowPlaying', 'homeSectionVisibility',
   )
+  const showSection = (id: string): boolean => isHomeSectionVisible(id, homeSectionVisibility)
   // Whatever doesn't fit the bottom nav directly — its old in-bar "More" tab
   // moved here, since fitting it AND a Home tab both in the bar pushed the
   // cap down by one more real destination.
@@ -170,7 +174,7 @@ export default function HomeViewMobile(): JSX.Element {
         )}
       </div>
 
-      {recent.length > 0 && (
+      {showSection('recent') && recent.length > 0 && (
         <Section title="Recently played" icon={<Disc3 size={15} />}>
           <div className="flex gap-3 overflow-x-auto no-scrollbar px-4 pb-1">
             {recent.map((track) => (
@@ -193,7 +197,7 @@ export default function HomeViewMobile(): JSX.Element {
         </Section>
       )}
 
-      {newsItems.length > 0 && (
+      {showSection('news') && newsItems.length > 0 && (
         <Section
           title="News"
           icon={<Newspaper size={15} />}
@@ -219,74 +223,103 @@ export default function HomeViewMobile(): JSX.Element {
         </Section>
       )}
 
-      <Section
-        title="Playlists"
-        icon={<ListMusic size={15} />}
-        action={{ label: 'All', onClick: () => setActiveView('playlists') }}
-      >
-        {playlistRow.length === 0 ? (
-          <EmptyNote>No playlists yet — build one from any song&apos;s menu.</EmptyNote>
-        ) : (
+      {showSection('playlists') && (
+        <Section
+          title="Playlists"
+          icon={<ListMusic size={15} />}
+          action={{ label: 'All', onClick: () => setActiveView('playlists') }}
+        >
+          {playlistRow.length === 0 ? (
+            <EmptyNote>No playlists yet — build one from any song&apos;s menu.</EmptyNote>
+          ) : (
+            <div className="flex gap-3 overflow-x-auto no-scrollbar px-4 pb-1">
+              {playlistRow.map((p) => (
+                <button key={p.key} onClick={p.open} className="w-[116px] shrink-0 text-left active:opacity-70 transition-opacity">
+                  <div className="w-[116px] h-[116px] rounded-xl overflow-hidden bg-surface-overlay mb-1.5 flex items-center justify-center">
+                    {p.cover
+                      ? <ProgressiveCover src={p.cover} alt={p.name} className="w-full h-full object-cover" />
+                      : <ListMusic size={26} className="text-text-muted" />}
+                  </div>
+                  <p className="text-text-primary text-xs leading-snug truncate">{p.name}</p>
+                  <p className="text-text-muted text-[11px] truncate mt-0.5">{p.subtitle}</p>
+                </button>
+              ))}
+            </div>
+          )}
+        </Section>
+      )}
+
+      {showSection('games') && (
+        <Section title="Games" icon={<Gamepad2 size={15} />}>
           <div className="flex gap-3 overflow-x-auto no-scrollbar px-4 pb-1">
-            {playlistRow.map((p) => (
-              <button key={p.key} onClick={p.open} className="w-[116px] shrink-0 text-left active:opacity-70 transition-opacity">
-                <div className="w-[116px] h-[116px] rounded-xl overflow-hidden bg-surface-overlay mb-1.5 flex items-center justify-center">
-                  {p.cover
-                    ? <ProgressiveCover src={p.cover} alt={p.name} className="w-full h-full object-cover" />
-                    : <ListMusic size={26} className="text-text-muted" />}
-                </div>
-                <p className="text-text-primary text-xs leading-snug truncate">{p.name}</p>
-                <p className="text-text-muted text-[11px] truncate mt-0.5">{p.subtitle}</p>
+            {games.map((g) => (
+              <button
+                key={g.view}
+                onClick={() => setActiveView(g.view)}
+                className="w-[140px] shrink-0 rounded-xl bg-[var(--surface-overlay)] px-3.5 py-3 text-left active:bg-surface-highest transition-colors"
+              >
+                <p className="text-text-primary text-sm font-semibold truncate">{g.label}</p>
+                {g.kind === 'daily' ? (
+                  <>
+                    <div className="flex items-center gap-1 mt-1 text-text-muted">
+                      <Flame size={12} className={g.streak > 0 ? 'text-accent' : ''} />
+                      <span className="text-[11px] tabular-nums">{g.streak} day streak</span>
+                    </div>
+                    <p className={`text-[11px] mt-1.5 font-medium ${g.done ? 'text-accent' : 'text-text-muted'}`}>
+                      {g.done ? 'Played today' : 'Not played today'}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-[11px] mt-1.5 text-text-muted">{g.sub}</p>
+                )}
               </button>
             ))}
           </div>
-        )}
-      </Section>
+        </Section>
+      )}
 
-      <Section title="Games" icon={<Gamepad2 size={15} />}>
-        <div className="flex gap-3 overflow-x-auto no-scrollbar px-4 pb-1">
-          {games.map((g) => (
-            <button
-              key={g.view}
-              onClick={() => setActiveView(g.view)}
-              className="w-[140px] shrink-0 rounded-xl bg-[var(--surface-overlay)] px-3.5 py-3 text-left active:bg-surface-highest transition-colors"
-            >
-              <p className="text-text-primary text-sm font-semibold truncate">{g.label}</p>
-              {g.kind === 'daily' ? (
-                <>
-                  <div className="flex items-center gap-1 mt-1 text-text-muted">
-                    <Flame size={12} className={g.streak > 0 ? 'text-accent' : ''} />
-                    <span className="text-[11px] tabular-nums">{g.streak} day streak</span>
-                  </div>
-                  <p className={`text-[11px] mt-1.5 font-medium ${g.done ? 'text-accent' : 'text-text-muted'}`}>
-                    {g.done ? 'Played today' : 'Not played today'}
-                  </p>
-                </>
-              ) : (
-                <p className="text-[11px] mt-1.5 text-text-muted">{g.sub}</p>
-              )}
-            </button>
-          ))}
-        </div>
-      </Section>
+      {showSection('radio') && (
+        <button
+          onClick={() => setActiveView('wrld')}
+          className="mx-4 mb-6 w-[calc(100%-2rem)] flex items-center gap-3 rounded-xl bg-[var(--surface-overlay)] px-3.5 py-3 active:bg-surface-highest transition-colors"
+        >
+          <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${radioFmIsLive ? 'bg-red-600/15' : 'bg-accent/15'}`}>
+            <Radio size={17} className={radioFmIsLive ? 'text-red-500 animate-pulse' : 'text-accent'} />
+          </span>
+          <span className="flex-1 min-w-0 text-left">
+            <span className="flex items-center gap-1.5">
+              <span className="text-text-primary text-sm font-semibold">999 FM</span>
+              {radioFmIsLive && <span className="text-red-500 text-[10px] font-bold uppercase tracking-widest">Live</span>}
+            </span>
+            <span className="block text-text-muted text-xs truncate">
+              {radioFmIsLive && radioFmNowPlaying
+                ? `${radioFmNowPlaying.title} — ${radioFmNowPlaying.artist}`
+                : 'Juice WRLD radio, live 24/7'}
+            </span>
+          </span>
+          <ChevronRight size={16} className="text-text-muted shrink-0" />
+        </button>
+      )}
 
-      <Section
-        title="Your listening"
-        icon={<Music2 size={15} />}
-        action={{ label: 'Wrapped', onClick: () => setActiveView('stats') }}
-      >
-        {totalPlays === 0 ? (
-          <EmptyNote>Play something and your stats will show up here.</EmptyNote>
-        ) : (
-          <div className="px-4 flex gap-3">
-            <StatCard value={totalPlays.toLocaleString()} label="Plays" />
-            <StatCard value={distinctSongs.toLocaleString()} label="Songs" />
-            <StatCard value={weekPlays.toLocaleString()} label="This week" />
-          </div>
-        )}
-      </Section>
+      {showSection('listening') && (
+        <Section
+          title="Your listening"
+          icon={<Music2 size={15} />}
+          action={{ label: 'Wrapped', onClick: () => setActiveView('stats') }}
+        >
+          {totalPlays === 0 ? (
+            <EmptyNote>Play something and your stats will show up here.</EmptyNote>
+          ) : (
+            <div className="px-4 flex gap-3">
+              <StatCard value={totalPlays.toLocaleString()} label="Plays" />
+              <StatCard value={distinctSongs.toLocaleString()} label="Songs" />
+              <StatCard value={weekPlays.toLocaleString()} label="This week" />
+            </div>
+          )}
+        </Section>
+      )}
 
-      {likedTrackIds.length > 0 && (
+      {showSection('liked') && likedTrackIds.length > 0 && (
         <button
           onClick={() => setActiveView('liked')}
           className="mx-4 w-[calc(100%-2rem)] flex items-center gap-3 rounded-xl bg-[var(--surface-overlay)] px-3.5 py-3 active:bg-surface-highest transition-colors"

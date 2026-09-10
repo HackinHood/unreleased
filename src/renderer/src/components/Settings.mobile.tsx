@@ -5,13 +5,14 @@ import {
   FolderOpen, FolderPlus, Minus, Loader2, Plus, AlignLeft, FileText, Trash2, Music2,
   Waves, RotateCcw, ExternalLink,
   ListOrdered, CloudUpload, Type, AlignCenter, Menu, Pencil, Upload,
-  ScrollText, ShieldCheck, User, LogOut, LogIn, AlertCircle, GripVertical, Images, Search, X, Bug, Disc, Lock,
+  ScrollText, ShieldCheck, User, LogOut, LogIn, AlertCircle, GripVertical, Images, Search, X, Bug, Disc, Lock, House,
 } from 'lucide-react'
 import { useStore, useStorePick } from '../store/useStore'
 import { SKINS, getSkin, createCustomSkin, parseSkinFile } from '../lib/skins'
 import SkinEditorModal from './SkinEditorModal'
 import { FONTS } from '../lib/fonts'
 import { orderedNavItems, isNavItemVisible, DEFAULT_NAV_ORDER, DEFAULT_NAV_VISIBILITY } from '../lib/navItems'
+import { HOME_SECTIONS, DEFAULT_HOME_SECTION_VISIBILITY, isHomeSectionVisible } from '../lib/homeSections'
 import { getToken, CONTRIBUTOR_ENABLED, showStaffProfile, staffProfileLabel } from '../lib/userApi'
 import { APP_VERSION, COMMIT_HASH } from '../lib/appVersion'
 import {
@@ -128,6 +129,7 @@ const SETTINGS_SEARCH_INDEX: { tab: Tab; label: string; sub?: string }[] = [
   { tab: 'appearance', label: 'Navigation position', sub: 'Where the nav menu sits' },
   { tab: 'appearance', label: 'Menu items', sub: 'Reorder or hide nav tabs' },
   { tab: 'appearance', label: 'Menu controls', sub: 'Reorder or hide the buttons at the foot of the menu' },
+  { tab: 'appearance', label: 'Home screen', sub: 'Choose which sections show on the Home tab' },
   // Playback
   { tab: 'playback', label: 'Audio output' },
   { tab: 'playback', label: 'Lyrics sync', sub: 'Offset lyrics timing' },
@@ -381,6 +383,7 @@ export default function Settings(): JSX.Element {
     settingsTab, setSettingsTab,
     navOrder, setNavOrder,
     navVisibility, setNavItemVisible,
+    homeSectionVisibility, setHomeSectionVisible,
     audioOutput, setAudioOutput,
     crossfadeEnabled, crossfadeDuration, setCrossfade,
     pauseFadeEnabled, setPauseFade,
@@ -406,7 +409,7 @@ export default function Settings(): JSX.Element {
     playlistHeroEnabledDark, playlistHeroEnabledLight, setPlaylistHeroEnabled,
     fullEraNames, setFullEraNames,
     autoReportErrors, setAutoReportErrors,
-  } = useStorePick('setShowSettings', 'setActiveView', 'openProfile', 'account', 'setShowUserAuth', 'logoutAccount', 'theme', 'setTheme', 'customSkins', 'saveCustomSkin', 'deleteCustomSkin', 'accentColor', 'setAccentColor', 'settingsTab', 'setSettingsTab', 'navOrder', 'setNavOrder', 'navVisibility', 'setNavItemVisible', 'audioOutput', 'setAudioOutput', 'crossfadeEnabled', 'crossfadeDuration', 'setCrossfade', 'pauseFadeEnabled', 'setPauseFade', 'preferOgVersion', 'setPreferOgVersion', 'rotateSuggestedCovers', 'setRotateSuggestedCovers', 'mediaOverlayEnabled', 'setMediaOverlayEnabled', 'lyricsOffset', 'setLyricsOffset', 'sleepTimerEnd', 'setSleepTimer', 'developerMode', 'setDeveloperMode', 'lastfmUser', 'setLastfmUser', 'lastfmEnabled', 'setLastfmEnabled', 'appTextScale', 'setAppTextScale', 'lyricsScale', 'setLyricsScale', 'lyricsAlign', 'setLyricsAlign', 'lyricsBlur', 'setLyricsBlur', 'lyricsBlurAmount', 'setLyricsBlurAmount', 'lyricsColorActive', 'setLyricsColorActive', 'lyricsColorInactive', 'setLyricsColorInactive', 'appFont', 'setAppFont', 'lyricsFont', 'setLyricsFont', 'gradientsEnabled', 'setGradientsEnabled', 'surfaceGradientsEnabled', 'setSurfaceGradientsEnabled', 'wrldThemeBackground', 'setWrldThemeBackground', 'playlistHeroEnabledDark', 'playlistHeroEnabledLight', 'setPlaylistHeroEnabled', 'fullEraNames', 'setFullEraNames', 'autoReportErrors', 'setAutoReportErrors')
+  } = useStorePick('setShowSettings', 'setActiveView', 'openProfile', 'account', 'setShowUserAuth', 'logoutAccount', 'theme', 'setTheme', 'customSkins', 'saveCustomSkin', 'deleteCustomSkin', 'accentColor', 'setAccentColor', 'settingsTab', 'setSettingsTab', 'navOrder', 'setNavOrder', 'navVisibility', 'setNavItemVisible', 'homeSectionVisibility', 'setHomeSectionVisible', 'audioOutput', 'setAudioOutput', 'crossfadeEnabled', 'crossfadeDuration', 'setCrossfade', 'pauseFadeEnabled', 'setPauseFade', 'preferOgVersion', 'setPreferOgVersion', 'rotateSuggestedCovers', 'setRotateSuggestedCovers', 'mediaOverlayEnabled', 'setMediaOverlayEnabled', 'lyricsOffset', 'setLyricsOffset', 'sleepTimerEnd', 'setSleepTimer', 'developerMode', 'setDeveloperMode', 'lastfmUser', 'setLastfmUser', 'lastfmEnabled', 'setLastfmEnabled', 'appTextScale', 'setAppTextScale', 'lyricsScale', 'setLyricsScale', 'lyricsAlign', 'setLyricsAlign', 'lyricsBlur', 'setLyricsBlur', 'lyricsBlurAmount', 'setLyricsBlurAmount', 'lyricsColorActive', 'setLyricsColorActive', 'lyricsColorInactive', 'setLyricsColorInactive', 'appFont', 'setAppFont', 'lyricsFont', 'setLyricsFont', 'gradientsEnabled', 'setGradientsEnabled', 'surfaceGradientsEnabled', 'setSurfaceGradientsEnabled', 'wrldThemeBackground', 'setWrldThemeBackground', 'playlistHeroEnabledDark', 'playlistHeroEnabledLight', 'setPlaylistHeroEnabled', 'fullEraNames', 'setFullEraNames', 'autoReportErrors', 'setAutoReportErrors')
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [customAccent, setCustomAccent] = useState(accentColor)
@@ -458,6 +461,13 @@ export default function Settings(): JSX.Element {
     for (const item of navRows) {
       const def = DEFAULT_NAV_VISIBILITY[item.view] ?? true
       if ((navVisibility[item.view] ?? true) !== def) setNavItemVisible(item.view, def)
+    }
+  }
+  const homeIsDefault = HOME_SECTIONS.every((s) => isHomeSectionVisible(s.id, homeSectionVisibility) === (DEFAULT_HOME_SECTION_VISIBILITY[s.id] ?? true))
+  const resetHome = (): void => {
+    for (const s of HOME_SECTIONS) {
+      const def = DEFAULT_HOME_SECTION_VISIBILITY[s.id] ?? true
+      if (isHomeSectionVisible(s.id, homeSectionVisibility) !== def) setHomeSectionVisible(s.id, def)
     }
   }
   // Move a row to sit adjacent to a target row. Reordering happens on the FULL
@@ -1260,6 +1270,42 @@ export default function Settings(): JSX.Element {
                                 {shown ? <Eye size={16} /> : <EyeOff size={16} />}
                               </button>
                             )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </Block>
+                  <Block
+                    icon={House}
+                    iconColor="#059669"
+                    label="Home screen"
+                    sub="Choose which sections show on the Home tab"
+                    action={!homeIsDefault ? (
+                      <button
+                        onClick={resetHome}
+                        className="flex items-center gap-1 px-2 py-2 -my-1 text-xs text-text-muted active:text-text-primary transition-colors shrink-0"
+                      >
+                        <RotateCcw size={12} /> Reset
+                      </button>
+                    ) : undefined}
+                  >
+                    <div className="rounded-xl bg-[var(--surface-highest)] overflow-hidden">
+                      {HOME_SECTIONS.map((section) => {
+                        const shown = isHomeSectionVisible(section.id, homeSectionVisibility)
+                        return (
+                          <div
+                            key={section.id}
+                            className="flex items-center gap-2 pl-3 pr-1 py-1 border-b border-[var(--border)] last:border-b-0 bg-[var(--surface-highest)]"
+                          >
+                            <span className={`w-6 h-6 shrink-0 flex items-center justify-center ${shown ? 'text-text-secondary' : 'opacity-40'}`}>{section.icon}</span>
+                            <span className={`flex-1 min-w-0 truncate text-sm ${shown ? 'text-text-primary' : 'text-text-muted'}`}>{section.label}</span>
+                            <button
+                              onClick={() => setHomeSectionVisible(section.id, !shown)}
+                              aria-label={shown ? `Hide ${section.label}` : `Show ${section.label}`}
+                              className="shrink-0 w-11 h-11 flex items-center justify-center rounded-lg text-text-muted active:bg-[var(--surface-overlay)] transition-colors"
+                            >
+                              {shown ? <Eye size={16} /> : <EyeOff size={16} />}
+                            </button>
                           </div>
                         )
                       })}
