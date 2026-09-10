@@ -1,69 +1,250 @@
-import { ChevronRight, Play, ListMusic, Gamepad2, Flame, Music2, Disc3, User, Newspaper, Radio, Heart, BarChart3 } from 'lucide-react'
+import { useRef } from 'react'
+import { ChevronRight, Play, ListMusic, Gamepad2, Flame, Music2, Disc3, User, Newspaper, Radio, Heart } from 'lucide-react'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { ProgressiveCover } from './ProgressiveCover'
-import { useHomeData } from '../hooks/useHomeData'
+import { useHomeData, type GameCard, type HomePlaylistCard } from '../hooks/useHomeData'
+import { useElementSize } from '../hooks/useElementSize'
+import type { NewsItem } from '../lib/newsApi'
+import type { Track } from '../types'
 
-// The desktop landing screen. Same sections, same data (useHomeData) and the
-// same Settings → Home screen toggles as the mobile shell — but laid out as a
-// dashboard rather than a stack of rails: the phone's horizontal strips would
-// leave most of a 1600px window empty while still hiding content behind a
-// scroll, so every section here is a grid that wraps to fill the width.
+// The desktop landing screen — same sections, same data (useHomeData) and the
+// same Settings → Home screen toggles as the mobile shell, laid out as a bento
+// that fills the window instead of a stack that scrolls out of it.
 //
-// One section id still maps to exactly one place on screen, so hiding a
-// section in Settings removes exactly one thing. The 999 FM row is the only
-// one that moves: on desktop it's the hero's right-hand card, where the extra
-// width actually buys something (a readable now-playing line).
+// The whole point of the desktop layout is that a desktop screen can hold the
+// entire dashboard at once: the view is height-bound (h-full inside App's
+// fixed-height <main>), the two big rows split the leftover space between
+// them, and each tile fits itself to the box it lands in. Cover grids clamp to
+// whole rows — a half-visible row of covers reads as broken in a way a short
+// grid doesn't — and News, the one section where the extra headlines are worth
+// keeping reachable, scrolls inside its own tile.
+//
+// Section ids map 1:1 to one place on screen, so hiding a section in Settings
+// removes exactly one thing. Two move relative to mobile: 999 FM and Liked
+// share the second row's side column, and "Your listening" is the hero's row
+// of numbers, where it costs no vertical space of its own.
 
-// Covers wide enough to breathe but small enough that a 1400px row still
-// holds eight — the grid picks the column count from these.
-const COVER_GRID = 'grid gap-4 grid-cols-[repeat(auto-fill,minmax(150px,1fr))]'
-const NEWS_GRID = 'grid gap-4 grid-cols-[repeat(auto-fill,minmax(280px,1fr))]'
+const GAP = 12          // matches gap-3 on the cover grids
+const MIN_TILE = 130    // narrowest a cover may get before dropping a column
+const LABEL_H = 38      // the title + subtitle block under each cover
+const MAX_NEWS = 20
 
-// Enough to fill two rows at most desktop widths without turning Home into a
-// full listing — each section has an "All" route for that.
-const MAX_COVERS = 12
-const MAX_NEWS = 6
+// Whole rows only — see the header note. Returns how many items fit the box.
+function fitCount(size: { width: number; height: number }, total: number): { cols: number; count: number } {
+  if (size.width <= 0 || size.height <= 0) return { cols: 1, count: 0 }
+  const cols = Math.max(1, Math.floor((size.width + GAP) / (MIN_TILE + GAP)))
+  const tileW = (size.width - (cols - 1) * GAP) / cols
+  const rowH = tileW + LABEL_H
+  const rows = Math.max(1, Math.floor((size.height + GAP) / (rowH + GAP)))
+  return { cols, count: Math.min(total, cols * rows) }
+}
 
-function Section({ title, icon, action, children }: {
-  title: string
-  icon: JSX.Element
+function Tile({ title, icon, action, span, children }: {
+  title?: string
+  icon?: JSX.Element
   action?: { label: string; onClick: () => void }
+  span: string
   children: React.ReactNode
 }): JSX.Element {
   return (
-    <section className="mb-9">
-      <div className="flex items-center gap-2.5 mb-3.5">
-        <span className="text-text-muted">{icon}</span>
-        <h2 className="text-text-primary text-lg font-bold flex-1 min-w-0 truncate">{title}</h2>
-        {action && (
-          <button
-            onClick={action.onClick}
-            className="flex items-center gap-0.5 px-2.5 py-1 -mr-2.5 rounded-lg text-text-muted text-xs font-semibold hover:text-text-primary hover:bg-[var(--surface-overlay)] transition-colors shrink-0"
-          >
-            {action.label}<ChevronRight size={14} />
-          </button>
-        )}
-      </div>
+    <section className={`${span} min-w-0 min-h-0 flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface-overlay)]/50 p-4`}>
+      {title && (
+        <div className="flex items-center gap-2 mb-3 shrink-0">
+          <span className="text-text-muted">{icon}</span>
+          <h2 className="text-text-primary text-sm font-bold uppercase tracking-wider flex-1 min-w-0 truncate">{title}</h2>
+          {action && (
+            <button
+              onClick={action.onClick}
+              className="flex items-center gap-0.5 px-2 py-0.5 -mr-2 rounded-lg text-text-muted text-xs font-semibold hover:text-text-primary hover:bg-[var(--surface-raised)] transition-colors shrink-0"
+            >
+              {action.label}<ChevronRight size={13} />
+            </button>
+          )}
+        </div>
+      )}
       {children}
     </section>
   )
 }
 
-function StatCard({ icon, value, label }: { icon: JSX.Element; value: string; label: string }): JSX.Element {
+function EmptyNote({ children }: { children: React.ReactNode }): JSX.Element {
+  return <p className="text-text-muted text-xs">{children}</p>
+}
+
+// ─── Row A / B mains: the two clamped cover grids ────────────────────────────
+
+function CoverGrid({ children, cols, bodyRef }: {
+  children: React.ReactNode
+  cols: number
+  bodyRef: React.RefObject<HTMLDivElement>
+}): JSX.Element {
   return (
-    <div className="flex-1 min-w-0 rounded-xl bg-[var(--surface-overlay)] px-4 py-3">
-      <span className="flex items-center gap-1.5 text-text-muted">
-        {icon}
-        <span className="text-[10px] font-semibold uppercase tracking-widest truncate">{label}</span>
-      </span>
-      <p className="text-text-primary text-2xl font-bold tabular-nums truncate mt-1">{value}</p>
+    <div ref={bodyRef} className="flex-1 min-h-0 overflow-hidden">
+      <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+        {children}
+      </div>
     </div>
   )
 }
 
-function EmptyNote({ children }: { children: React.ReactNode }): JSX.Element {
-  return <p className="text-text-muted text-sm">{children}</p>
+function RecentTile({ tracks, onPlay, span }: {
+  tracks: Track[]
+  onPlay: (track: Track) => void
+  span: string
+}): JSX.Element {
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const { cols, count } = fitCount(useElementSize(bodyRef), tracks.length)
+  return (
+    <Tile title="Recently played" icon={<Disc3 size={15} />} span={span}>
+      <CoverGrid cols={cols} bodyRef={bodyRef}>
+        {tracks.slice(0, count).map((track) => (
+          <button key={track.id} onClick={() => onPlay(track)} className="group text-left min-w-0">
+            <div className="relative aspect-square rounded-lg overflow-hidden bg-surface-raised mb-1.5">
+              <AlbumArtThumbnail track={track} fill className="w-full h-full object-cover" />
+              <span className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <span className="absolute bottom-1.5 right-1.5 w-8 h-8 rounded-full bg-accent text-black flex items-center justify-center opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all">
+                <Play size={13} className="ml-0.5" fill="currentColor" />
+              </span>
+            </div>
+            <p className="text-text-primary text-xs leading-snug truncate group-hover:text-accent transition-colors">{track.title}</p>
+            <p className="text-text-muted text-[11px] truncate mt-0.5">{track.artist}</p>
+          </button>
+        ))}
+      </CoverGrid>
+    </Tile>
+  )
 }
+
+function PlaylistsTile({ playlists, onAll, span }: {
+  playlists: HomePlaylistCard[]
+  onAll: () => void
+  span: string
+}): JSX.Element {
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const { cols, count } = fitCount(useElementSize(bodyRef), playlists.length)
+  return (
+    <Tile title="Playlists" icon={<ListMusic size={15} />} action={{ label: 'All', onClick: onAll }} span={span}>
+      {playlists.length === 0 ? (
+        <EmptyNote>No playlists yet — build one from any song&apos;s menu.</EmptyNote>
+      ) : (
+        <CoverGrid cols={cols} bodyRef={bodyRef}>
+          {playlists.slice(0, count).map((p) => (
+            <button key={p.key} onClick={p.open} className="group text-left min-w-0">
+              <div className="aspect-square rounded-lg overflow-hidden bg-surface-raised mb-1.5 flex items-center justify-center">
+                {p.cover
+                  ? <ProgressiveCover src={p.cover} alt={p.name} className="w-full h-full object-cover" />
+                  : <ListMusic size={26} className="text-text-muted" />}
+              </div>
+              <p className="text-text-primary text-xs leading-snug truncate group-hover:text-accent transition-colors">{p.name}</p>
+              <p className="text-text-muted text-[11px] truncate mt-0.5">{p.subtitle}</p>
+            </button>
+          ))}
+        </CoverGrid>
+      )}
+    </Tile>
+  )
+}
+
+// ─── Row A side: the one tile that scrolls ───────────────────────────────────
+
+function NewsTile({ items, onOpen, onAll, span }: {
+  items: NewsItem[]
+  onOpen: (item: NewsItem) => void
+  onAll: () => void
+  span: string
+}): JSX.Element {
+  return (
+    <Tile title="News" icon={<Newspaper size={15} />} action={{ label: 'All', onClick: onAll }} span={span}>
+      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar -mx-1 px-1 space-y-1">
+        {items.slice(0, MAX_NEWS).map((item) => (
+          <button
+            key={item.id}
+            onClick={() => onOpen(item)}
+            className="group w-full flex items-center gap-2.5 rounded-lg p-1.5 text-left hover:bg-[var(--surface-raised)] transition-colors"
+          >
+            <span className="w-12 h-12 shrink-0 rounded-md overflow-hidden bg-surface-raised flex items-center justify-center">
+              {item.image_url
+                ? <ProgressiveCover src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                : <Newspaper size={16} className="text-text-muted" />}
+            </span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-text-primary text-xs leading-snug line-clamp-2 group-hover:text-accent transition-colors">{item.title}</span>
+              {item.category && <span className="block text-text-muted text-[11px] truncate mt-0.5">{item.category}</span>}
+            </span>
+          </button>
+        ))}
+      </div>
+    </Tile>
+  )
+}
+
+// ─── Row B side + row C: the compact shortcut tiles ──────────────────────────
+
+function ShortcutCard({ icon, title, subtitle, tone = 'accent', onClick }: {
+  icon: JSX.Element
+  title: React.ReactNode
+  subtitle: React.ReactNode
+  tone?: 'accent' | 'live'
+  onClick: () => void
+}): JSX.Element {
+  return (
+    <button
+      onClick={onClick}
+      className="group flex-1 min-h-0 w-full flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-overlay)] px-3.5 py-3 text-left hover:border-[var(--accent)] hover:bg-surface-highest transition-colors"
+    >
+      <span className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${tone === 'live' ? 'bg-red-600/15' : 'bg-accent/15'}`}>
+        {icon}
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="flex items-center gap-1.5 text-text-primary text-sm font-semibold">{title}</span>
+        <span className="block text-text-muted text-xs truncate mt-0.5">{subtitle}</span>
+      </span>
+      <ChevronRight size={15} className="text-text-muted shrink-0 group-hover:text-text-primary transition-colors" />
+    </button>
+  )
+}
+
+function GamesTile({ games, onOpen, span }: {
+  games: GameCard[]
+  onOpen: (view: GameCard['view']) => void
+  span: string
+}): JSX.Element {
+  return (
+    <Tile title="Games" icon={<Gamepad2 size={15} />} span={span}>
+      <div className="grid grid-cols-3 gap-3">
+        {games.map((g) => (
+          <button
+            key={g.view}
+            onClick={() => onOpen(g.view)}
+            className="group flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-overlay)] px-3.5 py-2.5 text-left hover:border-[var(--accent)] hover:bg-surface-highest transition-colors"
+          >
+            <span className="w-9 h-9 rounded-lg bg-accent/15 flex items-center justify-center shrink-0">
+              <Gamepad2 size={17} className="text-accent" />
+            </span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-text-primary text-sm font-semibold truncate">{g.label}</span>
+              {g.kind === 'daily' ? (
+                <span className="flex items-center gap-2 mt-0.5 min-w-0">
+                  <span className="flex items-center gap-1 text-text-muted shrink-0">
+                    <Flame size={11} className={g.streak > 0 ? 'text-accent' : ''} />
+                    <span className="text-[11px] tabular-nums">{g.streak}</span>
+                  </span>
+                  <span className={`text-[11px] font-medium truncate ${g.done ? 'text-accent' : 'text-text-muted'}`}>
+                    {g.done ? 'Played today' : 'Not played today'}
+                  </span>
+                </span>
+              ) : (
+                <span className="block text-[11px] mt-0.5 text-text-muted truncate">{g.sub}</span>
+              )}
+            </span>
+          </button>
+        ))}
+      </div>
+    </Tile>
+  )
+}
+
+// ─── Hero ────────────────────────────────────────────────────────────────────
 
 function greeting(): string {
   const h = new Date().getHours()
@@ -73,6 +254,15 @@ function greeting(): string {
   return 'Good evening'
 }
 
+function Stat({ value, label }: { value: string; label: string }): JSX.Element {
+  return (
+    <span className="flex items-baseline gap-1.5 min-w-0">
+      <span className="text-text-primary text-base font-bold tabular-nums">{value}</span>
+      <span className="text-text-muted text-xs truncate">{label}</span>
+    </span>
+  )
+}
+
 export default function HomeViewDesktop(): JSX.Element {
   const {
     account, likedTrackIds, radioFmIsLive, radioFmNowPlaying, setActiveView,
@@ -80,208 +270,134 @@ export default function HomeViewDesktop(): JSX.Element {
     totalPlays, distinctSongs, weekPlays, openTrack, openNewsItem,
   } = useHomeData()
 
-  const showListening = showSection('listening')
+  const showRecent = showSection('recent') && recent.length > 0
+  const showNews = showSection('news') && newsItems.length > 0
+  const showPlaylists = showSection('playlists')
+  const showRadio = showSection('radio')
   const showLiked = showSection('liked') && likedTrackIds.length > 0
+  const showGames = showSection('games')
+  const showListening = showSection('listening')
+
+  const hasSide = showRadio || showLiked
+  const rowA = showRecent || showNews
+  const rowB = showPlaylists || hasSide
+
+  // A tile whose partner in the row is hidden takes the whole row rather than
+  // leaving a gap — the grid is 4 columns wide either way.
+  const mainSpan = (withSide: boolean): string => (withSide ? 'col-span-3' : 'col-span-4')
+  const sideSpan = (withMain: boolean): string => (withMain ? 'col-span-1' : 'col-span-4')
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
-      <div className="px-6 pt-6 pb-10 w-full max-w-[1400px] mx-auto">
-        {/* ── Hero ── */}
-        <div className="flex items-center gap-5 mb-9 flex-wrap">
+    <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="h-full min-h-[600px] w-full max-w-[1800px] mx-auto px-6 py-5 flex flex-col gap-4">
+        {/* ── Hero: one line, with "Your listening" folded in as numbers ── */}
+        <div className="shrink-0 flex items-center gap-3.5 flex-wrap">
           <button
             onClick={openProfile}
             aria-label="Profile"
-            className="w-14 h-14 shrink-0 rounded-full overflow-hidden bg-[var(--surface-overlay)] flex items-center justify-center text-text-muted hover:bg-surface-highest transition-colors"
+            className="w-11 h-11 shrink-0 rounded-full overflow-hidden bg-[var(--surface-overlay)] flex items-center justify-center text-text-muted hover:bg-surface-highest transition-colors"
           >
             {account?.discord_avatar
               ? <img src={account.discord_avatar} alt="" className="w-full h-full object-cover" />
-              : <User size={24} />}
+              : <User size={19} />}
           </button>
-          <div className="min-w-0 flex-1">
-            <h1 className="text-text-primary text-3xl font-bold leading-tight truncate">
-              {greeting()}{account ? `, ${account.display_name}` : ''}
-            </h1>
-            <p className="text-text-muted text-sm mt-1">
-              {totalPlays > 0
-                ? `${totalPlays.toLocaleString()} ${totalPlays === 1 ? 'play' : 'plays'} · ${distinctSongs.toLocaleString()} ${distinctSongs === 1 ? 'song' : 'songs'}`
-                : 'Everything Juice WRLD ever recorded, in one place.'}
-            </p>
-          </div>
-
-          {showSection('radio') && (
-            <button
-              onClick={() => setActiveView('wrld')}
-              className="group w-[340px] shrink-0 flex items-center gap-3.5 rounded-2xl border border-[var(--border)] bg-gradient-to-br from-accent/15 to-transparent px-4 py-3.5 text-left hover:border-[var(--accent)] transition-colors"
-            >
-              <span className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${radioFmIsLive ? 'bg-red-600/15' : 'bg-accent/15'}`}>
-                <Radio size={20} className={radioFmIsLive ? 'text-red-500 animate-pulse' : 'text-accent'} />
-              </span>
-              <span className="flex-1 min-w-0">
-                <span className="flex items-center gap-2">
-                  <span className="text-text-primary text-sm font-semibold">999 FM</span>
-                  {radioFmIsLive && <span className="text-red-500 text-[10px] font-bold uppercase tracking-widest">Live</span>}
-                </span>
-                <span className="block text-text-muted text-xs truncate mt-0.5">
-                  {radioFmIsLive && radioFmNowPlaying
-                    ? `${radioFmNowPlaying.title} — ${radioFmNowPlaying.artist}`
-                    : 'Juice WRLD radio, live 24/7'}
-                </span>
-              </span>
-              <ChevronRight size={16} className="text-text-muted shrink-0 group-hover:text-text-primary transition-colors" />
-            </button>
+          <h1 className="text-text-primary text-xl font-bold leading-tight truncate min-w-0">
+            {greeting()}{account ? `, ${account.display_name}` : ''}
+          </h1>
+          {showListening && (
+            <div className="ml-auto flex items-center gap-4 min-w-0">
+              {totalPlays === 0 ? (
+                <span className="text-text-muted text-xs truncate">Play something and your stats will show up here.</span>
+              ) : (
+                <>
+                  <Stat value={totalPlays.toLocaleString()} label={totalPlays === 1 ? 'play' : 'plays'} />
+                  <Stat value={distinctSongs.toLocaleString()} label={distinctSongs === 1 ? 'song' : 'songs'} />
+                  <Stat value={weekPlays.toLocaleString()} label="this week" />
+                </>
+              )}
+              <button
+                onClick={() => setActiveView('stats')}
+                className="flex items-center gap-0.5 px-2.5 py-1 rounded-lg text-text-muted text-xs font-semibold hover:text-text-primary hover:bg-[var(--surface-overlay)] transition-colors shrink-0"
+              >
+                Wrapped<ChevronRight size={13} />
+              </button>
+            </div>
           )}
         </div>
 
-        {showSection('recent') && recent.length > 0 && (
-          <Section title="Recently played" icon={<Disc3 size={17} />}>
-            <div className={COVER_GRID}>
-              {recent.slice(0, MAX_COVERS).map((track) => (
-                <button key={track.id} onClick={() => openTrack(track)} className="group text-left">
-                  <div className="relative aspect-square rounded-xl overflow-hidden bg-surface-overlay mb-2">
-                    <AlbumArtThumbnail track={track} fill className="w-full h-full object-cover" />
-                    <span className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    <span className="absolute bottom-2 right-2 w-9 h-9 rounded-full bg-accent text-black flex items-center justify-center opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all">
-                      <Play size={15} className="ml-0.5" fill="currentColor" />
-                    </span>
-                  </div>
-                  <p className="text-text-primary text-sm leading-snug truncate group-hover:text-accent transition-colors">{track.title}</p>
-                  <p className="text-text-muted text-xs truncate mt-0.5">{track.artist}</p>
-                </button>
-              ))}
-            </div>
-          </Section>
+        {/* ── Row A: recently played · news ── */}
+        {rowA && (
+          <div className="flex-1 min-h-0 grid grid-cols-4 gap-4">
+            {showRecent && <RecentTile tracks={recent} onPlay={openTrack} span={mainSpan(showNews)} />}
+            {showNews && (
+              <NewsTile
+                items={newsItems}
+                onOpen={openNewsItem}
+                onAll={() => setActiveView('news')}
+                span={sideSpan(showRecent)}
+              />
+            )}
+          </div>
         )}
 
-        {showSection('news') && newsItems.length > 0 && (
-          <Section
-            title="News"
-            icon={<Newspaper size={17} />}
-            action={{ label: 'All', onClick: () => setActiveView('news') }}
-          >
-            <div className={NEWS_GRID}>
-              {newsItems.slice(0, MAX_NEWS).map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => openNewsItem(item)}
-                  className="group text-left rounded-xl border border-[var(--border)] bg-[var(--surface-overlay)] overflow-hidden hover:border-[var(--accent)] transition-colors"
-                >
-                  <div className="aspect-video bg-surface-raised flex items-center justify-center overflow-hidden">
-                    {item.image_url
-                      ? <ProgressiveCover src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
-                      : <Newspaper size={30} className="text-text-muted" />}
-                  </div>
-                  <div className="px-3.5 py-3">
-                    <p className="text-text-primary text-sm font-medium leading-snug line-clamp-2">{item.title}</p>
-                    {item.category && <p className="text-text-muted text-xs truncate mt-1.5">{item.category}</p>}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </Section>
-        )}
-
-        {showSection('playlists') && (
-          <Section
-            title="Playlists"
-            icon={<ListMusic size={17} />}
-            action={{ label: 'All', onClick: () => setActiveView('playlists') }}
-          >
-            {playlistRow.length === 0 ? (
-              <EmptyNote>No playlists yet — build one from any song&apos;s menu.</EmptyNote>
-            ) : (
-              <div className={COVER_GRID}>
-                {playlistRow.map((p) => (
-                  <button key={p.key} onClick={p.open} className="group text-left">
-                    <div className="aspect-square rounded-xl overflow-hidden bg-surface-overlay mb-2 flex items-center justify-center">
-                      {p.cover
-                        ? <ProgressiveCover src={p.cover} alt={p.name} className="w-full h-full object-cover" />
-                        : <ListMusic size={30} className="text-text-muted" />}
-                    </div>
-                    <p className="text-text-primary text-sm leading-snug truncate group-hover:text-accent transition-colors">{p.name}</p>
-                    <p className="text-text-muted text-xs truncate mt-0.5">{p.subtitle}</p>
-                  </button>
-                ))}
+        {/* ── Row B: playlists · 999 FM over liked songs ── */}
+        {rowB && (
+          <div className="flex-1 min-h-0 grid grid-cols-4 gap-4">
+            {showPlaylists && (
+              <PlaylistsTile
+                playlists={playlistRow}
+                onAll={() => setActiveView('playlists')}
+                span={mainSpan(hasSide)}
+              />
+            )}
+            {hasSide && (
+              <div className={`${sideSpan(showPlaylists)} min-w-0 min-h-0 flex flex-col gap-3`}>
+                {showRadio && (
+                  <ShortcutCard
+                    tone={radioFmIsLive ? 'live' : 'accent'}
+                    icon={<Radio size={18} className={radioFmIsLive ? 'text-red-500 animate-pulse' : 'text-accent'} />}
+                    title={
+                      <>
+                        999 FM
+                        {radioFmIsLive && <span className="text-red-500 text-[10px] font-bold uppercase tracking-widest">Live</span>}
+                      </>
+                    }
+                    subtitle={
+                      radioFmIsLive && radioFmNowPlaying
+                        ? `${radioFmNowPlaying.title} — ${radioFmNowPlaying.artist}`
+                        : 'Juice WRLD radio, live 24/7'
+                    }
+                    onClick={() => setActiveView('wrld')}
+                  />
+                )}
+                {showLiked && (
+                  <ShortcutCard
+                    icon={<Heart size={18} className="text-accent" fill="currentColor" />}
+                    title="Liked songs"
+                    subtitle={`${likedTrackIds.length} song${likedTrackIds.length === 1 ? '' : 's'}`}
+                    onClick={() => setActiveView('liked')}
+                  />
+                )}
               </div>
             )}
-          </Section>
+          </div>
         )}
 
-        {showSection('games') && (
-          <Section title="Games" icon={<Gamepad2 size={17} />}>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {games.map((g) => (
-                <button
-                  key={g.view}
-                  onClick={() => setActiveView(g.view)}
-                  className="group flex items-center gap-3.5 rounded-xl border border-[var(--border)] bg-[var(--surface-overlay)] px-4 py-3.5 text-left hover:border-[var(--accent)] hover:bg-surface-highest transition-colors"
-                >
-                  <span className="w-11 h-11 rounded-xl bg-accent/15 flex items-center justify-center shrink-0">
-                    <Gamepad2 size={20} className="text-accent" />
-                  </span>
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-text-primary text-sm font-semibold truncate">{g.label}</span>
-                    {g.kind === 'daily' ? (
-                      <span className="flex items-center gap-2.5 mt-1">
-                        <span className="flex items-center gap-1 text-text-muted">
-                          <Flame size={12} className={g.streak > 0 ? 'text-accent' : ''} />
-                          <span className="text-xs tabular-nums">{g.streak} day streak</span>
-                        </span>
-                        <span className={`text-xs font-medium ${g.done ? 'text-accent' : 'text-text-muted'}`}>
-                          {g.done ? 'Played today' : 'Not played today'}
-                        </span>
-                      </span>
-                    ) : (
-                      <span className="block text-xs mt-1 text-text-muted">{g.sub}</span>
-                    )}
-                  </span>
-                  <ChevronRight size={16} className="text-text-muted shrink-0 group-hover:text-text-primary transition-colors" />
-                </button>
-              ))}
-            </div>
-          </Section>
+        {/* ── Row C: games ── */}
+        {showGames && (
+          <div className="shrink-0 grid grid-cols-4 gap-4">
+            <GamesTile games={games} onOpen={(view) => setActiveView(view)} span="col-span-4" />
+          </div>
         )}
 
-        {/* Two halves of one closing row — either can be hidden from Settings,
-            and whichever survives alone spans the full width. */}
-        {(showListening || showLiked) && (
-          <div className={`grid gap-6 ${showListening && showLiked ? 'xl:grid-cols-2' : ''}`}>
-            {showListening && (
-              <Section
-                title="Your listening"
-                icon={<Music2 size={17} />}
-                action={{ label: 'Wrapped', onClick: () => setActiveView('stats') }}
-              >
-                {totalPlays === 0 ? (
-                  <EmptyNote>Play something and your stats will show up here.</EmptyNote>
-                ) : (
-                  <div className="flex gap-3">
-                    <StatCard icon={<Play size={11} fill="currentColor" />} value={totalPlays.toLocaleString()} label="Plays" />
-                    <StatCard icon={<Disc3 size={11} />} value={distinctSongs.toLocaleString()} label="Songs" />
-                    <StatCard icon={<BarChart3 size={11} />} value={weekPlays.toLocaleString()} label="This week" />
-                  </div>
-                )}
-              </Section>
-            )}
-
-            {showLiked && (
-              <Section title="Liked songs" icon={<Heart size={17} />}>
-                <button
-                  onClick={() => setActiveView('liked')}
-                  className="group w-full flex items-center gap-3.5 rounded-xl border border-[var(--border)] bg-[var(--surface-overlay)] px-4 py-3.5 hover:border-[var(--accent)] hover:bg-surface-highest transition-colors"
-                >
-                  <span className="w-11 h-11 rounded-xl bg-accent/15 flex items-center justify-center shrink-0">
-                    <Music2 size={20} className="text-accent" />
-                  </span>
-                  <span className="flex-1 min-w-0 text-left">
-                    <span className="block text-text-primary text-sm font-semibold">Liked songs</span>
-                    <span className="block text-text-muted text-xs mt-0.5">
-                      {likedTrackIds.length} song{likedTrackIds.length === 1 ? '' : 's'}
-                    </span>
-                  </span>
-                  <ChevronRight size={16} className="text-text-muted shrink-0 group-hover:text-text-primary transition-colors" />
-                </button>
-              </Section>
-            )}
+        {!rowA && !rowB && !showGames && (
+          <div className="flex-1 flex flex-col items-center justify-center text-center">
+            <Music2 size={34} className="text-text-muted mb-3" />
+            <p className="text-text-primary text-sm font-semibold mb-1">Nothing to show</p>
+            <p className="text-text-muted text-xs max-w-xs leading-relaxed">
+              Every Home section is switched off. Turn some back on in
+              Settings → Appearance → Home screen.
+            </p>
           </div>
         )}
       </div>
