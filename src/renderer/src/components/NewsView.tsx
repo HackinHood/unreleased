@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useIsMobile } from '../hooks/useIsMobile'
 import {
   ChevronLeft, Newspaper, RefreshCw, AlertCircle, Plus, Settings2,
@@ -18,6 +18,12 @@ import ChangesFeedPanel from './ChangesFeedPanel'
 import Markdown from './Markdown'
 
 type NewsMode = 'news' | 'feed'
+
+// Post URLs are /news/<id> so an open article can be shared/refreshed/bookmarked.
+function postIdFromPath(pathname: string): number | null {
+  const m = pathname.match(/^\/news\/(\d+)$/)
+  return m ? Number(m[1]) : null
+}
 
 function formatDate(iso: string): string {
   const d = new Date(iso)
@@ -394,17 +400,32 @@ export default function NewsView(): JSX.Element {
   useEffect(() => { loadChannels() }, [loadChannels])
 
   // Reload whenever the channel changes (and on mount). Close any open article
-  // so we don't strand the reader on a story from the previous channel.
-  useEffect(() => { setSelected(null); load() }, [load])
+  // so we don't strand the reader on a story from the previous channel — but
+  // not on the very first run, which needs to leave a URL-deep-linked post
+  // (see the effect below) alone.
+  const didMount = useRef(false)
+  useEffect(() => {
+    if (didMount.current) closeArticle()
+    else didMount.current = true
+    load()
+  }, [load])
 
   // Reflect the follow state of whatever channel is active.
   useEffect(() => { setSubscribedState(channel !== ALL_CHANNEL && isSubscribed(channel)) }, [channel])
 
   // Open a specific post when a notification is clicked (NewsNotifier routes
   // here then dispatches the id). Also honor an id left in sessionStorage if the
-  // view mounts after the event fired.
+  // view mounts after the event fired, or one baked into the URL (deep link /
+  // page refresh / shared /news/<id> link).
   useEffect(() => {
-    const openById = (id: number): void => { fetchNewsItem(id).then(setSelected).catch(() => undefined) }
+    const openById = (id: number): void => {
+      fetchNewsItem(id).then((it) => {
+        setSelected(it)
+        if (postIdFromPath(window.location.pathname) !== it.id) {
+          window.history.pushState({}, '', `/news/${it.id}`)
+        }
+      }).catch(() => undefined)
+    }
     const onOpen = (e: Event): void => {
       const id = (e as CustomEvent<number>).detail
       // Already-mounted path: consume the id so a later remount doesn't reopen it.
@@ -415,9 +436,39 @@ export default function NewsView(): JSX.Element {
     try {
       const pending = sessionStorage.getItem('news:openPostId')
       if (pending) { sessionStorage.removeItem('news:openPostId'); openById(Number(pending)) }
+      else {
+        const fromUrl = postIdFromPath(window.location.pathname)
+        if (fromUrl != null) openById(fromUrl)
+      }
     } catch {}
     return () => window.removeEventListener('news:open', onOpen)
   }, [])
+
+  // Keep the URL and the open article in sync with browser back/forward.
+  useEffect(() => {
+    const onPopState = (): void => {
+      const id = postIdFromPath(window.location.pathname)
+      if (id == null) { setSelected(null); return }
+      fetchNewsItem(id).then(setSelected).catch(() => undefined)
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
+  // Push/pop /news/<id> as an article opens and closes, so the URL always
+  // reflects what's on screen and a post can be shared or reloaded directly.
+  const openItem = (item: NewsItem): void => {
+    setSelected(item)
+    if (postIdFromPath(window.location.pathname) !== item.id) {
+      window.history.pushState({}, '', `/news/${item.id}`)
+    }
+  }
+  const closeArticle = (): void => {
+    setSelected(null)
+    if (postIdFromPath(window.location.pathname) != null) {
+      window.history.pushState({}, '', '/news')
+    }
+  }
 
   const toggleSubscribe = async (): Promise<void> => {
     if (channel === ALL_CHANNEL) return
@@ -437,7 +488,7 @@ export default function NewsView(): JSX.Element {
     try {
       await deleteNewsItem(item.id)
       setItems((prev) => prev.filter((i) => i.id !== item.id))
-      setSelected((s) => (s?.id === item.id ? null : s))
+      if (selected?.id === item.id) closeArticle()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete')
     }
@@ -569,7 +620,7 @@ export default function NewsView(): JSX.Element {
           <ArticleDetail
             item={selected}
             channelLabel={channelLabel(selected.channel)}
-            onBack={() => setSelected(null)}
+            onBack={closeArticle}
             canManage={canManageItem(selected)}
             onEdit={openEdit}
             onDelete={handleDelete}
@@ -598,10 +649,10 @@ export default function NewsView(): JSX.Element {
               <EmptyState canManage={canPost} onCompose={openNew} />
             ) : (
               <div className="space-y-5">
-                {featured && <FeaturedCard item={featured} onOpen={setSelected} canManage={canManageItem(featured)} onEdit={openEdit} onDelete={handleDelete} />}
+                {featured && <FeaturedCard item={featured} onOpen={openItem} canManage={canManageItem(featured)} onEdit={openEdit} onDelete={handleDelete} />}
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                   {rest.map((item) => (
-                    <NewsCard key={item.id} item={item} onOpen={setSelected} canManage={canManageItem(item)} onEdit={openEdit} onDelete={handleDelete} />
+                    <NewsCard key={item.id} item={item} onOpen={openItem} canManage={canManageItem(item)} onEdit={openEdit} onDelete={handleDelete} />
                   ))}
                 </div>
               </div>
