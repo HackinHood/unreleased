@@ -1165,17 +1165,26 @@ Content-Type: application/json
         <p className="text-sm text-text-secondary leading-relaxed">
           A second, separate proposal pipeline from song-data Edit Proposals above. This one is for changes to the{' '}
           <span className="font-semibold text-text-primary">compilation&apos;s files themselves</span> (uploading a
-          new file, replacing one, moving/renaming, or deleting), submitted by contributors and reviewed by admins
-          or managers. Everything under <Code>/accounts/contributor/</Code> requires <Code>is_contributor</Code>{' '}
-          (globally or via a comp-channel membership); everything under <Code>/accounts/admin/comp-proposals/</Code>{' '}
-          requires admin or manager (again, globally or per-channel); <Code>/accounts/admin/comp-files/</Code>{' '}
-          requires <Code>is_administrator</Code>.
+          new file, replacing one, moving/renaming a file or a whole folder, or deleting a file or folder), submitted
+          by contributors and reviewed by admins or managers. Everything under <Code>/accounts/contributor/</Code>{' '}
+          requires <Code>is_contributor</Code> (globally or via a comp-channel membership); everything under{' '}
+          <Code>/accounts/admin/comp-proposals/</Code> requires admin or manager (again, globally or per-channel);{' '}
+          <Code>/accounts/admin/comp-files/</Code> requires <Code>is_administrator</Code>.
         </p>
         <p className="text-xs text-text-muted mt-2">
           Comp-channel scoped: list, create, review, and history calls only see that channel&apos;s proposals and
           files. Pass <Code>?channel=</Code>/a <Code>channel</Code> field on every endpoint below, same as the
           Files &amp; Stream tab. Staging storage lives under <Code>comp_staging/&lt;slug&gt;/proposals/</Code> per
           channel (the primary channel keeps the older unprefixed <Code>comp_staging/proposals/</Code> path).
+        </p>
+        <p className="text-xs text-text-muted mt-2">
+          <span className="font-semibold text-text-primary">Tracker path sync (server-side, automatic):</span> when a
+          comp file&apos;s path changes, the API updates matching <Code>Song.path</Code> values without a separate
+          call. A single-file <Code>move</Code> (renames count) updates that one <Code>Song.path</Code>;{' '}
+          <Code>rename_folder</Code>/<Code>move_folder</Code> updates every affected file&apos;s <Code>Song.path</Code>{' '}
+          by swapping the folder prefix. <Code>delete</Code>/<Code>delete_folder</Code> leave <Code>Song.path</Code>{' '}
+          untouched since the files are archived, not destroyed &mdash; refetch song data after a folder move/rename
+          is approved to pick up the already-updated paths.
         </p>
       </Section>
 
@@ -1204,8 +1213,9 @@ Content-Type: multipart/form-data; boundary=... (set automatically, do not set t
 
 FormData:
   change_type       "upload" | "replace" | "move" | "delete" | "create_folder"
-  file_path         "Compilation/Unreleased/Song.mp3"     // target path; a folder path for "create_folder"
-  destination_path  "Compilation/Unreleased/New Name.mp3" // only for "move"
+                    | "rename_folder" | "move_folder" | "delete_folder"
+  file_path         "Compilation/Unreleased/Song.mp3"     // target path; a folder path for the folder change types
+  destination_path  "Compilation/Unreleased/New Name.mp3" // "move", "rename_folder", "move_folder" only
   contributor_notes "optional"
   file              <binary>                              // only for "upload"/"replace"
   channel           "optional, channel slug, defaults to the primary channel"`}</Pre>
@@ -1213,6 +1223,69 @@ FormData:
           <Code>create_folder</Code> takes only <Code>file_path</Code> (the new folder&apos;s path, with no
           extension), with no <Code>file</Code> and no <Code>destination_path</Code>. On approval the empty folder is
           created under <Code>comp/</Code>, ready to be filled with upload proposals.
+        </p>
+        <p className="text-xs text-text-muted font-semibold mt-3">Folder change types</p>
+        <p className="text-xs text-text-muted">
+          No file is attached for any of the three &mdash; sending <Code>file</Code> on a folder proposal is
+          rejected with a <Code>file</Code> field error. <Code>file_path</Code>/<Code>destination_path</Code> are
+          comp-root-relative folder paths, forward slashes, no leading slash.
+        </p>
+        <Table
+          headers={['change_type', 'Use when', 'destination_path']}
+          rows={[
+            [<Code>rename_folder</Code>, 'Only the final folder segment changes; parent stays the same', 'Required &mdash; must share the same parent as file_path'],
+            [<Code>move_folder</Code>, 'The folder moves under a different parent directory', 'Required &mdash; must have a different parent than file_path'],
+            [<Code>delete_folder</Code>, 'Archive and remove every active file in the folder, then remove it', 'Omit &mdash; not accepted'],
+          ]}
+        />
+        <p className="text-xs text-text-muted">
+          Both rename and move require the source folder to exist and contain at least one active indexed file, and
+          the destination to not already exist. Using the wrong one of the two for a same-vs-different-parent change
+          is a 400: <Code>destination_path</Code>: &quot;Rename must keep the folder in the same parent
+          directory.&quot; or &quot;Move must place the folder under a different parent directory.&quot;
+        </p>
+        <p className="text-xs text-text-muted font-semibold mt-3">
+          Auto-approve (trusted contributors, i.e. <Code>auto_approve_comp_proposals</Code>):
+        </p>
+        <p className="text-xs text-text-muted">
+          <Code>rename_folder</Code> and <Code>move_folder</Code> get instant approval like <Code>upload</Code>/
+          <Code>replace</Code>/<Code>move</Code>/<Code>create_folder</Code>. <Code>delete</Code> and{' '}
+          <Code>delete_folder</Code> are <span className="font-semibold text-text-primary">never</span> auto-approved
+          &mdash; both always go to manual review regardless of trust status. See Admin: Comp File Proposal Review
+          below for the extra approval gates on <Code>delete_folder</Code> specifically.
+        </p>
+        <p className="text-xs text-text-muted font-semibold mt-3">Folder proposal object shape (rename_folder):</p>
+        <Pre>{`{
+  "id": 42,
+  "contributor_username": "someone",
+  "contributor_id": 7,
+  "channel_slug": "comp",
+  "file_path": "Era Name/Old Folder",
+  "destination_path": "Era Name/New Folder",
+  "change_type": "rename_folder",
+  "staging_filename": "",
+  "original_snapshot": {
+    "folder": "Era Name/Old Folder",
+    "files": [
+      "Era Name/Old Folder/song1.mp3",
+      "Era Name/Old Folder/song2.mp3"
+    ]
+  },
+  "contributor_notes": "Fixing typo in folder name",
+  "status": "pending",
+  "reviewer_username": null,
+  "review_notes": "",
+  "applied_commit_id": "",
+  "edit_count": 0,
+  "last_edited_at": null,
+  "created_at": "...",
+  "reviewed_at": null
+}`}</Pre>
+        <p className="text-xs text-text-muted">
+          For all three folder change types, <Code>staging_filename</Code> is always empty (no upload involved), and{' '}
+          <Code>original_snapshot</Code> on <Code>move_folder</Code>/<Code>delete_folder</Code> lists every active
+          file the change will affect as <Code>{'{ folder, files: [...] }'}</Code>, useful for showing an
+          &quot;affected files&quot; list on a pending proposal.
         </p>
         <p className="text-xs text-text-muted font-semibold mt-3">Comp file proposal object shape:</p>
         <Pre>{`{
@@ -1434,6 +1507,34 @@ function AdminTab() {
         <p className="text-xs text-text-muted">
           <Code>/staging/</Code> streams the actual staged file (not JSON). Treat it as a download/preview link,
           the same way <Code>/files/download/</Code> is used for library audio.
+        </p>
+        <p className="text-xs text-text-muted font-semibold mt-3">
+          <Code>delete_folder</Code> &mdash; stricter approval rules:
+        </p>
+        <p className="text-xs text-text-muted">
+          On top of the normal review endpoint above, a <Code>delete_folder</Code> proposal is (1) never
+          auto-approved, always sitting <Code>pending</Code> until a human reviews it, (2) only approvable by a full{' '}
+          <Code>is_administrator</Code> (or superuser) &mdash; a channel manager alone gets a 403, and (3) not
+          self-approvable &mdash; the approver must be a different administrator than whoever proposed the deletion,
+          even if the proposer is also an admin.
+        </p>
+        <Table
+          headers={['Status', 'detail']}
+          rows={[
+            ['403', 'Folder deletions require administrator approval.'],
+            ['403', 'Folder deletions must be approved by a different administrator.'],
+          ]}
+        />
+        <p className="text-xs text-text-muted">
+          Frontend should hide/disable the approve button for non-administrators on <Code>delete_folder</Code>{' '}
+          proposals, show a notice that it needs a second administrator, and if the current user is the proposer,
+          make clear they can&apos;t self-approve even as an admin.
+        </p>
+        <p className="text-xs text-text-muted">
+          Reversal works the same way as other comp proposals (<Code>/reverse/</Code>): <Code>rename_folder</Code>/
+          <Code>move_folder</Code> move the folder back and restore all file paths and <Code>Song.path</Code> values;{' '}
+          <Code>delete_folder</Code> restores the archived files to their original paths, recreates the folder, and
+          reactivates their <Code>CompFile</Code> rows.
         </p>
       </Section>
 
