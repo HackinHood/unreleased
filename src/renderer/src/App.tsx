@@ -44,6 +44,7 @@ import ReportModal from './components/ReportModal'
 import BulkEditModal from './components/BulkEditModal'
 import InstallPrompt from './components/InstallPrompt'
 import CookieNotice from './components/CookieNotice'
+import DonationNotice from './components/DonationNotice'
 import { GlobalSongInfoHost } from './components/SongInfoModal'
 import Player from './components/Player'
 import NowPlaying from './components/NowPlaying'
@@ -240,6 +241,7 @@ export default function App(): JSX.Element {
       <ErrorBoundary variant="overlay"><BulkEditModal /></ErrorBoundary>
       <ErrorBoundary fallback={null}><InstallPrompt /></ErrorBoundary>
       <ErrorBoundary fallback={null}><CookieNotice /></ErrorBoundary>
+      <ErrorBoundary fallback={null}><DonationNotice /></ErrorBoundary>
       <ErrorBoundary variant="overlay"><GlobalSongInfoHost /></ErrorBoundary>
       <ErrorBoundary fallback={null}><DownloadManager /></ErrorBoundary>
       <ErrorBoundary fallback={null}><SandboxNotch /></ErrorBoundary>
