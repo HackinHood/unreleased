@@ -242,6 +242,9 @@ interface AppState {
   // behind, theme text colors on top, so the tab stops recoloring itself every
   // track.
   wrldThemeBackground: boolean
+  // Playlist detail header's full-bleed blurred-cover backdrop (Apple Music
+  // style). On by default; off falls back to a plain flat surface header.
+  playlistHeroEnabled: boolean
   // When enabled, if a track has a linked "OG" version (same song, grouped via
   // the versions system, labeled e.g. "OG"/"OG File"), play that version's
   // file instead of the currently selected one.
@@ -500,6 +503,7 @@ interface AppActions {
   setGradientsEnabled: (enabled: boolean) => void
   setSurfaceGradientsEnabled: (enabled: boolean) => void
   setWrldThemeBackground: (enabled: boolean) => void
+  setPlaylistHeroEnabled: (enabled: boolean) => void
   setPreferOgVersion: (enabled: boolean) => void
   setRotateSuggestedCovers: (enabled: boolean) => void
   /** Sets (or, with raw = null, clears) the cover override for one era and
@@ -1139,6 +1143,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
   gradientsEnabled: ls.get<boolean>('gradientsEnabled') ?? true,
   surfaceGradientsEnabled: ls.get<boolean>('surfaceGradientsEnabled') ?? false,
   wrldThemeBackground: ls.get<boolean>('wrldThemeBackground') ?? false,
+  playlistHeroEnabled: ls.get<boolean>('playlistHeroEnabled') ?? true,
   preferOgVersion: ls.get<boolean>('preferOgVersion') ?? false,
   rotateSuggestedCovers: ls.get<boolean>('rotateSuggestedCovers') ?? false,
   eraCovers: ls.get<Record<string, string>>('eraCovers') ?? {},
@@ -1244,6 +1249,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
   setGradientsEnabled: (gradientsEnabled) => { set({ gradientsEnabled }); ls.set('gradientsEnabled', gradientsEnabled) },
   setSurfaceGradientsEnabled: (surfaceGradientsEnabled) => { set({ surfaceGradientsEnabled }); ls.set('surfaceGradientsEnabled', surfaceGradientsEnabled) },
   setWrldThemeBackground: (wrldThemeBackground) => { set({ wrldThemeBackground }); ls.set('wrldThemeBackground', wrldThemeBackground) },
+  setPlaylistHeroEnabled: (playlistHeroEnabled) => { set({ playlistHeroEnabled }); ls.set('playlistHeroEnabled', playlistHeroEnabled) },
 
   setHotkeyBinding: (actionId, combo) => {
     const current = get().hotkeyBindings

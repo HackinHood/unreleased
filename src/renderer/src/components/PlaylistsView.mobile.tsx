@@ -13,6 +13,7 @@ import { Track, LocalPlaylist, LibraryTrack, FollowedPlaylist } from '../types'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { ProgressiveCover } from './ProgressiveCover'
 import { JWAPI_BASE, apiFetch, JWApiSong, playlistCoverUrl, smallCoverUrl } from '../lib/juicewrldApi'
+import { getSkin } from '../lib/skins'
 import { libraryTrackToTrack as libTrackToTrack } from '../lib/fileTypes'
 import { formatDuration, formatTotalDuration } from '../lib/format'
 import { fisherYates } from '../store/queueSlice'
@@ -103,8 +104,13 @@ function GuestPlaylistMosaic({ tracks, className = '' }: { tracks: Track[]; clas
 
 /** Full-bleed blurred cover behind the detail header, fading into the page.
  *  Only rendered when there IS art — the header switches to a light-on-dark
- *  palette to match it, which would be unreadable over a bare light theme. */
-function HeroBackdrop({ src }: { src: string }): JSX.Element {
+ *  (or light-on-light, on a light skin) palette to match it, which would be
+ *  unreadable over a bare theme surface otherwise. `isDarkSkin` mirrors the
+ *  darkening toward white on a light skin instead of always going black —
+ *  a black banner slapped over an otherwise light page read as a straight-up
+ *  bug rather than a design choice. Callers must flip their own text colors
+ *  (see the `backdropSrc && isDarkSkin` checks below) to match. */
+function HeroBackdrop({ src, isDarkSkin }: { src: string; isDarkSkin: boolean }): JSX.Element {
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
       <img
@@ -113,9 +119,19 @@ function HeroBackdrop({ src }: { src: string }): JSX.Element {
         src={smallCoverUrl(src)}
         alt=""
         className="absolute inset-0 w-full h-full object-cover"
-        style={{ filter: 'blur(50px) saturate(1.7) brightness(0.5)', transform: 'scale(1.3)' }}
+        style={{
+          filter: `blur(50px) saturate(1.7) brightness(${isDarkSkin ? 0.5 : 0.85})`,
+          transform: 'scale(1.3)',
+        }}
       />
-      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/20 to-[var(--surface)]" />
+      <div
+        className="absolute inset-0"
+        style={{
+          backgroundImage: isDarkSkin
+            ? 'linear-gradient(to bottom, rgb(0 0 0 / 0.30), rgb(0 0 0 / 0.20), var(--surface))'
+            : 'linear-gradient(to bottom, rgb(255 255 255 / 0.45), rgb(255 255 255 / 0.25), var(--surface))',
+        }}
+      />
     </div>
   )
 }
@@ -356,12 +372,18 @@ export default function PlaylistsView(): JSX.Element {
     playlistsSelectedLocalId: localSelectedId, setPlaylistsSelectedLocalId: setLocalSelectedId,
     playlistsSort: sortRaw, setPlaylistsSort: setSortRaw,
     playlistFolders, createFolder, renameFolder, deleteFolder, movePlaylistsToFolder,
-    appTextScale, currentTrack, setHeroBleedTop, playNext } = useStorePick('account', 'playlists', 'refreshPlaylists', 'playTrack', 'playCollection', 'addToQueue', 'setShowUserAuth', 'likedTrackIds', 'toggleLike', 'setActiveView', 'setPendingEditorSongId', 'localPlaylists', 'libraryTracks', 'libraryArt', 'loadLibrary', 'deleteLocalPlaylist', 'renameLocalPlaylist', 'updateLocalPlaylist', 'addToLocalPlaylist', 'removeFromLocalPlaylist', 'reorderLocalPlaylist', 'createLocalPlaylist', 'guestPlaylists', 'createGuestPlaylist', 'deleteGuestPlaylist', 'renameGuestPlaylist', 'removeFromGuestPlaylist', 'followedPlaylists', 'followPlaylist', 'unfollowPlaylist', 'updateFollowedPlaylistMeta', 'pendingPlaylistId', 'setPendingPlaylistId', 'playlistsSelectedId', 'setPlaylistsSelectedId', 'playlistsSelectedLocalId', 'setPlaylistsSelectedLocalId', 'playlistsSort', 'setPlaylistsSort', 'playlistFolders', 'createFolder', 'renameFolder', 'deleteFolder', 'movePlaylistsToFolder', 'appTextScale', 'currentTrack', 'setHeroBleedTop', 'playNext')
+    appTextScale, currentTrack, setHeroBleedTop, playNext, theme, playlistHeroEnabled } = useStorePick('account', 'playlists', 'refreshPlaylists', 'playTrack', 'playCollection', 'addToQueue', 'setShowUserAuth', 'likedTrackIds', 'toggleLike', 'setActiveView', 'setPendingEditorSongId', 'localPlaylists', 'libraryTracks', 'libraryArt', 'loadLibrary', 'deleteLocalPlaylist', 'renameLocalPlaylist', 'updateLocalPlaylist', 'addToLocalPlaylist', 'removeFromLocalPlaylist', 'reorderLocalPlaylist', 'createLocalPlaylist', 'guestPlaylists', 'createGuestPlaylist', 'deleteGuestPlaylist', 'renameGuestPlaylist', 'removeFromGuestPlaylist', 'followedPlaylists', 'followPlaylist', 'unfollowPlaylist', 'updateFollowedPlaylistMeta', 'pendingPlaylistId', 'setPendingPlaylistId', 'playlistsSelectedId', 'setPlaylistsSelectedId', 'playlistsSelectedLocalId', 'setPlaylistsSelectedLocalId', 'playlistsSort', 'setPlaylistsSort', 'playlistFolders', 'createFolder', 'renameFolder', 'deleteFolder', 'movePlaylistsToFolder', 'appTextScale', 'currentTrack', 'setHeroBleedTop', 'playNext', 'theme', 'playlistHeroEnabled')
   // Cast back to the component's own SortField union — the store keeps the
   // field as a plain string so it doesn't have to import this component's type.
   const sort = sortRaw as SortState
   const setSort = setSortRaw as (s: SortState) => void
   const canEdit = useCanEdit()
+  // Skins beyond the classic pair mean `theme === 'dark'` no longer covers
+  // "is this a dark look" — Ocean, Mocha, etc. need the dark treatment too.
+  // HeroBackdrop only darkens toward black on a dark skin; a light skin
+  // lightens toward white instead, so the header text below stays paired
+  // with whichever tint is actually under it.
+  const isDarkSkin = getSkin(theme).dark
 
   const [showLiked, setShowLiked] = useState(false)
   const [detail, setDetail] = useState<PlaylistDetail | null>(null)
@@ -1490,6 +1512,11 @@ export default function PlaylistsView(): JSX.Element {
     const backdropSrc = isLocal
       ? (localCover ?? localLibTracks.map(t => libraryArt[t.id]).find(a => !!a) ?? null)
       : (apiCover ?? tracks[0]?.imageUrl ?? null)
+    // Only actually dark (and so worth white text) when there's a backdrop
+    // AND the active skin is a dark one — a light skin's backdrop lightens
+    // toward white instead (see HeroBackdrop), which wants the normal
+    // dark-on-light text.
+    const heroLight = !!backdropSrc && isDarkSkin && playlistHeroEnabled
 
     const playShuffle = (): void => {
       if (!tracks.length) return
@@ -1506,7 +1533,7 @@ export default function PlaylistsView(): JSX.Element {
       // pulled its usual safe-area padding for this render (see heroActive
       // above), so the app bar pads itself back down to compensate.
       <div className="relative flex-1 flex flex-col min-h-0 overflow-hidden">
-        {backdropSrc && <HeroBackdrop src={backdropSrc} />}
+        {backdropSrc && playlistHeroEnabled && <HeroBackdrop src={backdropSrc} isDarkSkin={isDarkSkin} />}
         {/* App bar. It deliberately does not collapse in select mode — swapping
             it out mid-long-press moves the list under the finger; the selection
             controls live in the bottom bar instead. */}
@@ -1517,9 +1544,9 @@ export default function PlaylistsView(): JSX.Element {
           <button
             onClick={() => (reorderMode ? setReorderMode(false) : goBackToLibrary())}
             aria-label="Back"
-            className={`w-11 h-11 shrink-0 flex items-center justify-center rounded-full active:bg-surface-overlay ${backdropSrc ? 'text-white' : 'text-text-primary'}`}
+            className={`w-11 h-11 shrink-0 flex items-center justify-center rounded-full active:bg-surface-overlay ${heroLight ? 'text-white' : 'text-text-primary'}`}
           ><ArrowLeft size={20} /></button>
-          <span className={`flex-1 min-w-0 text-[15px] font-semibold truncate ${backdropSrc ? 'text-white' : 'text-text-primary'}`}>
+          <span className={`flex-1 min-w-0 text-[15px] font-semibold truncate ${heroLight ? 'text-white' : 'text-text-primary'}`}>
             {reorderMode ? 'Reorder' : (name ?? '')}
           </span>
           {reorderMode ? (
@@ -1529,8 +1556,8 @@ export default function PlaylistsView(): JSX.Element {
             >Done</button>
           ) : (
             <>
-              {tracks.length > 0 && appBarButton('Search tracks', <Search size={19} />, () => setSearchOpen(v => !v), searchOpen, !!backdropSrc)}
-              {appBarButton('Playlist options', <MoreVertical size={19} />, () => setSheet({ kind: 'detail' }), false, !!backdropSrc)}
+              {tracks.length > 0 && appBarButton('Search tracks', <Search size={19} />, () => setSearchOpen(v => !v), searchOpen, heroLight)}
+              {appBarButton('Playlist options', <MoreVertical size={19} />, () => setSheet({ kind: 'detail' }), false, heroLight)}
             </>
           )}
         </div>
@@ -1574,10 +1601,10 @@ export default function PlaylistsView(): JSX.Element {
                 )}
               </div>
 
-              <h1 className={`text-[22px] font-bold leading-tight mt-4 line-clamp-2 ${backdropSrc ? 'text-white' : 'text-text-primary'}`}>
+              <h1 className={`text-[22px] font-bold leading-tight mt-4 line-clamp-2 ${heroLight ? 'text-white' : 'text-text-primary'}`}>
                 {name || <span className="bg-white/10 rounded animate-pulse text-transparent select-none">Loading…</span>}
               </h1>
-              <p className={`text-xs mt-1.5 ${backdropSrc ? 'text-white/70' : 'text-text-muted'}`}>
+              <p className={`text-xs mt-1.5 ${heroLight ? 'text-white/70' : 'text-text-muted'}`}>
                 {isLocal ? 'This device' : (isSharedView ? 'Shared playlist' : account?.discord_username ?? 'Playlist')}
                 {!loading && <> · {tracks.length} {tracks.length === 1 ? 'track' : 'tracks'}{durLabel ? ` · ${durLabel}` : ''}</>}
                 {loading && ' · loading…'}
@@ -1591,7 +1618,7 @@ export default function PlaylistsView(): JSX.Element {
                     title: 'Description', initial: detail.description ?? '', multiline: true, allowEmpty: true,
                     placeholder: 'Add a description…', submitLabel: 'Save', onSubmit: saveDescription,
                   })}
-                  className={`text-xs mt-2 line-clamp-3 px-2 ${backdropSrc ? 'text-white/70' : 'text-text-muted'}`}
+                  className={`text-xs mt-2 line-clamp-3 px-2 ${heroLight ? 'text-white/70' : 'text-text-muted'}`}
                 >{detail.description}</button>
               ) : !isSharedView && detail ? (
                 <button
@@ -1599,7 +1626,7 @@ export default function PlaylistsView(): JSX.Element {
                     title: 'Description', initial: '', multiline: true, allowEmpty: true,
                     placeholder: 'Add a description…', submitLabel: 'Save', onSubmit: saveDescription,
                   })}
-                  className={`text-xs mt-2 italic ${backdropSrc ? 'text-white/50' : 'text-text-muted'}`}
+                  className={`text-xs mt-2 italic ${heroLight ? 'text-white/50' : 'text-text-muted'}`}
                 >+ Add description</button>
               ) : null)}
             </div>
@@ -1796,9 +1823,12 @@ export default function PlaylistsView(): JSX.Element {
     const gp = guestPlaylists.find(p => p.id === guestSelectedId)
     if (!gp) { setGuestSelectedId(null); return <div /> }
     const art = gp.tracks.map(t => t.imageUrl).find(a => !!a) ?? null
+    // See heroLight in renderDetail — only actually dark (white text) on a
+    // dark skin; a light skin's backdrop lightens instead.
+    const heroLight = !!art && isDarkSkin && playlistHeroEnabled
     return (
       <div className="relative flex-1 flex flex-col min-h-0 overflow-hidden">
-        {art && <HeroBackdrop src={art} />}
+        {art && playlistHeroEnabled && <HeroBackdrop src={art} isDarkSkin={isDarkSkin} />}
         <div
           className="relative shrink-0 flex items-center gap-1 px-2"
           style={{ paddingTop: ownsTopInset ? 'max(0.25rem, var(--top-inset))' : '0.25rem' }}
@@ -1806,10 +1836,10 @@ export default function PlaylistsView(): JSX.Element {
           <button
             onClick={() => setGuestSelectedId(null)}
             aria-label="Back"
-            className={`w-11 h-11 shrink-0 flex items-center justify-center rounded-full active:bg-surface-overlay ${art ? 'text-white' : 'text-text-primary'}`}
+            className={`w-11 h-11 shrink-0 flex items-center justify-center rounded-full active:bg-surface-overlay ${heroLight ? 'text-white' : 'text-text-primary'}`}
           ><ArrowLeft size={20} /></button>
-          <span className={`flex-1 min-w-0 text-[15px] font-semibold truncate ${art ? 'text-white' : 'text-text-primary'}`}>{gp.name}</span>
-          {appBarButton('Playlist options', <MoreVertical size={19} />, () => setSheet({ kind: 'guest', id: gp.id }), false, !!art)}
+          <span className={`flex-1 min-w-0 text-[15px] font-semibold truncate ${heroLight ? 'text-white' : 'text-text-primary'}`}>{gp.name}</span>
+          {appBarButton('Playlist options', <MoreVertical size={19} />, () => setSheet({ kind: 'guest', id: gp.id }), false, heroLight)}
         </div>
 
         <div className="relative flex-1 overflow-y-auto overscroll-contain pb-6">
@@ -1818,8 +1848,8 @@ export default function PlaylistsView(): JSX.Element {
               <div className="w-44 h-44 rounded-2xl overflow-hidden shadow-2xl bg-surface-overlay">
                 <GuestPlaylistMosaic tracks={gp.tracks} className="w-full h-full" />
               </div>
-              <h1 className={`text-[22px] font-bold leading-tight mt-4 line-clamp-2 ${art ? 'text-white' : 'text-text-primary'}`}>{gp.name}</h1>
-              <p className={`text-xs mt-1.5 ${art ? 'text-white/70' : 'text-text-muted'}`}>
+              <h1 className={`text-[22px] font-bold leading-tight mt-4 line-clamp-2 ${heroLight ? 'text-white' : 'text-text-primary'}`}>{gp.name}</h1>
+              <p className={`text-xs mt-1.5 ${heroLight ? 'text-white/70' : 'text-text-muted'}`}>
                 Not signed in · {gp.tracks.length} {gp.tracks.length === 1 ? 'track' : 'tracks'}
               </p>
             </div>

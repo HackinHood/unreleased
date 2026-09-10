@@ -34,6 +34,7 @@ import { Folder, FolderPlus, FolderOpen, FolderMinus } from 'lucide-react'
 import { useMultiSelect } from '../hooks/useMultiSelect'
 import { ClampedMenu } from './ClampedMenu'
 import { loadEraFullNames, eraLabel } from '../lib/eras'
+import { getSkin } from '../lib/skins'
 
 // ── PlaylistMosaic ────────────────────────────────────────────────────────────
 
@@ -61,7 +62,15 @@ function PlaylistMosaic({ tracks, className = '' }: { tracks: Track[]; className
 // ── HeroBackdrop — Apple Music-style full-bleed blurred cover art behind the
 // playlist header, instead of a faint corner blob. Fades into the page's own
 // background at the bottom so the track list below sits on ordinary bg.
+// Independent of the "App gradients" setting — this is the hero's own art,
+// not a decorative accent wash.
+//
+// The darkening overlay was hardcoded to black, which reads as a dark banner
+// slapped onto an otherwise light page on a light skin. Mirror it instead:
+// dark skins darken toward black (unchanged), light skins lighten toward
+// white, both fading into the real --surface either way.
 function HeroBackdrop({ src }: { src?: string | null }): JSX.Element {
+  const isDarkSkin = useStore((s) => getSkin(s.theme).dark)
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ zIndex: 0 }}>
       {src && (
@@ -71,10 +80,20 @@ function HeroBackdrop({ src }: { src?: string | null }): JSX.Element {
           src={smallCoverUrl(src)}
           alt=""
           className="absolute inset-0 w-full h-full object-cover"
-          style={{ filter: 'blur(50px) saturate(1.7) brightness(0.5)', transform: 'scale(1.3)' }}
+          style={{
+            filter: `blur(50px) saturate(1.7) brightness(${isDarkSkin ? 0.5 : 0.85})`,
+            transform: 'scale(1.3)',
+          }}
         />
       )}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/5 to-[var(--surface)]" />
+      <div
+        className="absolute inset-0"
+        style={{
+          backgroundImage: isDarkSkin
+            ? 'linear-gradient(to bottom, rgb(0 0 0 / 0.10), rgb(0 0 0 / 0.05), var(--surface))'
+            : 'linear-gradient(to bottom, rgb(255 255 255 / 0.35), rgb(255 255 255 / 0.15), var(--surface))',
+        }}
+      />
     </div>
   )
 }
