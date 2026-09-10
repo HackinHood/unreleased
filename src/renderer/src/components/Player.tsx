@@ -38,7 +38,7 @@ import { Sheet } from './mobile/Sheet'
 import { useIsMobile } from '../hooks/useIsMobile'
 import {
   attachAudioElement, applyAudioEffects, resumeEffectsContext,
-  setEffectsOutputDevice, getCurrentPeak, setEffectsChainWanted,
+  setEffectsOutputDevice, getCurrentPeak, setEffectsChainWanted, EFFECTS_SUPPORTED,
 } from '../lib/audioEffects'
 import { LibraryTrack } from '../types'
 
@@ -1272,7 +1272,7 @@ export default function Player(): JSX.Element {
     },
     'speed-up':    () => setPlaybackSpeed(clampSpeed(playbackSpeed + 0.25)),
     'speed-down':  () => setPlaybackSpeed(clampSpeed(playbackSpeed - 0.25)),
-    'equalizer':   () => useStore.getState().toggleEqPanel(),
+    'equalizer':   () => { if (EFFECTS_SUPPORTED) useStore.getState().toggleEqPanel() },
     'ab-loop':     () => { if (currentTrack && !radioFmActive) setAbLoopPoint() },
     'crossfade':   () => { const s = useStore.getState(); s.setCrossfade(!s.crossfadeEnabled, s.crossfadeDuration) },
     'smooth-playback': () => { const s = useStore.getState(); s.setPauseFade(!s.pauseFadeEnabled) },
@@ -1480,7 +1480,7 @@ export default function Player(): JSX.Element {
           anchor button to position a popover against (the bar this ref lives
           on is desktop-only, `hidden md:flex`), so it opens as a full bottom
           sheet there instead of the desktop anchored popover. */}
-      {showEqPanel && (isMobile ? (
+      {showEqPanel && EFFECTS_SUPPORTED && (isMobile ? (
         <Sheet onClose={() => setShowEqPanel(false)} title="Equalizer">
           <EqualizerPanel />
         </Sheet>
@@ -1845,15 +1845,19 @@ export default function Player(): JSX.Element {
         <div className="flex items-center gap-3 w-72 justify-end">
           {/* Equalizer (EQ, balance, mono, skip silence, playback speed).
               Stays visible during FM — the effects chain applies to the live
-              stream too; only the speed row hides inside the panel. */}
-          <button
-            ref={eqBtnRef}
-            onClick={toggleEqPanel}
-            title="Equalizer"
-            className={`transition-colors ${eqActive ? 'text-accent' : 'text-text-secondary hover:text-text-primary'}`}
-          >
-            <SlidersHorizontal size={16} />
-          </button>
+              stream too; only the speed row hides inside the panel. Hidden
+              entirely on iOS: EFFECTS_SUPPORTED is false there since routing
+              through Web Audio kills background playback (see audioEffects.ts). */}
+          {EFFECTS_SUPPORTED && (
+            <button
+              ref={eqBtnRef}
+              onClick={toggleEqPanel}
+              title="Equalizer"
+              className={`transition-colors ${eqActive ? 'text-accent' : 'text-text-secondary hover:text-text-primary'}`}
+            >
+              <SlidersHorizontal size={16} />
+            </button>
+          )}
 
           {!radioFmActive && <button onClick={() => setShowQueue(!showQueue)}
             className={`relative transition-colors ${showQueue ? 'text-accent' : 'text-text-secondary hover:text-text-primary'}`}

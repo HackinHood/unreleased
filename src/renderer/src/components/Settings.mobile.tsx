@@ -132,7 +132,10 @@ const SETTINGS_SEARCH_INDEX: { tab: Tab; label: string; sub?: string }[] = [
   { tab: 'playback', label: 'Audio output' },
   { tab: 'playback', label: 'Lyrics sync', sub: 'Offset lyrics timing' },
   { tab: 'playback', label: 'Crossfade' },
-  { tab: 'playback', label: 'Smooth fade when pausing' },
+  // Smooth fade when pausing is iOS-excluded further down (Safari ignores
+  // <audio>.volume), so it's filtered out of this index below rather than
+  // listed unconditionally here.
+  ...(IS_IOS ? [] : [{ tab: 'playback' as const, label: 'Smooth fade when pausing' }]),
   { tab: 'playback', label: 'Prefer OG version' },
   { tab: 'playback', label: 'Rotate suggested covers' },
   { tab: 'playback', label: 'Era covers', sub: 'Custom cover art per era, used when a song has no cover of its own' },
@@ -1292,20 +1295,14 @@ export default function Settings(): JSX.Element {
                       <span className="text-text-muted text-xs tabular-nums w-8 text-right shrink-0">{crossfadeDuration}s</span>
                     </div>
                   )}
-                  <Row
-                    icon={Waves}
-                    iconColor="#0ea5e9"
-                    label="Smooth fade when pausing"
-                    // iOS Safari ignores <audio>.volume entirely (locked to the
-                    // hardware buttons), so the fade ramp has nothing to animate
-                    // there — same restriction that disables the EQ chain.
-                    sub={IS_IOS ? 'Not available on iOS — volume is locked to the hardware buttons' : undefined}
-                  >
-                    <Toggle
-                      on={pauseFadeEnabled && !IS_IOS}
-                      onClick={() => { if (!IS_IOS) setPauseFade(!pauseFadeEnabled) }}
-                    />
-                  </Row>
+                  {/* Hidden on iOS: Safari ignores <audio>.volume entirely (locked
+                      to the hardware buttons), so the fade ramp has nothing to
+                      animate there — same restriction that hides the EQ. */}
+                  {!IS_IOS && (
+                    <Row icon={Waves} iconColor="#0ea5e9" label="Smooth fade when pausing">
+                      <Toggle on={pauseFadeEnabled} onClick={() => setPauseFade(!pauseFadeEnabled)} />
+                    </Row>
+                  )}
                   <Row icon={FileText} iconColor="#059669" label="Prefer OG version">
                     <Toggle on={preferOgVersion} onClick={() => setPreferOgVersion(!preferOgVersion)} />
                   </Row>

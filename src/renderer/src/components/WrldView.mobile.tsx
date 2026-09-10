@@ -15,7 +15,7 @@ import { buildImageUrl, apiFetch, songToTrack } from '../lib/juicewrldApi'
 import { getActiveRadioClient } from '../lib/radioSocketService'
 import { searchRadioLibrary } from '../lib/radioLibrary'
 import type { RadioLibraryTrack } from '../lib/radioLibrary'
-import { resumeEffectsContext } from '../lib/audioEffects'
+import { resumeEffectsContext, EFFECTS_SUPPORTED } from '../lib/audioEffects'
 import { getVersionGroup } from '../lib/versionsApi'
 import type { JWApiSong } from '../lib/juicewrldApi'
 import type { SyncedLyricLine, Track } from '../types'
@@ -594,7 +594,9 @@ export default function WrldView(): JSX.Element {
             {!radioFmActive && songVersions.length > 0 && (
               <ActionChip icon={Layers} label="Versions" onClick={() => setSheet('versions')} light={textIsDark} />
             )}
-            <ActionChip icon={SlidersHorizontal} label="EQ" onClick={toggleEqPanel} active={eqFxActive} light={textIsDark} />
+            {EFFECTS_SUPPORTED && (
+              <ActionChip icon={SlidersHorizontal} label="EQ" onClick={toggleEqPanel} active={eqFxActive} light={textIsDark} />
+            )}
           </div>
         </div>
       </div>

@@ -10,7 +10,7 @@ import { buildImageUrl, apiFetch, songToTrack, JWAPI_BASE, playlistCoverUrl, sma
 import { getActiveRadioClient } from '../lib/radioSocketService'
 import { searchRadioLibrary } from '../lib/radioLibrary'
 import type { RadioLibraryTrack } from '../lib/radioLibrary'
-import { resumeEffectsContext } from '../lib/audioEffects'
+import { resumeEffectsContext, EFFECTS_SUPPORTED } from '../lib/audioEffects'
 import { getVersionGroup } from '../lib/versionsApi'
 import type { JWApiSong } from '../lib/juicewrldApi'
 import * as userApi from '../lib/userApi'
@@ -988,14 +988,16 @@ export default function WrldView(): JSX.Element {
                 </>
               )}
               <div className="flex items-center gap-2.5">
-                <button
-                  onClick={toggleEqPanel}
-                  title="Equalizer"
-                  className="shrink-0 transition-opacity hover:opacity-70"
-                  style={{ color: eqFxActive ? 'var(--accent)' : txtTer }}
-                >
-                  <SlidersHorizontal size={16} />
-                </button>
+                {EFFECTS_SUPPORTED && (
+                  <button
+                    onClick={toggleEqPanel}
+                    title="Equalizer"
+                    className="shrink-0 transition-opacity hover:opacity-70"
+                    style={{ color: eqFxActive ? 'var(--accent)' : txtTer }}
+                  >
+                    <SlidersHorizontal size={16} />
+                  </button>
+                )}
                 <button
                   onClick={toggleMute}
                   className="shrink-0 transition-opacity hover:opacity-70"
@@ -1184,14 +1186,16 @@ export default function WrldView(): JSX.Element {
 
                 {/* Volume row */}
                 <div className="flex items-center gap-2.5">
-                  <button
-                    onClick={toggleEqPanel}
-                    title="Equalizer"
-                    className="shrink-0 transition-opacity hover:opacity-70"
-                    style={{ color: eqFxActive ? 'var(--accent)' : txtTer }}
-                  >
-                    <SlidersHorizontal size={14} />
-                  </button>
+                  {EFFECTS_SUPPORTED && (
+                    <button
+                      onClick={toggleEqPanel}
+                      title="Equalizer"
+                      className="shrink-0 transition-opacity hover:opacity-70"
+                      style={{ color: eqFxActive ? 'var(--accent)' : txtTer }}
+                    >
+                      <SlidersHorizontal size={14} />
+                    </button>
+                  )}
                   <button
                     onClick={toggleMute}
                     className="shrink-0 transition-opacity hover:opacity-70"
