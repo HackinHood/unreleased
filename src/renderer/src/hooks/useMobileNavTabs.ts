@@ -25,8 +25,8 @@ function useMobileEligibleItems(): NavItemDef[] {
 export function useMobileNavSplit(): { tabs: NavItemDef[]; moreTabs: NavItemDef[] } {
   const { navVisibility } = useStorePick('navVisibility')
   const eligible = useMobileEligibleItems()
-  const visible = eligible.filter((i) => isNavItemVisible(i, navVisibility, false, true))
-  const hidden = eligible.filter((i) => !isNavItemVisible(i, navVisibility, false, true))
+  const visible = eligible.filter((i) => isNavItemVisible(i, navVisibility, false))
+  const hidden = eligible.filter((i) => !isNavItemVisible(i, navVisibility, false))
   const { tabs, moreTabs } = splitMobileNavTabs(visible)
   return { tabs, moreTabs: [...moreTabs, ...hidden] }
 }

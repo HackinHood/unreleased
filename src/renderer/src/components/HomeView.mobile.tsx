@@ -1,34 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
 import { ChevronRight, MoreHorizontal, Play, ListMusic, Gamepad2, Flame, Music2, Disc3, User, Newspaper, Radio } from 'lucide-react'
-import { useStorePick } from '../store/useStore'
+import { useStore } from '../store/useStore'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { ProgressiveCover } from './ProgressiveCover'
-import { loadRecentTracks } from '../lib/recentTracks'
-import { filterListeningPlaysByDays } from '../lib/listeningPlays'
-import { playlistCoverUrl } from '../lib/juicewrldApi'
 import { useMobileNavSplit } from '../hooks/useMobileNavTabs'
-import { loadStats as loadHeardleStats, todayKey as heardleToday } from '../lib/heardle'
-import { loadStats as loadWordleStats, todayKey as wordleToday } from '../lib/wordle'
-import { loadTierlistState } from '../lib/tierlist'
-import { ALL_CHANNEL, fetchNews, peekNews, type NewsItem } from '../lib/newsApi'
-import { isHomeSectionVisible } from '../lib/homeSections'
-import type { Track, ViewType } from '../types'
+import { useHomeData } from '../hooks/useHomeData'
 
-// A daily puzzle (streak + played-today) vs. Tier List, which is a standing
-// ranking with no daily reset — same card shell, different second line.
-type GameCard =
-  | { view: ViewType; label: string; kind: 'daily'; streak: number; done: boolean }
-  | { view: ViewType; label: string; kind: 'freeform'; sub: string }
-
-// The mobile landing screen — a dashboard over things the app already knows,
-// not a new data source. Everything here reads from the store or localStorage
-// synchronously: no fetch on mount, so Home paints instantly and works offline.
-//
-// Deliberately NOT using lib/listeningStats' buildListeningStats: it operates on
-// songs joined against the stats catalog, and resolving that costs ~25 requests
-// on a cold cache (lib/statsCatalog). The counts below come straight off the
-// raw play events instead. Listening *time* is the one number that genuinely
-// needs song durations, so it isn't shown here — /stats owns that.
+// The mobile landing screen. All of its data comes from useHomeData, which the
+// desktop shell shares — this file is layout only: a stack of horizontally
+// scrolling rails sized for a phone.
 
 function Section({ title, icon, action, children }: {
   title: string
@@ -67,88 +46,16 @@ function EmptyNote({ children }: { children: React.ReactNode }): JSX.Element {
 
 export default function HomeViewMobile(): JSX.Element {
   const {
-    account, playlists, guestPlaylists, followedPlaylists, likedTrackIds,
-    listeningPlays, setActiveView, setPendingPlaylistId, playTrack, setShowMoreNav, openProfile,
-    radioFmIsLive, radioFmNowPlaying, homeSectionVisibility,
-  } = useStorePick(
-    'account', 'playlists', 'guestPlaylists', 'followedPlaylists', 'likedTrackIds',
-    'listeningPlays', 'setActiveView', 'setPendingPlaylistId', 'playTrack', 'setShowMoreNav', 'openProfile',
-    'radioFmIsLive', 'radioFmNowPlaying', 'homeSectionVisibility',
-  )
-  const showSection = (id: string): boolean => isHomeSectionVisible(id, homeSectionVisibility)
+    account, likedTrackIds, radioFmIsLive, radioFmNowPlaying, setActiveView,
+    openProfile, showSection, recent, newsItems, games, playlistRow,
+    totalPlays, distinctSongs, weekPlays, openTrack, openNewsItem,
+  } = useHomeData()
   // Whatever doesn't fit the bottom nav directly — its old in-bar "More" tab
   // moved here, since fitting it AND a Home tab both in the bar pushed the
-  // cap down by one more real destination.
+  // cap down by one more real destination. Mobile-only, so it stays here
+  // rather than in the shared hook.
   const { moreTabs } = useMobileNavSplit()
-
-  // localStorage-backed, so read once per mount rather than per render. Home is
-  // remounted on every visit (it's a route), which is exactly when this should
-  // refresh — a song played while you were on another tab shows up on return.
-  const recent = useMemo(() => loadRecentTracks(), [])
-
-  // Same stale-while-revalidate pattern as NewsView: paint the last cached
-  // page instantly, then let the network response replace it.
-  const [newsItems, setNewsItems] = useState<NewsItem[]>(() => peekNews({ channel: ALL_CHANNEL })?.results ?? [])
-  useEffect(() => {
-    fetchNews({ channel: ALL_CHANNEL }).then((res) => setNewsItems(res.results)).catch(() => undefined)
-  }, [])
-  const games = useMemo((): GameCard[] => {
-    const heardle = loadHeardleStats('daily')
-    const wordle = loadWordleStats()
-    const rankedCount = Object.keys(loadTierlistState().assignments).length
-    return [
-      { view: 'heardle', label: 'Heardle', kind: 'daily', streak: heardle.currentStreak, done: heardle.lastDay === heardleToday() },
-      { view: 'wordle', label: 'Wordle', kind: 'daily', streak: wordle.currentStreak, done: wordle.lastDay === wordleToday() },
-      { view: 'tierlist', label: 'Tier List', kind: 'freeform', sub: rankedCount > 0 ? `${rankedCount} ranked` : 'Rank your songs' },
-    ]
-  }, [])
-
-  const totalPlays = listeningPlays.length
-  const distinctSongs = useMemo(
-    () => new Set(listeningPlays.map((e) => e.song)).size,
-    [listeningPlays],
-  )
-  const weekPlays = useMemo(
-    () => filterListeningPlaysByDays(listeningPlays, 7).length,
-    [listeningPlays],
-  )
-
-  // Server playlists need an account; the local kinds don't. Signed out we just
-  // show what exists locally rather than prompting to sign in.
-  const ownPlaylists = account ? playlists : []
-  const playlistRow = [
-    ...ownPlaylists.filter((p) => p.track_count > 0).map((p) => ({
-      key: `p${p.id}`,
-      name: p.name,
-      subtitle: `${p.track_count} song${p.track_count === 1 ? '' : 's'}`,
-      cover: playlistCoverUrl(p),
-      open: () => { setPendingPlaylistId(p.id); setActiveView('playlists') },
-    })),
-    ...followedPlaylists.filter((p) => p.trackCount > 0).map((p) => ({
-      key: `f${p.id}`,
-      name: p.name,
-      subtitle: `${p.trackCount} song${p.trackCount === 1 ? '' : 's'}`,
-      cover: p.coverUrl,
-      open: () => { setPendingPlaylistId(p.id); setActiveView('playlists') },
-    })),
-    ...guestPlaylists.filter((p) => p.tracks.length > 0).map((p) => ({
-      key: `g${p.id}`,
-      name: p.name,
-      subtitle: `${p.tracks.length} song${p.tracks.length === 1 ? '' : 's'}`,
-      cover: p.tracks[0]?.imageUrl ?? null,
-      open: () => setActiveView('playlists'),
-    })),
-  ].slice(0, 10)
-
-  const openTrack = (track: Track): void => { playTrack(track) }
-
-  // Mirrors NewsNotifier's openPost: NewsView reads this sessionStorage key
-  // on mount to jump straight to the tapped post.
-  const openNewsItem = (item: NewsItem): void => {
-    setActiveView('news')
-    try { sessionStorage.setItem('news:openPostId', String(item.id)) } catch {}
-    window.dispatchEvent(new CustomEvent('news:open', { detail: item.id }))
-  }
+  const setShowMoreNav = useStore((s) => s.setShowMoreNav)
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto pt-2 pb-4">

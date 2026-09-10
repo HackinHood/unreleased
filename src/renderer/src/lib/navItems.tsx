@@ -14,8 +14,6 @@ export interface NavItemDef {
   label: string
   icon: ReactNode
   electronOnly?: boolean
-  /** Hidden from the desktop side menu — the view has no desktop surface. */
-  mobileOnly?: boolean
   /** Always lands in the mobile "More" sheet rather than a direct bar slot,
    *  regardless of how much room the bar has — for destinations Home already
    *  gives a shortcut to (or, for News, doesn't need one), so a bar slot
@@ -29,10 +27,11 @@ export interface NavItemDef {
 export const NAV_ITEMS: NavItemDef[] = [
   // Desktop-only — mobile reaches WRLD through the mini player, not this
   // list (see MOBILE_HIDDEN_VIEWS in useMobileNavTabs), same as it always
-  // has. No `mobileOnly` counterpart here since that flag hides an item from
-  // *desktop*; this one just never enters the mobile-eligible set at all.
+  // has.
   { view: 'wrld', label: 'WRLD', icon: <img src={logo} alt="WRLD" className="w-[24px] h-[24px] object-contain" /> },
-  { view: 'home', label: 'Home', icon: <House size={18} />, mobileOnly: true, alwaysVisible: true },
+  // The landing page on both shells, so it's pinned rather than optional —
+  // hiding it would leave the app with no way back to where it opened.
+  { view: 'home', label: 'Home', icon: <House size={18} />, alwaysVisible: true },
   { view: 'api-tracker', label: 'Tracker', icon: <SearchCode size={18} /> },
   { view: 'api-files', label: 'Files', icon: <HardDrive size={18} /> },
   // `view` stays 'heardle' — it's the persisted id (and the /heardle route);
@@ -148,11 +147,8 @@ export function splitMobileNavTabs(items: NavItemDef[]): { tabs: NavItemDef[]; m
 
 // True when an item should render in the side menu: platform-eligible and not
 // toggled off. `visibility` is the merged map (defaults + user overrides).
-export function isNavItemVisible(item: NavItemDef, visibility: Record<string, boolean>, isElectron: boolean, isMobile = false): boolean {
+export function isNavItemVisible(item: NavItemDef, visibility: Record<string, boolean>, isElectron: boolean): boolean {
   if (item.electronOnly && !isElectron) return false
-  // Defaults to false so the desktop callers (Sidebar, the desktop menu-items
-  // editor) keep hiding mobile-only items without having to opt in.
-  if (item.mobileOnly && !isMobile) return false
   if (item.alwaysVisible) return true
   return visibility[item.view] ?? !item.defaultHidden
 }

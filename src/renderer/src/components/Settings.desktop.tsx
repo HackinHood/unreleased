@@ -84,7 +84,7 @@ const SETTINGS_SEARCH_INDEX: { tab: Tab; label: string; sub?: string; devOnly?: 
   { tab: 'appearance', label: 'Navigation position', sub: 'Where the nav menu sits — left, right, top, bottom' },
   { tab: 'appearance', label: 'Menu items', sub: 'Reorder or hide sidebar tabs' },
   { tab: 'appearance', label: 'Menu controls', sub: 'Reorder or hide the buttons at the foot of the menu' },
-  { tab: 'appearance', label: 'Home screen', sub: 'Choose which sections show on the mobile Home tab' },
+  { tab: 'appearance', label: 'Home screen', sub: 'Choose which sections show on the Home tab' },
   // Playback
   { tab: 'playback', label: 'Audio output' },
   { tab: 'playback', label: 'Lyrics sync', sub: 'Offset lyrics timing' },
@@ -315,10 +315,10 @@ export default function Settings(): JSX.Element {
   // ── Menu items (Appearance) ──────────────────────────────────────────────
   // Every nav item in saved order — visible ones and the toggled-off extras
   // alike — so the list is where you both reorder and show/hide.
-  // Mobile-only destinations are dropped here, not just hidden by
-  // isNavItemVisible below: offering a reorder/show row for a tab this menu
-  // can never render would read as a broken toggle.
-  const navRows = orderedNavItems(navOrder).filter((i) => !i.mobileOnly)
+  // Pinned items (alwaysVisible) are listed too — they reorder like any other
+  // row — but they render without an eye, since isNavItemVisible short-circuits
+  // on them and a toggle there would silently do nothing.
+  const navRows = orderedNavItems(navOrder)
   const navOrderIsDefault = navOrder.length === DEFAULT_NAV_ORDER.length && navOrder.every((v, i) => v === DEFAULT_NAV_ORDER[i])
   const navVisIsDefault = navRows.every((i) => (navVisibility[i.view] ?? true) === (DEFAULT_NAV_VISIBILITY[i.view] ?? true))
   const navIsDefault = navOrderIsDefault && navVisIsDefault
@@ -1106,13 +1106,19 @@ export default function Settings(): JSX.Element {
                           <GripVertical size={14} className="text-text-muted shrink-0" />
                           <span className={`w-6 h-6 shrink-0 flex items-center justify-center transition-opacity ${shown ? 'text-text-secondary' : 'opacity-40'}`}>{item.icon}</span>
                           <span className={`text-sm truncate transition-colors ${shown ? 'text-text-primary' : 'text-text-muted'}`}>{item.label}</span>
-                          <button
-                            onClick={() => setNavItemVisible(item.view, !shown)}
-                            title={shown ? 'Hide from menu' : 'Add to menu'}
-                            className="ml-auto shrink-0 p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-[var(--surface-raised)] transition-colors"
-                          >
-                            {shown ? <Eye size={15} /> : <EyeOff size={15} />}
-                          </button>
+                          {item.alwaysVisible ? (
+                            <span className="ml-auto shrink-0 text-[10px] font-semibold uppercase tracking-widest text-text-muted">
+                              Always shown
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => setNavItemVisible(item.view, !shown)}
+                              title={shown ? 'Hide from menu' : 'Add to menu'}
+                              className="ml-auto shrink-0 p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-[var(--surface-raised)] transition-colors"
+                            >
+                              {shown ? <Eye size={15} /> : <EyeOff size={15} />}
+                            </button>
+                          )}
                         </div>
                       )
                     })}
@@ -1125,7 +1131,7 @@ export default function Settings(): JSX.Element {
                     </div>
                     <div className="min-w-0 flex-1">
                       <span className="text-text-primary text-sm">Home screen</span>
-                      <p className="text-text-muted text-[11px]">Choose which sections show on the mobile Home tab</p>
+                      <p className="text-text-muted text-[11px]">Choose which sections show on the Home tab</p>
                     </div>
                     {!homeIsDefault && (
                       <button

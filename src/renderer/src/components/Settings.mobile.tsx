@@ -1234,7 +1234,7 @@ export default function Settings(): JSX.Element {
                         being mistaken for the start of a drag. */}
                     <div className="rounded-xl bg-[var(--surface-highest)] overflow-hidden">
                       {navRows.map((item, idx) => {
-                        const shown = isNavItemVisible(item, navVisibility, false, true)
+                        const shown = isNavItemVisible(item, navVisibility, false)
                         const dragging = navDrag.dragIndex === idx
                         return (
                           <div

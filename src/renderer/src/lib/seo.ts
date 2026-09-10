@@ -126,7 +126,11 @@ function setLink(rel: string, href: string): void {
 export function applySeo(view: ViewType): void {
   if (typeof document === 'undefined') return
 
-  const entry = ROUTES[view] ?? ROUTES['not-found']
+  // `/` renders Home for desktop and installed apps (see getViewFromPath in
+  // App.tsx), but it stays the catalog's canonical, indexable URL — a
+  // dashboard's noindex must never land on the site root.
+  const atRoot = typeof window !== 'undefined' && window.location.pathname === '/'
+  const entry = (atRoot ? ROUTES['api-tracker'] : ROUTES[view]) ?? ROUTES['not-found']
   const title = entry.title.includes(SITE) ? entry.title : `${entry.title} · ${SITE}`
   // Views without a canonical path (share links) keep their own URL, minus any
   // query string — ?q= searches and OAuth params must never become canonicals.

@@ -1,7 +1,7 @@
 import { Disc3, ListMusic, Gamepad2, Newspaper, Radio, Music2, Heart } from 'lucide-react'
 import type { ReactNode } from 'react'
 
-// The mobile Home dashboard's sections — each independently shown/hidden from
+// The Home dashboard's sections — each independently shown/hidden from
 // Settings → Appearance → Home screen. `id` is the stable key persisted in
 // homeSectionVisibility; don't rename these. No reorder support (unlike
 // NAV_ITEMS) — the sections' order reflects product intent, not preference.

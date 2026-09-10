@@ -5,17 +5,19 @@ import { useThemeEffects } from './lib/themeEffects'
 import { runWhenIdle, isStandalonePWA } from './lib/platform'
 import { applySeo } from './lib/seo'
 import { orderedNavItems, isNavItemVisible } from './lib/navItems'
-import { useIsMobile } from './hooks/useIsMobile'
+import { useIsMobile, isMobileViewport } from './hooks/useIsMobile'
 import ViewSkeleton from './components/ViewSkeleton'
 import { ViewType } from './types'
 
 function getViewFromPath(pathname: string): ViewType {
   if (pathname === '/home') return 'home'
-  // Installed apps land on Home; a browser tab still gets the Tracker. `/` is
-  // the canonical, indexed URL for the catalog (lib/seo.ts) and Google crawls
-  // mobile-first, so serving a personal dashboard there would put Home in the
-  // search index in place of the catalog. Crawlers never run standalone.
-  if (pathname === '/') return isStandalonePWA() ? 'home' : 'api-tracker'
+  // Desktop and installed apps land on Home; a mobile browser tab still gets
+  // the Tracker. `/` is the canonical, indexed URL for the catalog
+  // (lib/seo.ts) and Google crawls mobile-first, so a phone-width crawler
+  // keeps seeing the catalog there rather than a personal dashboard —
+  // applySeo also pins `/`'s metadata to the catalog entry regardless of
+  // which view renders, so the root can never go noindex.
+  if (pathname === '/') return isStandalonePWA() || !isMobileViewport() ? 'home' : 'api-tracker'
   if (pathname === '/tracker') return 'api-tracker'
   if (pathname.startsWith('/files')) return 'api-files'
   if (pathname === '/editor') return 'editor'
@@ -162,10 +164,10 @@ export default function App(): JSX.Element {
   // preloadView. The active view is already loaded by definition.
   useEffect(() => runWhenIdle(() => {
     orderedNavItems(navOrder)
-      .filter((i) => isNavItemVisible(i, navVisibility, false, isMobile) && i.view !== activeView)
+      .filter((i) => isNavItemVisible(i, navVisibility, false) && i.view !== activeView)
       .slice(0, 4)
       .forEach((i) => preloadView(i.view))
-  }, 4000), [navOrder, navVisibility, isMobile, activeView])
+  }, 4000), [navOrder, navVisibility, activeView])
 
   // Deliver any reports queued in a previous session. loadAccount also flushes
   // after login (to attach the token), but this covers a signed-out user whose
