@@ -208,27 +208,37 @@ export default function EditorProfileView(): JSX.Element {
   useEffect(() => {
     if (!canReviewStaff) { setAdminPreview(null); return }
     let cancelled = false
-    Promise.all([
-      adminListProposals('pending', activeChannel),
-      adminListCompProposals('pending', activeChannel),
-      isAdmin ? adminListApplications('pending') : Promise.resolve(null),
-      isAdmin ? reportsApi.listSongReports('pending') : Promise.resolve(null),
-      isAdmin ? adminListUsers() : Promise.resolve(null),
-    ]).then(([props, comp, apps, reps, users]) => {
+    // Deferred by one microtask so React StrictMode's dev-only synchronous
+    // double-invoke (mount → cleanup → remount) skips firing the actual
+    // network requests on the first, soon-to-be-cleaned-up pass — cleanup
+    // sets `cancelled` before this queued callback runs, so only the second
+    // (real) invocation's requests go out. Same "guard the redundant re-run"
+    // idea as Player.tsx's StrictMode comment, applied to a fetch instead of
+    // an audio-src assignment.
+    Promise.resolve().then(() => {
       if (cancelled) return
-      const pendingApplications = apps?.length ?? null
-      const pendingReports = reps?.length ?? null
-      setAdminPreview({
-        pendingProposals: props.length,
-        pendingComp: comp.length,
-        pendingApplications,
-        pendingReports,
-        totalUsers: users?.length ?? null,
-        totalChannels: channels.length,
-        totalPending: props.length + comp.length + (pendingApplications ?? 0) + (pendingReports ?? 0),
-        otpEnabled: isAdmin ? !!account?.otp_enabled : null,
-      })
-    }).catch(() => { if (!cancelled) setAdminPreview(null) })
+      Promise.all([
+        adminListProposals('pending', activeChannel),
+        adminListCompProposals('pending', activeChannel),
+        isAdmin ? adminListApplications('pending') : Promise.resolve(null),
+        isAdmin ? reportsApi.listSongReports('pending') : Promise.resolve(null),
+        isAdmin ? adminListUsers() : Promise.resolve(null),
+      ]).then(([props, comp, apps, reps, users]) => {
+        if (cancelled) return
+        const pendingApplications = apps?.length ?? null
+        const pendingReports = reps?.length ?? null
+        setAdminPreview({
+          pendingProposals: props.length,
+          pendingComp: comp.length,
+          pendingApplications,
+          pendingReports,
+          totalUsers: users?.length ?? null,
+          totalChannels: channels.length,
+          totalPending: props.length + comp.length + (pendingApplications ?? 0) + (pendingReports ?? 0),
+          otpEnabled: isAdmin ? !!account?.otp_enabled : null,
+        })
+      }).catch(() => { if (!cancelled) setAdminPreview(null) })
+    })
     return () => { cancelled = true }
   }, [canReviewStaff, isAdmin, activeChannel, refreshKey, channels.length, account?.otp_enabled])
 

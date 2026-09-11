@@ -1,7 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Heart, Copy, Check, X as XIcon } from 'lucide-react'
+import { COOKIE_NOTICE_ACK_EVENT } from './CookieNotice'
 
 const STORAGE_KEY = 'donation-notice-dismissed'
+const COOKIE_STORAGE_KEY = 'cookie-notice-ack'
+
+function isCookieNoticeAcked(): boolean {
+  try {
+    return localStorage.getItem(COOKIE_STORAGE_KEY) === '1'
+  } catch {
+    return true
+  }
+}
 
 const ADDRESSES = [
   { label: 'ETH', value: '0x82744830C7Df595e92f2F8c4EbBA87cE9DC94b4d' },
@@ -51,7 +61,20 @@ export default function DonationNotice(): JSX.Element | null {
     setDismissed(true)
   }
 
-  if (dismissed) return null
+  // Both notices anchor to the same bottom-center spot, so showing this one
+  // while the cookie notice is still up would stack them. Wait for the
+  // cookie notice to be acknowledged (or for it to have never appeared) —
+  // its dismiss button broadcasts this event so we don't need a reload to
+  // pick it up.
+  const [cookieNoticeClear, setCookieNoticeClear] = useState(isCookieNoticeAcked)
+  useEffect(() => {
+    if (cookieNoticeClear) return
+    const onAck = (): void => setCookieNoticeClear(true)
+    window.addEventListener(COOKIE_NOTICE_ACK_EVENT, onAck)
+    return () => window.removeEventListener(COOKIE_NOTICE_ACK_EVENT, onAck)
+  }, [cookieNoticeClear])
+
+  if (dismissed || !cookieNoticeClear) return null
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-[9500] flex justify-center px-3 pb-3 pointer-events-none">
