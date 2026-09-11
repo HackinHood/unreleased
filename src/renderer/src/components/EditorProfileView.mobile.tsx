@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { Loader2, Trophy, FileEdit, ChevronLeft, RefreshCw, Plus, X, Search, Flag, ShieldCheck, FolderOpen } from 'lucide-react'
+import {
+  Loader2, Trophy, FileEdit, ChevronLeft, RefreshCw, Plus, X, Search, Flag, ShieldCheck, FolderOpen,
+  Clock, Users, TrendingUp, Radio, Shield, FileCheck,
+} from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { SongEditProposal, adminListProposals, adminListCompProposals, adminListApplications, adminListUsers } from '../lib/userApi'
 import * as reportsApi from '../lib/reportsApi'
 import ReportsTab from './ReportsTab.mobile'
 import AdminPage from './AdminPage.mobile'
+import type { AdminTab } from '../hooks/useAdminQueue'
 import CompProposalList, { CompFilterBar, filterCompProposals, compProposalSearchText, type CompFilterTab } from './CompProposalList'
 import RoleBadges from './RoleBadges'
 import { Tile } from './Tile'
@@ -25,6 +29,22 @@ import { RANK_STYLES, type ProposalFilterTab } from '../lib/proposalSearch'
 // "Visual Redesign v2 — Bento Dashboard Pivot" in the plan.
 
 type ViewMode = 'grid' | 'admin'
+
+// Mirrors AdminPage.mobile.tsx's NAV_ICONS — one button per section instead
+// of a single generic "open the admin panel" entry point.
+const ADMIN_NAV: { id: AdminTab; label: string; icon: JSX.Element }[] = [
+  { id: 'proposals',      label: 'Song edits',   icon: <FileEdit size={14} /> },
+  { id: 'comp-proposals', label: 'Comp files',   icon: <FileCheck size={14} /> },
+  { id: 'applications',   label: 'Applications', icon: <Clock size={14} /> },
+  { id: 'reports',        label: 'Reports',      icon: <Flag size={14} /> },
+  { id: 'users',          label: 'Users',        icon: <Users size={14} /> },
+  { id: 'stats',          label: 'Stats',        icon: <TrendingUp size={14} /> },
+  { id: 'channels',       label: 'Channels',     icon: <Radio size={14} /> },
+  { id: 'security',       label: 'Security',     icon: <Shield size={14} /> },
+]
+// Matches useAdminQueue's managerNavIds for AdminPage.mobile.tsx — mobile
+// gives managers only Comp files (not Song edits too, unlike desktop).
+const MANAGER_ADMIN_NAV_IDS: AdminTab[] = ['comp-proposals']
 
 function AdminStatBox({ label, value, highlight }: {
   label: string
@@ -115,6 +135,9 @@ export default function EditorProfileView(): JSX.Element {
   // directly rather than on a dashboard grid that's mostly empty for them.
   const managerOnly = isManager && !isAdmin
   const [mode, setMode] = useState<ViewMode>(managerOnly ? 'admin' : 'grid')
+  // Which admin section a tap from the tile's own button row should land on.
+  const [adminInitialTab, setAdminInitialTab] = useState<AdminTab | undefined>(undefined)
+  const openAdmin = (tab?: AdminTab): void => { setAdminInitialTab(tab); setMode('admin') }
   // Which content the merged Proposals/Comp tile shows — see the desktop
   // file's identical toggle for why these two used to be separate tiles.
   const [proposalsView, setProposalsView] = useState<'songs' | 'comp'>('songs')
@@ -217,7 +240,7 @@ export default function EditorProfileView(): JSX.Element {
             </button>
           </div>
         )}
-        <AdminPage embedded />
+        <AdminPage embedded initialTab={adminInitialTab} />
       </div>
     )
   }
@@ -498,37 +521,62 @@ export default function EditorProfileView(): JSX.Element {
 
           {/* Admin/Manager entry point — full width */}
           {canReviewStaff && (
-            <button onClick={() => setMode('admin')} className="text-left col-span-2">
-              <Tile title={isAdmin ? 'Admin' : 'Manager'} icon={<ShieldCheck size={13} />} span="w-full active:bg-[var(--surface-overlay)]/80 transition-colors">
-                <div className="flex flex-col gap-2 py-2 text-text-muted">
-                  {/* Managers only ever reach Song edits + Comp files, so they
-                      get those two counts; admins get one box per queue their
-                      nav opens into, plus Channels (free) and a Total pending
-                      rollup in place of a meaningless "Stats" count. */}
-                  <div className={`grid gap-1.5 ${isAdmin ? 'grid-cols-4' : 'grid-cols-2'}`}>
-                    <AdminStatBox label="Song edits" value={adminPreview?.pendingProposals} highlight={!!adminPreview?.pendingProposals} />
-                    <AdminStatBox label="Comp files" value={adminPreview?.pendingComp} highlight={!!adminPreview?.pendingComp} />
-                    {isAdmin && (
-                      <>
-                        <AdminStatBox label="Applications" value={adminPreview?.pendingApplications} highlight={!!adminPreview?.pendingApplications} />
-                        <AdminStatBox label="Reports" value={adminPreview?.pendingReports} highlight={!!adminPreview?.pendingReports} />
-                        <AdminStatBox label="Users" value={adminPreview?.totalUsers} />
-                        <AdminStatBox label="Channels" value={adminPreview?.totalChannels} />
-                        <AdminStatBox label="Total pending" value={adminPreview?.totalPending} highlight={!!adminPreview?.totalPending} />
-                        <AdminStatBox
-                          label="Security"
-                          value={adminPreview ? (adminPreview.otpEnabled ? 'ON' : 'OFF') : undefined}
-                          highlight={adminPreview?.otpEnabled === false}
-                        />
-                      </>
-                    )}
-                  </div>
-                  <p className="text-xs text-center">
-                    Open the {isAdmin ? 'admin' : 'manager'} review queues
-                  </p>
+            <Tile title={isAdmin ? 'Admin' : 'Manager'} icon={<ShieldCheck size={13} />} span="col-span-2">
+              <div className="flex flex-col gap-3 py-1 text-text-muted">
+                {/* Managers only ever reach Comp files, so they get that one
+                    count; admins get one box per queue their nav opens into,
+                    plus Channels (free) and a Total pending rollup in place
+                    of a meaningless "Stats" count. */}
+                <div className={`grid gap-1.5 ${isAdmin ? 'grid-cols-4' : 'grid-cols-2'}`}>
+                  <AdminStatBox label="Song edits" value={adminPreview?.pendingProposals} highlight={!!adminPreview?.pendingProposals} />
+                  <AdminStatBox label="Comp files" value={adminPreview?.pendingComp} highlight={!!adminPreview?.pendingComp} />
+                  {isAdmin && (
+                    <>
+                      <AdminStatBox label="Applications" value={adminPreview?.pendingApplications} highlight={!!adminPreview?.pendingApplications} />
+                      <AdminStatBox label="Reports" value={adminPreview?.pendingReports} highlight={!!adminPreview?.pendingReports} />
+                      <AdminStatBox label="Users" value={adminPreview?.totalUsers} />
+                      <AdminStatBox label="Channels" value={adminPreview?.totalChannels} />
+                      <AdminStatBox label="Total pending" value={adminPreview?.totalPending} highlight={!!adminPreview?.totalPending} />
+                      <AdminStatBox
+                        label="Security"
+                        value={adminPreview ? (adminPreview.otpEnabled ? 'ON' : 'OFF') : undefined}
+                        highlight={adminPreview?.otpEnabled === false}
+                      />
+                    </>
+                  )}
                 </div>
-              </Tile>
-            </button>
+
+                {/* One button per section — each opens AdminPage's focused
+                    view straight on that tab. */}
+                <div className={`grid gap-1.5 ${isAdmin ? 'grid-cols-4' : 'grid-cols-2'}`}>
+                  {ADMIN_NAV.filter(n => isAdmin || MANAGER_ADMIN_NAV_IDS.includes(n.id)).map(n => {
+                    const badge =
+                      n.id === 'proposals' ? adminPreview?.pendingProposals :
+                      n.id === 'comp-proposals' ? adminPreview?.pendingComp :
+                      n.id === 'applications' ? adminPreview?.pendingApplications :
+                      n.id === 'reports' ? adminPreview?.pendingReports :
+                      undefined
+                    return (
+                      <button
+                        key={n.id}
+                        onClick={() => openAdmin(n.id)}
+                        className="flex flex-col items-center justify-center gap-1 rounded-lg bg-[var(--surface-raised)]/60 active:bg-[var(--surface-raised)] px-2 py-2.5 transition-colors"
+                      >
+                        <span className="relative text-text-muted">
+                          {n.icon}
+                          {!!badge && (
+                            <span className="absolute -top-1.5 -right-2 bg-accent text-[var(--bg)] text-[9px] font-bold rounded-full min-w-[14px] h-[14px] flex items-center justify-center px-0.5">
+                              {badge > 9 ? '9+' : badge}
+                            </span>
+                          )}
+                        </span>
+                        <span className="text-[10px] font-semibold text-text-secondary truncate max-w-full">{n.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </Tile>
           )}
 
         </div>

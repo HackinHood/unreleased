@@ -178,7 +178,13 @@ const ProposalDiff = memo(function ProposalDiff({ proposal }: { proposal: SongEd
 // `embedded` renders the page as a panel inside another view (the editor
 // profile's Admin tab) — no back button, page title, or window-control
 // clearance, since the host view owns that chrome.
-export default function AdminPage({ embedded = false }: { embedded?: boolean }): JSX.Element {
+export default function AdminPage({ embedded = false, initialTab }: {
+  embedded?: boolean
+  /** Jump straight into a section's focused view on mount (skipping the
+   *  overview grid) — used by EditorProfileView's Admin tile, which now
+   *  offers one button per section instead of a single generic entry point. */
+  initialTab?: AdminTab
+}): JSX.Element {
   const { account, loadAccount, setActiveView, activeChannel, channels } = useStorePick('account', 'loadAccount', 'setActiveView', 'activeChannel', 'channels')
   const go = setActiveView
   // Scoped to the active channel, not "any channel" — a manager grant on one
@@ -205,7 +211,7 @@ export default function AdminPage({ embedded = false }: { embedded?: boolean }):
     isFullAdmin,
     gateNonProposalTabs: true,
     activeChannel,
-    initialTab: 'proposals',
+    initialTab: initialTab ?? 'proposals',
     // No Security tab for managers: it renders a flat "2FA is enabled", which
     // the OTP gate below guarantees for admins and can't guarantee for them.
     managerNavIds: ['proposals', 'comp-proposals'],
@@ -216,9 +222,10 @@ export default function AdminPage({ embedded = false }: { embedded?: boolean }):
   // live count/preview) that expands into the old master-detail "focused"
   // view on click. `tab` (from useAdminQueue) still drives which section is
   // showing — this just adds a second axis for whether we're looking at the
-  // grid or a section's full queue. Defaults to the grid on every mount,
-  // which is also embedded's "or the overview grid" fallback.
-  const [view, setView] = useState<'overview' | 'focused'>('overview')
+  // grid or a section's full queue. Defaults to the grid on every mount
+  // (embedded's "or the overview grid" fallback) unless a caller asked for a
+  // specific section via `initialTab`, in which case it starts there.
+  const [view, setView] = useState<'overview' | 'focused'>(initialTab ? 'focused' : 'overview')
   const enterSection = (id: AdminTab): void => { setTab(id); setView('focused') }
 
   const activeNavItem = nav.find(n => n.id === tab)

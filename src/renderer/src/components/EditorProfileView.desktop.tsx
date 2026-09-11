@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { Loader2, Trophy, FileEdit, ChevronLeft, RefreshCw, Plus, X, Search, Flag, ShieldCheck, FolderOpen } from 'lucide-react'
+import {
+  Loader2, Trophy, FileEdit, ChevronLeft, RefreshCw, Plus, X, Search, Flag, ShieldCheck, FolderOpen,
+  Clock, Users, TrendingUp, Radio, Shield, FileCheck,
+} from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { SongEditProposal, adminListProposals, adminListCompProposals, adminListApplications, adminListUsers } from '../lib/userApi'
 import * as reportsApi from '../lib/reportsApi'
 import ReportsTab from './ReportsTab'
 import AdminPage from './AdminPage'
+import type { AdminTab } from '../hooks/useAdminQueue'
 import CompProposalList, { CompFilterBar, filterCompProposals, compProposalSearchText, type CompFilterTab } from './CompProposalList'
 import RoleBadges from './RoleBadges'
 import { Tile } from './Tile'
@@ -27,6 +31,24 @@ import { RANK_STYLES, type ProposalFilterTab } from '../lib/proposalSearch'
 // <main>), not page-scrolling — individual tiles scroll internally.
 
 type ViewMode = 'grid' | 'admin'
+
+// Mirrors AdminPage.desktop.tsx's NAV_ICONS — one button per section instead
+// of a single generic "open the admin panel" entry point, each jumping
+// straight to that section's focused view (see initialTab below).
+const ADMIN_NAV: { id: AdminTab; label: string; icon: JSX.Element }[] = [
+  { id: 'proposals',      label: 'Song edits',   icon: <FileEdit size={14} /> },
+  { id: 'comp-proposals', label: 'Comp files',   icon: <FileCheck size={14} /> },
+  { id: 'applications',   label: 'Applications', icon: <Clock size={14} /> },
+  { id: 'reports',        label: 'Reports',      icon: <Flag size={14} /> },
+  { id: 'users',          label: 'Users',        icon: <Users size={14} /> },
+  { id: 'stats',          label: 'Stats',        icon: <TrendingUp size={14} /> },
+  { id: 'channels',       label: 'Channels',     icon: <Radio size={14} /> },
+  { id: 'security',       label: 'Security',     icon: <Shield size={14} /> },
+]
+// Matches useAdminQueue's managerNavIds for AdminPage.desktop.tsx — a
+// manager's own nav only ever reaches these two, so that's all they get
+// buttons for here too.
+const MANAGER_ADMIN_NAV_IDS: AdminTab[] = ['proposals', 'comp-proposals']
 
 function AdminStatBox({ label, value, highlight }: {
   label: string
@@ -115,6 +137,11 @@ export default function EditorProfileView(): JSX.Element {
   const [refreshKey, setRefreshKey] = useState(0)
   const [showAddSong, setShowAddSong] = useState(false)
   const [mode, setMode] = useState<ViewMode>('grid')
+  // Which admin section a click from the tile's own button row should land
+  // on — undefined means "whatever AdminPage defaults to" (the generic path,
+  // e.g. if this were ever reached some other way).
+  const [adminInitialTab, setAdminInitialTab] = useState<AdminTab | undefined>(undefined)
+  const openAdmin = (tab?: AdminTab): void => { setAdminInitialTab(tab); setMode('admin') }
   // Which content the merged Proposals/Comp tile shows — only contributors
   // ever see the toggle (non-contributors have no comp proposals to switch
   // to), so this stays 'songs' for everyone else.
@@ -234,7 +261,7 @@ export default function EditorProfileView(): JSX.Element {
         </div>
         <div className="flex-1 overflow-hidden p-4 md:p-5 pt-2">
           <div className="h-full rounded-2xl border border-[var(--border)] bg-surface-raised/50 overflow-hidden flex flex-col">
-            <AdminPage embedded />
+            <AdminPage embedded initialTab={adminInitialTab} />
           </div>
         </div>
       </div>
@@ -288,49 +315,81 @@ export default function EditorProfileView(): JSX.Element {
           min-h-0 threaded down each flex/grid ancestor so a tile's own
           content scrolls internally instead of overflowing it. */}
       <div className="flex-1 overflow-y-auto md:overflow-hidden px-4 md:px-5 pb-4 md:pb-5">
-        <div className="flex flex-col md:flex-row gap-3 md:gap-4 md:h-full">
+        <div className="flex flex-col gap-3 md:gap-4 md:h-full">
 
-          {/* Left column: identity + stats, then My Proposals filling the rest */}
-          <div className="flex flex-col gap-3 md:gap-4 md:w-[42%] md:min-h-0">
+          {/* Top row: identity+stats and Quick actions side by side, sharing
+              a flex row (default items-stretch) so they render at the same
+              height — as two independent columns they used to size to their
+              own content and rarely lined up. */}
+          <div className="flex flex-col md:flex-row gap-3 md:gap-4 shrink-0">
             {/* Identity + Stats — one tile: the two were separate cards
                 showing barely more than a name and three lines of text each,
                 which read as empty space more than information. */}
-            <Tile span="shrink-0">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-3 min-w-0">
-                  {account?.discord_avatar ? (
-                    <img src={account.discord_avatar} alt="" className="w-12 h-12 rounded-full object-cover shrink-0 ring-2 ring-[var(--border)]" />
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-accent/20 text-accent flex items-center justify-center text-lg font-bold shrink-0">
-                      {(account?.display_name || account?.discord_username || '?').charAt(0).toUpperCase()}
+            <div className="md:w-[42%]">
+              <Tile span="h-full">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {account?.discord_avatar ? (
+                      <img src={account.discord_avatar} alt="" className="w-12 h-12 rounded-full object-cover shrink-0 ring-2 ring-[var(--border)]" />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-accent/20 text-accent flex items-center justify-center text-lg font-bold shrink-0">
+                        {(account?.display_name || account?.discord_username || '?').charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <h1 className="text-text-primary text-base font-bold truncate">
+                        {account?.display_name || account?.discord_username || 'My Profile'}
+                      </h1>
+                      <div className="mt-1">
+                        <RoleBadges isAdmin={isAdmin} isManager={isManager} isEditor={!!account?.is_editor} isContributor={isContributor} />
+                      </div>
                     </div>
+                  </div>
+
+                  <div className="w-px self-stretch bg-[var(--border)] shrink-0" />
+
+                  <div className="flex items-center gap-1.5 text-text-muted shrink-0">
+                    <Trophy size={13} />
+                    <div className="flex flex-col gap-0.5">
+                      <p className="text-[10px] font-bold uppercase tracking-widest">
+                        {myEntry ? `Rank #${myEntry.rank}` : 'Unranked'}
+                      </p>
+                      <p className="text-[10px] font-bold uppercase tracking-widest opacity-70">
+                        {myEntry ? `${myEntry.approved_count} approved` : '0 approved'} · {!loadingProposals ? `${proposals.length} proposal${proposals.length !== 1 ? 's' : ''} total` : '…'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </Tile>
+            </div>
+
+            <div className="md:flex-1">
+              <Tile title="Quick actions" span="h-full">
+                <div className="flex items-center gap-2">
+                  {(account?.is_editor || account?.is_administrator) && (
+                    <button
+                      onClick={() => setShowAddSong(true)}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-accent/15 hover:bg-accent/25 text-accent text-xs font-semibold transition-colors"
+                    >
+                      <Plus size={12} /> New song
+                    </button>
                   )}
-                  <div className="min-w-0">
-                    <h1 className="text-text-primary text-base font-bold truncate">
-                      {account?.display_name || account?.discord_username || 'My Profile'}
-                    </h1>
-                    <div className="mt-1">
-                      <RoleBadges isAdmin={isAdmin} isManager={isManager} isEditor={!!account?.is_editor} isContributor={isContributor} />
-                    </div>
-                  </div>
+                  <button
+                    onClick={() => go('albums-admin')}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-surface-raised hover:bg-surface-highest text-text-secondary hover:text-text-primary text-xs font-semibold transition-colors"
+                  >
+                    Edit albums
+                  </button>
                 </div>
+              </Tile>
+            </div>
+          </div>
 
-                <div className="w-px self-stretch bg-[var(--border)] shrink-0" />
-
-                <div className="flex items-center gap-1.5 text-text-muted shrink-0">
-                  <Trophy size={13} />
-                  <div className="flex flex-col gap-0.5">
-                    <p className="text-[10px] font-bold uppercase tracking-widest">
-                      {myEntry ? `Rank #${myEntry.rank}` : 'Unranked'}
-                    </p>
-                    <p className="text-[10px] font-bold uppercase tracking-widest opacity-70">
-                      {myEntry ? `${myEntry.approved_count} approved` : '0 approved'} · {!loadingProposals ? `${proposals.length} proposal${proposals.length !== 1 ? 's' : ''} total` : '…'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </Tile>
-
+          {/* Bottom row: My Proposals (left, fixed width) and the medium
+              tile grid (right, fills the rest), each filling the remaining
+              height. */}
+          <div className="flex flex-col md:flex-row gap-3 md:gap-4 flex-1 md:min-h-0">
+          <div className="flex flex-col gap-3 md:gap-4 md:w-[42%] md:min-h-0">
             <Tile
               title={isContributor ? undefined : 'My Proposals'}
               icon={isContributor ? undefined : <FileEdit size={13} />}
@@ -493,28 +552,9 @@ export default function EditorProfileView(): JSX.Element {
             </Tile>
           </div>
 
-          {/* Right column: quick actions, then a plain (non-spanning, so
-              safely auto-placed) 2-col grid of whichever medium tiles apply. */}
+          {/* Right column: a plain (non-spanning, so safely auto-placed)
+              2-col grid of whichever medium tiles apply. */}
           <div className="flex flex-col gap-3 md:gap-4 md:flex-1 md:min-h-0">
-            <Tile title="Quick actions" span="shrink-0">
-              <div className="flex items-center gap-2">
-                {(account?.is_editor || account?.is_administrator) && (
-                  <button
-                    onClick={() => setShowAddSong(true)}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-accent/15 hover:bg-accent/25 text-accent text-xs font-semibold transition-colors"
-                  >
-                    <Plus size={12} /> New song
-                  </button>
-                )}
-                <button
-                  onClick={() => go('albums-admin')}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-surface-raised hover:bg-surface-highest text-text-secondary hover:text-text-primary text-xs font-semibold transition-colors"
-                >
-                  Edit albums
-                </button>
-              </div>
-            </Tile>
-
             <div className="grid grid-cols-2 gap-3 md:gap-4 md:flex-1 md:min-h-0 auto-rows-[minmax(16rem,1fr)] md:auto-rows-[minmax(0,1fr)]">
               <Tile title="Leaderboard" icon={<Trophy size={13} />}>
                 <div className="flex-1 overflow-y-auto min-h-0 pr-1">
@@ -553,41 +593,72 @@ export default function EditorProfileView(): JSX.Element {
               )}
 
               {canReviewStaff && (
-                <button onClick={() => setMode('admin')} className="text-left min-h-0">
-                  <Tile title={isAdmin ? 'Admin' : 'Manager'} icon={<ShieldCheck size={13} />} span="h-full hover:bg-[var(--surface-overlay)]/80 transition-colors cursor-pointer">
-                    <div className="flex-1 flex flex-col justify-center gap-2 text-text-muted">
-                      {/* Managers only ever reach Song edits + Comp files, so
-                          they get those two counts, same as before. Admins
-                          get one box per queue their nav actually opens into,
-                          plus Channels (free — already in the store) and a
-                          Total pending rollup in place of a meaningless
-                          "Stats" count. */}
-                      <div className={`grid gap-2 ${isAdmin ? 'grid-cols-4' : 'grid-cols-2'}`}>
-                        <AdminStatBox label="Song edits" value={adminPreview?.pendingProposals} highlight={!!adminPreview?.pendingProposals} />
-                        <AdminStatBox label="Comp files" value={adminPreview?.pendingComp} highlight={!!adminPreview?.pendingComp} />
-                        {isAdmin && (
-                          <>
-                            <AdminStatBox label="Applications" value={adminPreview?.pendingApplications} highlight={!!adminPreview?.pendingApplications} />
-                            <AdminStatBox label="Reports" value={adminPreview?.pendingReports} highlight={!!adminPreview?.pendingReports} />
-                            <AdminStatBox label="Users" value={adminPreview?.totalUsers} />
-                            <AdminStatBox label="Channels" value={adminPreview?.totalChannels} />
-                            <AdminStatBox label="Total pending" value={adminPreview?.totalPending} highlight={!!adminPreview?.totalPending} />
-                            <AdminStatBox
-                              label="Security"
-                              value={adminPreview ? (adminPreview.otpEnabled ? 'ON' : 'OFF') : undefined}
-                              highlight={adminPreview?.otpEnabled === false}
-                            />
-                          </>
-                        )}
-                      </div>
-                      <p className="text-xs text-center">
-                        Open the {isAdmin ? 'admin' : 'manager'} review queues
-                      </p>
+                // Spans the full width of this 2-col grid (was one cell) —
+                // eight section buttons plus the stat row need more room
+                // than a single generic "open the panel" tile did.
+                <Tile title={isAdmin ? 'Admin' : 'Manager'} icon={<ShieldCheck size={13} />} span="col-span-2">
+                  <div className="flex-1 flex flex-col gap-3 text-text-muted">
+                    {/* Managers only ever reach Song edits + Comp files, so
+                        they get those two counts, same as before. Admins
+                        get one box per queue their nav actually opens into,
+                        plus Channels (free — already in the store) and a
+                        Total pending rollup in place of a meaningless
+                        "Stats" count. */}
+                    <div className={`grid gap-2 ${isAdmin ? 'grid-cols-4' : 'grid-cols-2'}`}>
+                      <AdminStatBox label="Song edits" value={adminPreview?.pendingProposals} highlight={!!adminPreview?.pendingProposals} />
+                      <AdminStatBox label="Comp files" value={adminPreview?.pendingComp} highlight={!!adminPreview?.pendingComp} />
+                      {isAdmin && (
+                        <>
+                          <AdminStatBox label="Applications" value={adminPreview?.pendingApplications} highlight={!!adminPreview?.pendingApplications} />
+                          <AdminStatBox label="Reports" value={adminPreview?.pendingReports} highlight={!!adminPreview?.pendingReports} />
+                          <AdminStatBox label="Users" value={adminPreview?.totalUsers} />
+                          <AdminStatBox label="Channels" value={adminPreview?.totalChannels} />
+                          <AdminStatBox label="Total pending" value={adminPreview?.totalPending} highlight={!!adminPreview?.totalPending} />
+                          <AdminStatBox
+                            label="Security"
+                            value={adminPreview ? (adminPreview.otpEnabled ? 'ON' : 'OFF') : undefined}
+                            highlight={adminPreview?.otpEnabled === false}
+                          />
+                        </>
+                      )}
                     </div>
-                  </Tile>
-                </button>
+
+                    {/* One button per section — each opens AdminPage's
+                        focused view straight on that tab, instead of always
+                        landing on Song edits and having to navigate from
+                        there. */}
+                    <div className={`grid gap-2 ${isAdmin ? 'grid-cols-4' : 'grid-cols-2'}`}>
+                      {ADMIN_NAV.filter(n => isAdmin || MANAGER_ADMIN_NAV_IDS.includes(n.id)).map(n => {
+                        const badge =
+                          n.id === 'proposals' ? adminPreview?.pendingProposals :
+                          n.id === 'comp-proposals' ? adminPreview?.pendingComp :
+                          n.id === 'applications' ? adminPreview?.pendingApplications :
+                          n.id === 'reports' ? adminPreview?.pendingReports :
+                          undefined
+                        return (
+                          <button
+                            key={n.id}
+                            onClick={() => openAdmin(n.id)}
+                            className="flex flex-col items-center justify-center gap-1 rounded-lg bg-[var(--surface-raised)]/60 hover:bg-[var(--surface-raised)] px-2 py-2.5 transition-colors"
+                          >
+                            <span className="relative text-text-muted">
+                              {n.icon}
+                              {!!badge && (
+                                <span className="absolute -top-1.5 -right-2 bg-accent text-[var(--bg)] text-[9px] font-bold rounded-full min-w-[14px] h-[14px] flex items-center justify-center px-0.5">
+                                  {badge > 9 ? '9+' : badge}
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-[10px] font-semibold text-text-secondary truncate max-w-full">{n.label}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </Tile>
               )}
             </div>
+          </div>
           </div>
 
         </div>
