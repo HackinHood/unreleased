@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import {
   Plus, Trash2, Save, Download, Check, X,
-  Search, Loader2, ChevronLeft, ChevronRight, Pencil, Music, Image as ImageIcon,
+  Search, Loader2, ChevronLeft, ChevronRight, Pencil, Music, Image as ImageIcon, Shield,
 } from 'lucide-react'
 import { apiFetch, buildImageUrl } from '../lib/juicewrldApi'
+import { useStorePick } from '../store/useStore'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -506,6 +507,9 @@ function SaveButton({ saving, saved, onSave }: { saving: boolean; saved: boolean
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function AlbumsAdminView(): JSX.Element {
+  const { account, setActiveView } = useStorePick('account', 'setActiveView')
+  const canEditAlbums = !!(account?.is_editor || account?.is_administrator)
+
   const [data, setData]       = useState<WrldData | null>(null)
   const [saving, setSaving]   = useState(false)
   const [saved, setSaved]     = useState(false)
@@ -513,8 +517,17 @@ export default function AlbumsAdminView(): JSX.Element {
   const [selectedId, setSelectedId] = useState<number | null>(null)
 
   useEffect(() => {
+    if (!canEditAlbums) return
     loadData().then(setData).catch(() => setError('Failed to load wrlddata.json'))
-  }, [])
+  }, [canEditAlbums])
+
+  if (!canEditAlbums) return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center">
+      <Shield size={28} className="text-text-muted" />
+      <p className="text-text-primary font-semibold text-sm">Editor access required</p>
+      <button onClick={() => setActiveView('api-tracker')} className="text-xs text-accent hover:underline">Go back</button>
+    </div>
+  )
 
   const handleSave = async () => {
     if (!data) return

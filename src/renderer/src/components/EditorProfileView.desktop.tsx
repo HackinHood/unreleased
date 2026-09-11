@@ -374,12 +374,14 @@ export default function EditorProfileView(): JSX.Element {
                       <Plus size={12} /> New song
                     </button>
                   )}
-                  <button
-                    onClick={() => go('albums-admin')}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-surface-raised hover:bg-surface-highest text-text-secondary hover:text-text-primary text-xs font-semibold transition-colors"
-                  >
-                    Edit albums
-                  </button>
+                  {(account?.is_editor || account?.is_administrator) && (
+                    <button
+                      onClick={() => go('albums-admin')}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-surface-raised hover:bg-surface-highest text-text-secondary hover:text-text-primary text-xs font-semibold transition-colors"
+                    >
+                      Edit albums
+                    </button>
+                  )}
                 </div>
               </Tile>
             </div>

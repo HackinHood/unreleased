@@ -313,12 +313,14 @@ export default function EditorProfileView(): JSX.Element {
                   <Plus size={12} /> New song
                 </button>
               )}
-              <button
-                onClick={() => setActiveView('albums-admin')}
-                className="flex items-center gap-1 h-8 px-3 rounded-full bg-surface-raised active:bg-surface-highest text-text-secondary text-xs font-semibold transition-colors"
-              >
-                Edit albums
-              </button>
+              {(account?.is_editor || account?.is_administrator) && (
+                <button
+                  onClick={() => setActiveView('albums-admin')}
+                  className="flex items-center gap-1 h-8 px-3 rounded-full bg-surface-raised active:bg-surface-highest text-text-secondary text-xs font-semibold transition-colors"
+                >
+                  Edit albums
+                </button>
+              )}
               {isContributor && (
                 <button
                   onClick={() => setActiveView('contributor')}
