@@ -120,7 +120,7 @@ export async function groupItemsByVersion<T>(items: T[], getSongId: (item: T) =>
 // searchall the normal list uses is presumably more lenient about this;
 // stripping every apostrophe variant from both sides before comparing gets
 // this filter to the same place without a full fuzzy-search rewrite.
-function stripApostrophes(s: string): string {
+export function stripApostrophes(s: string): string {
   return s.replace(/['’‘]/g, '')
 }
 

@@ -25,6 +25,27 @@ import type { SongReportRow, SongReportStatus } from '../lib/reportsApi'
 
 export type AdminTab = 'proposals' | 'comp-proposals' | 'applications' | 'reports' | 'users' | 'stats' | 'security' | 'channels'
 
+// Deep-link paths for the standalone (non-embedded) admin console — each
+// section its own top-level URL instead of one flat "/admin" for every tab.
+// 'proposals' keeps the existing "/admin" as its path (that's the section
+// that's been there since before per-tab deep links existed); 'stats' is
+// left unmapped since nothing in the UI links to it anymore (falls back to
+// "/admin" like an unrecognized tab would).
+export const ADMIN_TAB_PATHS: Partial<Record<AdminTab, string>> = {
+  proposals: '/admin',
+  'comp-proposals': '/comp-files',
+  applications: '/applications',
+  reports: '/reports',
+  users: '/users',
+  channels: '/channels',
+  security: '/security',
+}
+
+// Reverse of the above, for turning a URL back into a tab on load/back-forward.
+export const ADMIN_PATH_TABS: Partial<Record<string, AdminTab>> = Object.fromEntries(
+  Object.entries(ADMIN_TAB_PATHS).map(([tab, path]) => [path, tab as AdminTab]),
+)
+
 export interface AdminNavItem {
   id: AdminTab
   label: string

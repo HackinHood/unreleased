@@ -8,6 +8,7 @@
 // ApiTrackerView's fetchAllMode, which this pushes field-filtered queries
 // into (same as sort/multi-category search already does).
 import { JWApiSong } from './juicewrldApi'
+import { stripApostrophes } from './compactGroups'
 
 export interface FieldFilter { field: string; label: string; value: string }
 
@@ -89,10 +90,10 @@ export function parseSearchQuery(raw: string): ParsedSearch {
   return { freeText, filters }
 }
 
-// Apostrophe-insensitive substring match, mirroring compactGroups.ts's
+// Apostrophe-insensitive substring match, matching compactGroups.ts's
 // filterCompactGroups so `artists:"wouldnt"` still matches "Wouldn't".
 function normalize(s: string): string {
-  return s.replace(/['’‘]/g, '').toLowerCase()
+  return stripApostrophes(s).toLowerCase()
 }
 
 export function matchesFieldFilters(song: JWApiSong, filters: FieldFilter[]): boolean {

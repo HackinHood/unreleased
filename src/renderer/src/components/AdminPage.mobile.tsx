@@ -192,7 +192,13 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
    *  stats, so falling back to a second copy of it just doubles the page. */
   onExit?: () => void
 }): JSX.Element {
-  const { account, setActiveView, loadAccount, activeChannel, channels } = useStorePick('account', 'setActiveView', 'loadAccount', 'activeChannel', 'channels')
+  const { account, setActiveView, loadAccount, activeChannel, channels, activeAdminTab, setActiveAdminTab } = useStorePick('account', 'setActiveView', 'loadAccount', 'activeChannel', 'channels', 'activeAdminTab', 'setActiveAdminTab')
+  // Falls back to the standalone console's own deep link (see
+  // ADMIN_TAB_PATHS) when nobody passed an explicit initialTab — only
+  // relevant when not embedded, since the embedded panel has no URL of its
+  // own and always arrives with an explicit initialTab from its host
+  // (e.g. EditorProfileView's Admin tile) instead.
+  const effectiveInitialTab = initialTab ?? (embedded ? undefined : activeAdminTab ?? undefined)
   // The header's rightmost controls (refresh + tabs) sit at the same corner
   // as the custom frameless-window buttons (see WindowControls in App.tsx,
   // fixed top-right). Without extra clearance they render underneath them —
@@ -222,7 +228,7 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
     isFullAdmin: isAdmin,
     gateNonProposalTabs: false,
     activeChannel,
-    initialTab: initialTab ?? (managerOnly ? 'comp-proposals' : 'proposals'),
+    initialTab: effectiveInitialTab ?? (managerOnly ? 'comp-proposals' : 'proposals'),
     // account can still be loading when this page first mounts (deep link,
     // page refresh) — managerOnly flips from false to true once it lands,
     // and the tab set at mount time (still 'proposals') would otherwise
@@ -239,8 +245,12 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
   // grid or a section's full queue. Defaults to the grid on every mount
   // (embedded's "or the overview grid" fallback) unless a caller asked for a
   // specific section via `initialTab`, in which case it starts there.
-  const [view, setView] = useState<'overview' | 'focused'>(initialTab ? 'focused' : 'overview')
-  const enterSection = (id: AdminTab): void => { setTab(id); setView('focused') }
+  const [view, setView] = useState<'overview' | 'focused'>(effectiveInitialTab ? 'focused' : 'overview')
+  const enterSection = (id: AdminTab): void => {
+    setTab(id)
+    setView('focused')
+    if (!embedded) setActiveAdminTab(id)
+  }
 
   const activeNavItem = nav.find(n => n.id === tab)
 
@@ -266,7 +276,11 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
       <div className={`shrink-0 ${embedded ? 'px-3 pt-1' : 'px-2 pt-1'}`}>
         <div className="flex items-center gap-1">
           {view === 'focused' ? (
-            <button onClick={() => embedded && onExit ? onExit() : setView('overview')}
+            <button onClick={() => {
+              if (embedded && onExit) { onExit(); return }
+              setView('overview')
+              if (!embedded) setActiveAdminTab(null)
+            }}
               className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full text-text-primary active:bg-surface-overlay transition-colors">
               <ChevronLeft size={20} />
             </button>

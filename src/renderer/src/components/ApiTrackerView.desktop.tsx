@@ -1824,7 +1824,7 @@ export default function ApiTrackerView(): JSX.Element {
     playTrack, startRadio, addToQueue, account, shuffle,
     apiTrackerCategory, setApiTrackerCategory,
     apiTrackerEra, setApiTrackerEra,
-    setActiveView, setApiFilesPath, setPendingEditorSongId,
+    setActiveView, setApiFilesPath,
     playlists, refreshPlaylists, setShowUserAuth, likedTrackIds, toggleLike,
     openBulkEditor, fullEraNames,
   } = useStore(useShallow(s => ({
@@ -1833,7 +1833,6 @@ export default function ApiTrackerView(): JSX.Element {
     apiTrackerCategory: s.apiTrackerCategory, setApiTrackerCategory: s.setApiTrackerCategory,
     apiTrackerEra: s.apiTrackerEra, setApiTrackerEra: s.setApiTrackerEra,
     setActiveView: s.setActiveView, setApiFilesPath: s.setApiFilesPath,
-    setPendingEditorSongId: s.setPendingEditorSongId,
     playlists: s.playlists, refreshPlaylists: s.refreshPlaylists, setShowUserAuth: s.setShowUserAuth,
     likedTrackIds: s.likedTrackIds, toggleLike: s.toggleLike,
     openBulkEditor: s.openBulkEditor,

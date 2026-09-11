@@ -28,6 +28,8 @@ import type {
   PendingReport, ReportTarget, FeedbackCategory, SongIssueType,
 } from '../lib/reports'
 import * as foldersApi from '../lib/foldersApi'
+import { ADMIN_TAB_PATHS } from '../hooks/useAdminQueue'
+import type { AdminTab } from '../hooks/useAdminQueue'
 import { newFolderId, normalizeFolderName, pruneFolders } from '../lib/playlistFolders'
 import type { PlaylistFolder, ServerPlaylistFolder } from '../lib/playlistFolders'
 import { createQueueSlice, QueueSlice } from './queueSlice'
@@ -123,6 +125,14 @@ interface AppState {
   // like the editor send its back button/redirects to wherever the user
   // actually came from instead of a hardcoded destination.
   previousView: ViewType | null
+  // Which section the standalone admin console (activeView === 'admin')
+  // should land on — drives that page's own deep-link URLs (/users,
+  // /security, etc., see ADMIN_TAB_PATHS) the same way settingsTab drives
+  // Settings' single URL. Read on mount/back-forward, written whenever the
+  // admin console's own section changes so the address bar stays in sync;
+  // untouched by the embedded admin panel inside the editor/manager profile,
+  // which has no URL of its own to keep in sync.
+  activeAdminTab: AdminTab | null
   showNowPlaying: boolean
   // Which Settings tab to show on next open (deep-link from the app menu, e.g.
   // "Keyboard shortcuts" → the Shortcuts tab). Settings applies it then clears
@@ -455,6 +465,13 @@ interface AppActions {
   playCommunityEdit: (edit: CommunityEdit) => void
 
   setActiveView: (view: ViewType) => void
+  /** Sets which section the standalone admin console should show, and — when
+   *  it's the active view — updates the address bar to that section's own
+   *  deep-link path (via replaceState, not pushState: switching sections
+   *  inside the console isn't a new place to land on back-button, same as
+   *  switching Settings tabs isn't). No-op on the URL when the embedded
+   *  admin panel (inside the editor/manager profile) is what changed tabs. */
+  setActiveAdminTab: (tab: AdminTab | null) => void
   setShowNowPlaying: (show: boolean) => void
   setRadioFmActive: (active: boolean) => void
   setRadioFmIsLive: (live: boolean | null) => void
@@ -983,6 +1000,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
   // ── UI ────────────────────────────────────────────────────────────────────
   activeView: 'api-tracker',
   previousView: null,
+  activeAdminTab: null,
   showNowPlaying: false,
   settingsTab: null,
   showDiagnostics: false,
@@ -1059,13 +1077,24 @@ export const useStore = create<AppStore>((set, get, store) => ({
     }
     // Returning to Playlists with a playlist already open (it stays selected
     // across tab switches — see playlistsSelectedId above) should restore its
-    // ?id= too, not just land on the bare list.
+    // ?id= too, not just land on the bare list. Same idea for Admin: land
+    // back on whichever section (Users, Security, ...) was last open there
+    // instead of always resetting to the base /admin.
     const selectedPlaylistId = get().playlistsSelectedId
+    const activeAdminTab = get().activeAdminTab
     const path = view === 'playlists' && selectedPlaylistId != null
       ? `/playlists?id=${selectedPlaylistId}`
-      : paths[view] ?? '/tracker'
+      : view === 'admin' && activeAdminTab
+        ? ADMIN_TAB_PATHS[activeAdminTab] ?? '/admin'
+        : paths[view] ?? '/tracker'
     window.history.pushState({ view }, '', path)
     set((s) => ({ activeView: view, previousView: view === s.activeView ? s.previousView : s.activeView }))
+  },
+  setActiveAdminTab: (tab) => {
+    set({ activeAdminTab: tab })
+    if (get().activeView !== 'admin') return
+    const path = (tab && ADMIN_TAB_PATHS[tab]) || '/admin'
+    window.history.replaceState({ view: 'admin', adminTab: tab }, '', path)
   },
   setShowNowPlaying: (showNowPlaying) => set({ showNowPlaying }),
   setRadioFmActive: (radioFmActive) => set({ radioFmActive }),

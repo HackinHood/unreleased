@@ -8,6 +8,7 @@ import { orderedNavItems, isNavItemVisible } from './lib/navItems'
 import { useIsMobile, isMobileViewport } from './hooks/useIsMobile'
 import ViewSkeleton from './components/ViewSkeleton'
 import { ViewType } from './types'
+import { ADMIN_PATH_TABS } from './hooks/useAdminQueue'
 
 function getViewFromPath(pathname: string): ViewType {
   if (pathname === '/home') return 'home'
@@ -22,7 +23,10 @@ function getViewFromPath(pathname: string): ViewType {
   if (pathname.startsWith('/files')) return 'api-files'
   if (pathname === '/editor') return 'editor'
   if (pathname === '/contributor') return 'contributor'
-  if (pathname === '/admin') return 'admin'
+  // '/admin' plus one path per admin section (see ADMIN_TAB_PATHS) — all of
+  // them land on the same standalone admin console, just pre-selecting a
+  // different tab; see the syncFromPath effect below for the tab half of it.
+  if (pathname === '/admin' || pathname in ADMIN_PATH_TABS) return 'admin'
   if (pathname === '/editor-profile') return 'editor-profile'
   if (pathname === '/contributor-profile') return 'contributor-profile'
   if (pathname === '/albums-admin') return 'albums-admin'
@@ -99,7 +103,8 @@ export default function App(): JSX.Element {
   // Sync view from URL on mount + handle back/forward
   useEffect(() => {
     const syncFromPath = (): void => {
-      useStore.setState({ activeView: getViewFromPath(window.location.pathname) })
+      const view = getViewFromPath(window.location.pathname)
+      useStore.setState({ activeView: view })
       // Playlists keeps its open playlist selected across tab switches (it
       // doesn't unmount cleanly otherwise), so a mount-time read of ?id=
       // alone can't catch a bare back/forward navigation while already on
@@ -107,6 +112,13 @@ export default function App(): JSX.Element {
       if (window.location.pathname === '/playlists') {
         const id = new URLSearchParams(window.location.search).get('id')
         useStore.setState({ playlistsSelectedId: id ? Number(id) : null })
+      }
+      // Same idea for Admin's own per-section deep links (/users, /security,
+      // ...) — land on the section the URL names, or the base queue for
+      // plain /admin and for a back/forward hop that leaves the console
+      // entirely (activeAdminTab only matters while view === 'admin').
+      if (view === 'admin') {
+        useStore.setState({ activeAdminTab: ADMIN_PATH_TABS[window.location.pathname] ?? null })
       }
     }
     syncFromPath()

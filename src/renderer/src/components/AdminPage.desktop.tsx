@@ -190,8 +190,14 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
    *  stats, so falling back to a second copy of it just doubles the page. */
   onExit?: () => void
 }): JSX.Element {
-  const { account, loadAccount, setActiveView, activeChannel, channels } = useStorePick('account', 'loadAccount', 'setActiveView', 'activeChannel', 'channels')
+  const { account, loadAccount, setActiveView, activeChannel, channels, activeAdminTab, setActiveAdminTab } = useStorePick('account', 'loadAccount', 'setActiveView', 'activeChannel', 'channels', 'activeAdminTab', 'setActiveAdminTab')
   const go = setActiveView
+  // Falls back to the standalone console's own deep link (see
+  // ADMIN_TAB_PATHS) when nobody passed an explicit initialTab — only
+  // relevant when not embedded, since the embedded panel has no URL of its
+  // own and always arrives with an explicit initialTab from its host
+  // (e.g. EditorProfileView's Admin tile) instead.
+  const effectiveInitialTab = initialTab ?? (embedded ? undefined : activeAdminTab ?? undefined)
   // Scoped to the active channel, not "any channel" — a manager grant on one
   // channel shouldn't leave this nav/content visible (and then erroring) on
   // a channel they don't actually manage. See useChannelRoles for the same
@@ -216,7 +222,7 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
     isFullAdmin,
     gateNonProposalTabs: true,
     activeChannel,
-    initialTab: initialTab ?? 'proposals',
+    initialTab: effectiveInitialTab ?? 'proposals',
     // No Security tab for managers: it renders a flat "2FA is enabled", which
     // the OTP gate below guarantees for admins and can't guarantee for them.
     managerNavIds: ['proposals', 'comp-proposals'],
@@ -230,8 +236,12 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
   // grid or a section's full queue. Defaults to the grid on every mount
   // (embedded's "or the overview grid" fallback) unless a caller asked for a
   // specific section via `initialTab`, in which case it starts there.
-  const [view, setView] = useState<'overview' | 'focused'>(initialTab ? 'focused' : 'overview')
-  const enterSection = (id: AdminTab): void => { setTab(id); setView('focused') }
+  const [view, setView] = useState<'overview' | 'focused'>(effectiveInitialTab ? 'focused' : 'overview')
+  const enterSection = (id: AdminTab): void => {
+    setTab(id)
+    setView('focused')
+    if (!embedded) setActiveAdminTab(id)
+  }
 
   const activeNavItem = nav.find(n => n.id === tab)
 
@@ -264,7 +274,11 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
       <div className={`shrink-0 flex items-center gap-3 pb-0 border-b border-[var(--border)] ${embedded ? 'px-4' : 'px-6'}`}
         style={{ paddingTop: embedded ? 4 : 16 }}>
         {view === 'focused' ? (
-          <button onClick={() => embedded && onExit ? onExit() : setView('overview')}
+          <button onClick={() => {
+            if (embedded && onExit) { onExit(); return }
+            setView('overview')
+            if (!embedded) setActiveAdminTab(null)
+          }}
             className="flex items-center gap-1.5 p-1.5 -ml-1.5 rounded-lg hover:bg-surface-overlay transition-colors text-text-muted hover:text-text-primary mb-3 text-xs font-semibold">
             <ChevronLeft size={16} /> {embedded && onExit ? 'Dashboard' : 'Overview'}
           </button>
