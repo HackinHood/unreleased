@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { Loader2, Trophy, FileEdit, ChevronLeft, RefreshCw, Plus, X, Search, Flag, ShieldCheck, FolderOpen } from 'lucide-react'
 import { useStore } from '../store/useStore'
-import { SongEditProposal, adminListProposals, adminListCompProposals } from '../lib/userApi'
+import { SongEditProposal, adminListProposals, adminListCompProposals, adminListApplications, adminListUsers } from '../lib/userApi'
+import * as reportsApi from '../lib/reportsApi'
 import ReportsTab from './ReportsTab.mobile'
 import AdminPage from './AdminPage.mobile'
 import CompProposalList, { CompFilterBar, filterCompProposals, compProposalSearchText, type CompFilterTab } from './CompProposalList'
@@ -24,6 +25,21 @@ import { RANK_STYLES, type ProposalFilterTab } from '../lib/proposalSearch'
 // "Visual Redesign v2 — Bento Dashboard Pivot" in the plan.
 
 type ViewMode = 'grid' | 'admin'
+
+function AdminStatBox({ label, value, highlight }: {
+  label: string
+  value: number | string | null | undefined
+  highlight?: boolean
+}): JSX.Element {
+  return (
+    <div className="rounded-lg bg-[var(--surface-raised)]/60 px-2 py-1.5 text-center min-w-0">
+      <p className={`text-base font-bold tabular-nums truncate ${highlight ? 'text-accent' : 'text-text-primary'}`}>
+        {value === null || value === undefined ? '—' : value}
+      </p>
+      <p className="text-[9px] font-bold uppercase tracking-wider text-text-muted mt-0.5 truncate">{label}</p>
+    </div>
+  )
+}
 
 function LeaderboardRows({ entries, myUsername }: {
   entries: ReturnType<typeof useLeaderboard>['leaderboard']
@@ -132,20 +148,45 @@ export default function EditorProfileView(): JSX.Element {
     reports, status: reportStatus, setStatus: setReportStatus, loading: loadingReports,
   } = useReportsQueue(canReviewReports, refreshKey)
 
-  // Lightweight preview for the Admin/Manager tile — see the desktop file's
-  // identical fetch for why this doesn't reuse useAdminQueue.
-  const [adminPreview, setAdminPreview] = useState<{ pendingProposals: number; pendingComp: number } | null>(null)
+  // Preview stats for the Admin/Manager tile — see the desktop file's
+  // identical fetch for why this doesn't reuse useAdminQueue, and why the
+  // admin-only sections (applications/users) are skipped for managers.
+  const [adminPreview, setAdminPreview] = useState<{
+    pendingProposals: number
+    pendingComp: number
+    pendingApplications: number | null
+    pendingReports: number | null
+    totalUsers: number | null
+    totalChannels: number
+    totalPending: number
+    otpEnabled: boolean | null
+  } | null>(null)
   useEffect(() => {
     if (!canReviewStaff) { setAdminPreview(null); return }
     let cancelled = false
     Promise.all([
       adminListProposals('pending', activeChannel),
       adminListCompProposals('pending', activeChannel),
-    ]).then(([props, comp]) => {
-      if (!cancelled) setAdminPreview({ pendingProposals: props.length, pendingComp: comp.length })
+      isAdmin ? adminListApplications('pending') : Promise.resolve(null),
+      isAdmin ? reportsApi.listSongReports('pending') : Promise.resolve(null),
+      isAdmin ? adminListUsers() : Promise.resolve(null),
+    ]).then(([props, comp, apps, reps, users]) => {
+      if (cancelled) return
+      const pendingApplications = apps?.length ?? null
+      const pendingReports = reps?.length ?? null
+      setAdminPreview({
+        pendingProposals: props.length,
+        pendingComp: comp.length,
+        pendingApplications,
+        pendingReports,
+        totalUsers: users?.length ?? null,
+        totalChannels: channels.length,
+        totalPending: props.length + comp.length + (pendingApplications ?? 0) + (pendingReports ?? 0),
+        otpEnabled: isAdmin ? !!account?.otp_enabled : null,
+      })
     }).catch(() => { if (!cancelled) setAdminPreview(null) })
     return () => { cancelled = true }
-  }, [canReviewStaff, activeChannel, refreshKey])
+  }, [canReviewStaff, isAdmin, activeChannel, refreshKey, channels.length, account?.otp_enabled])
 
   const handleEdit = (p: SongEditProposal): void => {
     // p.song is null for 'create' proposals (new song, no backing record yet) —
@@ -459,23 +500,30 @@ export default function EditorProfileView(): JSX.Element {
           {canReviewStaff && (
             <button onClick={() => setMode('admin')} className="text-left col-span-2">
               <Tile title={isAdmin ? 'Admin' : 'Manager'} icon={<ShieldCheck size={13} />} span="w-full active:bg-[var(--surface-overlay)]/80 transition-colors">
-                <div className="flex flex-col items-center justify-center gap-2 py-3 text-text-muted">
-                  <div className="flex items-center gap-6">
-                    <div className="text-center">
-                      <p className={`text-xl font-bold tabular-nums ${adminPreview?.pendingProposals ? 'text-accent' : 'text-text-primary'}`}>
-                        {adminPreview ? adminPreview.pendingProposals : '—'}
-                      </p>
-                      <p className="text-[10px] font-bold uppercase tracking-widest mt-0.5">Pending edits</p>
-                    </div>
-                    <div className="w-px h-7 bg-[var(--border)]" />
-                    <div className="text-center">
-                      <p className={`text-xl font-bold tabular-nums ${adminPreview?.pendingComp ? 'text-accent' : 'text-text-primary'}`}>
-                        {adminPreview ? adminPreview.pendingComp : '—'}
-                      </p>
-                      <p className="text-[10px] font-bold uppercase tracking-widest mt-0.5">Pending comp</p>
-                    </div>
+                <div className="flex flex-col gap-2 py-2 text-text-muted">
+                  {/* Managers only ever reach Song edits + Comp files, so they
+                      get those two counts; admins get one box per queue their
+                      nav opens into, plus Channels (free) and a Total pending
+                      rollup in place of a meaningless "Stats" count. */}
+                  <div className={`grid gap-1.5 ${isAdmin ? 'grid-cols-4' : 'grid-cols-2'}`}>
+                    <AdminStatBox label="Song edits" value={adminPreview?.pendingProposals} highlight={!!adminPreview?.pendingProposals} />
+                    <AdminStatBox label="Comp files" value={adminPreview?.pendingComp} highlight={!!adminPreview?.pendingComp} />
+                    {isAdmin && (
+                      <>
+                        <AdminStatBox label="Applications" value={adminPreview?.pendingApplications} highlight={!!adminPreview?.pendingApplications} />
+                        <AdminStatBox label="Reports" value={adminPreview?.pendingReports} highlight={!!adminPreview?.pendingReports} />
+                        <AdminStatBox label="Users" value={adminPreview?.totalUsers} />
+                        <AdminStatBox label="Channels" value={adminPreview?.totalChannels} />
+                        <AdminStatBox label="Total pending" value={adminPreview?.totalPending} highlight={!!adminPreview?.totalPending} />
+                        <AdminStatBox
+                          label="Security"
+                          value={adminPreview ? (adminPreview.otpEnabled ? 'ON' : 'OFF') : undefined}
+                          highlight={adminPreview?.otpEnabled === false}
+                        />
+                      </>
+                    )}
                   </div>
-                  <p className="text-xs">
+                  <p className="text-xs text-center">
                     Open the {isAdmin ? 'admin' : 'manager'} review queues
                   </p>
                 </div>

@@ -28,6 +28,24 @@ import { RANK_STYLES, type ProposalFilterTab } from '../lib/proposalSearch'
 
 type ViewMode = 'grid' | 'admin'
 
+function AdminStatBox({ label, value, highlight }: {
+  label: string
+  value: number | string | null | undefined
+  /** Render the value in accent color — pass for a "pending" count that's
+   *  nonzero, or any other value worth calling out. Plain totals (Users,
+   *  Channels) leave this unset. */
+  highlight?: boolean
+}): JSX.Element {
+  return (
+    <div className="rounded-lg bg-[var(--surface-raised)]/60 px-2 py-1.5 text-center min-w-0">
+      <p className={`text-base font-bold tabular-nums truncate ${highlight ? 'text-accent' : 'text-text-primary'}`}>
+        {value === null || value === undefined ? '—' : value}
+      </p>
+      <p className="text-[9px] font-bold uppercase tracking-wider text-text-muted mt-0.5 truncate">{label}</p>
+    </div>
+  )
+}
+
 function LeaderboardRows({ entries, myUsername }: {
   entries: ReturnType<typeof useLeaderboard>['leaderboard']
   myUsername: string | undefined
@@ -544,19 +562,19 @@ export default function EditorProfileView(): JSX.Element {
                           Total pending rollup in place of a meaningless
                           "Stats" count. */}
                       <div className={`grid gap-2 ${isAdmin ? 'grid-cols-4' : 'grid-cols-2'}`}>
-                        <AdminStatBox label="Song edits" value={adminPreview?.pendingProposals} />
-                        <AdminStatBox label="Comp files" value={adminPreview?.pendingComp} />
+                        <AdminStatBox label="Song edits" value={adminPreview?.pendingProposals} highlight={!!adminPreview?.pendingProposals} />
+                        <AdminStatBox label="Comp files" value={adminPreview?.pendingComp} highlight={!!adminPreview?.pendingComp} />
                         {isAdmin && (
                           <>
-                            <AdminStatBox label="Applications" value={adminPreview?.pendingApplications} />
-                            <AdminStatBox label="Reports" value={adminPreview?.pendingReports} />
-                            <AdminStatBox label="Users" value={adminPreview?.totalUsers} accent={false} />
-                            <AdminStatBox label="Channels" value={adminPreview?.totalChannels} accent={false} />
-                            <AdminStatBox label="Total pending" value={adminPreview?.totalPending} />
+                            <AdminStatBox label="Applications" value={adminPreview?.pendingApplications} highlight={!!adminPreview?.pendingApplications} />
+                            <AdminStatBox label="Reports" value={adminPreview?.pendingReports} highlight={!!adminPreview?.pendingReports} />
+                            <AdminStatBox label="Users" value={adminPreview?.totalUsers} />
+                            <AdminStatBox label="Channels" value={adminPreview?.totalChannels} />
+                            <AdminStatBox label="Total pending" value={adminPreview?.totalPending} highlight={!!adminPreview?.totalPending} />
                             <AdminStatBox
                               label="Security"
                               value={adminPreview ? (adminPreview.otpEnabled ? 'ON' : 'OFF') : undefined}
-                              accent={adminPreview?.otpEnabled === false}
+                              highlight={adminPreview?.otpEnabled === false}
                             />
                           </>
                         )}
