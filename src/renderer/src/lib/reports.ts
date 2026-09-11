@@ -52,6 +52,7 @@ interface BaseReport {
 export interface PendingFeedback extends BaseReport {
   kind: 'feedback'
   category: FeedbackCategory
+  automated?: boolean
 }
 
 export interface PendingSongReport extends BaseReport {
