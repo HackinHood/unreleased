@@ -23,7 +23,7 @@ import { useBackToClose } from '../hooks/useBackToClose'
 import { useStaffRoles } from '../hooks/useStaffRoles'
 import { useAdminQueue, type AdminTab, type AdminNavItem } from '../hooks/useAdminQueue'
 import { useOtpGate } from '../hooks/useOtpGate'
-import ProfileTabBar, { type ProfileTabDef } from './ProfileTabBar'
+import { Tile } from './Tile'
 
 type Tab = AdminTab
 
@@ -219,14 +219,18 @@ export default function AdminPage({ embedded = false }: { embedded?: boolean }):
     forceTab: { when: managerOnly, tab: 'comp-proposals' },
     managerNavIds: ['comp-proposals'],
   })
-  // ProfileTabBar wants plain icon nodes, not the iconKey indirection
-  // useAdminQueue's nav returns.
-  const navTabs: ProfileTabDef<AdminTab>[] = useMemo(() => nav.map(n => ({
-    id: n.id,
-    label: n.label,
-    icon: NAV_ICONS[n.iconKey],
-    badge: n.badge,
-  })), [nav])
+
+  // Bento pivot (Visual Redesign v2): the pill nav bar + single-panel body
+  // is replaced by an overview tile grid (one tile per nav item, with a
+  // live count/preview) that expands into the old master-detail "focused"
+  // view on tap. `tab` (from useAdminQueue) still drives which section is
+  // showing — this just adds a second axis for whether we're looking at the
+  // grid or a section's full queue. Defaults to the grid on every mount,
+  // which is also embedded's "or the overview grid" fallback.
+  const [view, setView] = useState<'overview' | 'focused'>('overview')
+  const enterSection = (id: AdminTab): void => { setTab(id); setView('focused') }
+
+  const activeNavItem = nav.find(n => n.id === tab)
 
   if (!canReviewStaff) return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center">
@@ -249,35 +253,32 @@ export default function AdminPage({ embedded = false }: { embedded?: boolean }):
       {/* Header */}
       <div className={`shrink-0 ${embedded ? 'px-3 pt-1' : 'px-2 pt-1'}`}>
         <div className="flex items-center gap-1">
-          {!embedded && (
+          {view === 'focused' ? (
+            <button onClick={() => setView('overview')}
+              className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full text-text-primary active:bg-surface-overlay transition-colors">
+              <ChevronLeft size={20} />
+            </button>
+          ) : !embedded ? (
             <button onClick={() => setActiveView('api-tracker')}
               className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full text-text-primary active:bg-surface-overlay transition-colors">
               <ChevronLeft size={20} />
             </button>
-          )}
-          {!embedded && (
-            <div className="flex-1 min-w-0 pl-1.5">
-              <h1 className="text-text-primary text-[20px] font-bold leading-tight truncate">{managerOnly ? 'Manager' : 'Admin'}</h1>
-              {account?.discord_username && <p className="text-text-muted text-xs truncate">{account.discord_username}</p>}
-            </div>
-          )}
-          {embedded && <div className="flex-1" />}
+          ) : null}
+          <div className="flex-1 min-w-0 pl-1.5">
+            {view === 'focused' ? (
+              <h1 className="text-text-primary text-[20px] font-bold leading-tight truncate">{activeNavItem?.label ?? ''}</h1>
+            ) : !embedded ? (
+              <>
+                <h1 className="text-text-primary text-[20px] font-bold leading-tight truncate">{managerOnly ? 'Manager' : 'Admin'}</h1>
+                {account?.discord_username && <p className="text-text-muted text-xs truncate">{account.discord_username}</p>}
+              </>
+            ) : null}
+          </div>
           <button onClick={() => refresh()} disabled={loading}
             className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full text-text-muted active:bg-surface-overlay transition-colors disabled:opacity-40">
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
-
-        {/* Tabs — scrollable pill row rather than underline tabs, which don't
-            fit six of them at once on a phone width. Skipped entirely when
-            there's only one destination (managerOnly): a single always-active
-            pill has nothing to select and just reads as a stray floating
-            button, not a tab bar. */}
-        {nav.length > 1 && (
-        <div className="pb-2 pt-1">
-          <ProfileTabBar tabs={navTabs} active={tab} onChange={setTab} variant="pill" />
-        </div>
-        )}
       </div>
 
       {error && (
@@ -286,29 +287,64 @@ export default function AdminPage({ embedded = false }: { embedded?: boolean }):
         </div>
       )}
 
-      {/* The tab body stays mounted through a reload (switching the reports/
-          proposals status filter, hitting refresh, etc.) instead of being
-          replaced by a spinner — that was unmounting things like the status
-          filter chips and each tab's local state (selection, draft notes,
-          cached song lookups) on every refetch. A translucent overlay signals
-          the load without tearing the UI down. */}
-      <div className="flex-1 overflow-hidden relative">
-        {loading && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--bg)]/60 backdrop-blur-[1px]">
-            <Loader2 size={20} className="animate-spin text-text-muted" />
+      {view === 'overview' ? (
+        <div className="flex-1 overflow-y-auto p-3">
+          <div className="grid grid-cols-2 gap-3">
+            {nav.map(n => {
+              const preview = navPreview(n, users)
+              return (
+                <button key={n.id} onClick={() => enterSection(n.id)} className="text-left">
+                  <Tile title={n.label} icon={NAV_ICONS[n.iconKey] as JSX.Element}
+                    span="w-full h-full active:bg-[var(--surface-overlay)]/80 transition-colors cursor-pointer">
+                    {preview ? (
+                      <p className={`text-xl font-bold ${n.badge ? 'text-accent' : 'text-text-primary'}`}>{preview}</p>
+                    ) : (
+                      <p className="text-xs text-text-muted">View queue</p>
+                    )}
+                  </Tile>
+                </button>
+              )
+            })}
           </div>
-        )}
-        {tab === 'proposals'    && <ProposalsTab proposals={proposals} status={propStatus} setStatus={setPropStatus} onChanged={() => refresh()} channel={activeChannel} />}
-        {tab === 'comp-proposals' && <CompProposalsTab embedded onChanged={() => refresh()} />}
-        {tab === 'applications' && <ApplicationsTab applications={applications} onChanged={() => refresh()} />}
-        {tab === 'reports'      && <ReportsTab reports={reports} status={reportStatus} setStatus={setReportStatus} onChanged={() => refresh()} />}
-        {tab === 'users'        && <UsersTab users={users} onChanged={() => refresh()} currentUserId={account?.id} />}
-        {tab === 'stats'        && <StatsTab applications={applications} proposals={proposals} users={users} />}
-        {tab === 'channels'     && <ChannelsTab />}
-        {tab === 'security'     && <SecurityTab />}
-      </div>
+        </div>
+      ) : (
+        /* The tab body stays mounted through a reload (switching the reports/
+            proposals status filter, hitting refresh, etc.) instead of being
+            replaced by a spinner — that was unmounting things like the status
+            filter chips and each tab's local state (selection, draft notes,
+            cached song lookups) on every refetch. A translucent overlay signals
+            the load without tearing the UI down. */
+        <div className="flex-1 overflow-hidden relative">
+          {loading && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--bg)]/60 backdrop-blur-[1px]">
+              <Loader2 size={20} className="animate-spin text-text-muted" />
+            </div>
+          )}
+          {tab === 'proposals'    && <ProposalsTab proposals={proposals} status={propStatus} setStatus={setPropStatus} onChanged={() => refresh()} channel={activeChannel} />}
+          {tab === 'comp-proposals' && <CompProposalsTab embedded onChanged={() => refresh()} />}
+          {tab === 'applications' && <ApplicationsTab applications={applications} onChanged={() => refresh()} />}
+          {tab === 'reports'      && <ReportsTab reports={reports} status={reportStatus} setStatus={setReportStatus} onChanged={() => refresh()} />}
+          {tab === 'users'        && <UsersTab users={users} onChanged={() => refresh()} currentUserId={account?.id} />}
+          {tab === 'stats'        && <StatsTab applications={applications} proposals={proposals} users={users} />}
+          {tab === 'channels'     && <ChannelsTab />}
+          {tab === 'security'     && <SecurityTab />}
+        </div>
+      )}
     </div>
   )
+}
+
+// Live preview shown on an overview tile: the pending count useAdminQueue
+// already computes onto nav[].badge for Song edits/Applications/Reports, or
+// (for Users, the one other tab whose data is easy to have in memory
+// already) a total count. Every other tab (Comp files, Stats, Channels,
+// Security) has no already-fetched data cheap enough to summarize, so it
+// falls back to a bare label rather than force-fetching a tab that isn't
+// active.
+function navPreview(n: AdminNavItem, users: AdminUser[]): string | null {
+  if (n.badge) return `${n.badge} pending`
+  if (n.id === 'users' && users.length > 0) return `${users.length} users`
+  return null
 }
 
 

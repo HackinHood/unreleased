@@ -5,11 +5,11 @@ import { ChevronRight } from 'lucide-react'
 // Admin review panel, and Contributor profile pages can reuse the exact same
 // visual language for the "Visual Redesign v2 — Bento Dashboard Pivot"
 // instead of hand-rolling near-identical wrappers again.
-export function Tile({ title, icon, action, span, children }: {
+export function Tile({ title, icon, action, span = '', children }: {
   title?: string
   icon?: JSX.Element
   action?: { label: string; onClick: () => void }
-  span: string
+  span?: string
   children: React.ReactNode
 }): JSX.Element {
   return (
