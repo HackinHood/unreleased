@@ -1,4 +1,4 @@
-import { RefObject, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 export interface ElementSize {
   width: number
@@ -6,33 +6,40 @@ export interface ElementSize {
 }
 
 /**
- * The observed content box of `ref`, in px. Both start at 0 for the first
- * render (before the element exists) — callers that lay out from these should
- * treat 0 as "not measured yet" rather than as an empty box.
- *
- * Used by height-bound layouts that have to work out how much fits: unlike a
- * media query, this reacts to whatever is actually sharing the row (the
- * sidebar collapsing, the queue or now-playing panel opening) as well as to
- * the window itself.
+ * Tracks the content-box size of whatever DOM node the returned callback ref
+ * gets attached to. Returns `[ref, size]` — pass `ref` directly as the
+ * element's `ref` prop rather than holding your own `useRef`: a plain ref
+ * object's identity never changes across renders, so an effect keyed on it
+ * (`useEffect(..., [ref])`) only ever runs once, right after the very first
+ * mount — if the element it points at isn't in the DOM yet at that exact
+ * moment (e.g. a conditional renders an empty state first and swaps in the
+ * real element once data arrives), that first run sees `ref.current === null`
+ * and never gets another chance, even once the element shows up for real. A
+ * callback ref calls back on every attach and detach, so this one always
+ * re-measures and re-subscribes exactly when it should.
  */
-export function useElementSize(ref: RefObject<HTMLElement>): ElementSize {
+export function useElementSize<T extends HTMLElement>(): [(node: T | null) => void, ElementSize] {
+  const [node, setNode] = useState<T | null>(null)
   const [size, setSize] = useState<ElementSize>({ width: 0, height: 0 })
+  const ref = useCallback((el: T | null) => setNode(el), [])
 
   useEffect(() => {
-    const el = ref.current
-    if (!el) return
+    if (!node) {
+      setSize({ width: 0, height: 0 })
+      return
+    }
     const measure = (): void => {
       setSize((prev) => (
-        prev.width === el.clientWidth && prev.height === el.clientHeight
+        prev.width === node.clientWidth && prev.height === node.clientHeight
           ? prev
-          : { width: el.clientWidth, height: el.clientHeight }
+          : { width: node.clientWidth, height: node.clientHeight }
       ))
     }
     measure()
     const ro = new ResizeObserver(measure)
-    ro.observe(el)
+    ro.observe(node)
     return () => ro.disconnect()
-  }, [ref])
+  }, [node])
 
-  return size
+  return [ref, size]
 }

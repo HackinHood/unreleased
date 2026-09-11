@@ -47,14 +47,26 @@ export function useHomeData() {
   const {
     account, playlists, guestPlaylists, followedPlaylists, likedTrackIds,
     listeningPlays, setActiveView, setPendingPlaylistId, playTrack, openProfile,
-    radioFmIsLive, radioFmNowPlaying, homeSectionVisibility,
+    radioFmIsLive, radioFmNowPlaying, homeSectionVisibility, refreshPlaylists,
   } = useStorePick(
     'account', 'playlists', 'guestPlaylists', 'followedPlaylists', 'likedTrackIds',
     'listeningPlays', 'setActiveView', 'setPendingPlaylistId', 'playTrack', 'openProfile',
-    'radioFmIsLive', 'radioFmNowPlaying', 'homeSectionVisibility',
+    'radioFmIsLive', 'radioFmNowPlaying', 'homeSectionVisibility', 'refreshPlaylists',
   )
 
   const showSection = (id: string): boolean => isHomeSectionVisible(id, homeSectionVisibility)
+
+  // On a fresh app launch, playlists load as one step of loadAccount()'s long
+  // sequential chain (getMe → favorites → prefs → folders → reports → THEN
+  // playlists) — Home routinely finishes mounting before that chain gets to
+  // its playlists step, and it's just one more await away from never getting
+  // there at all if an earlier step throws. Rather than depend on that chain,
+  // Home asks for its own copy directly; refreshPlaylists() already no-ops
+  // without an account and collapses concurrent callers (see its _inFlight
+  // guard), so this is free when the chain already covered it.
+  useEffect(() => {
+    if (account) refreshPlaylists()
+  }, [account, refreshPlaylists])
 
   // localStorage-backed, so read once per mount rather than per render. Home is
   // remounted on every visit (it's a route), which is exactly when this should

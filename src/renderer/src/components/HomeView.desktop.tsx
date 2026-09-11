@@ -1,11 +1,14 @@
-import { useRef } from 'react'
-import { ChevronRight, Play, ListMusic, Gamepad2, Flame, Music2, Disc3, User, Newspaper, Radio, Heart, Search } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronRight, Play, ListMusic, Gamepad2, Flame, Music2, Disc3, User, Newspaper, Radio, Heart, Search, MoreHorizontal } from 'lucide-react'
 import { AlbumArtThumbnail } from './AlbumArtThumbnail'
 import { ProgressiveCover } from './ProgressiveCover'
+import { Tile } from './Tile'
 import { useHomeData, type GameCard, type HomePlaylistCard } from '../hooks/useHomeData'
 import { useElementSize } from '../hooks/useElementSize'
+import { useStorePick } from '../store/useStore'
+import { orderedNavItems, isNavItemVisible } from '../lib/navItems'
 import type { NewsItem } from '../lib/newsApi'
-import type { Track } from '../types'
+import type { Track, ViewType } from '../types'
 
 // The desktop landing screen — same sections, same data (useHomeData) and the
 // same Settings → Home screen toggles as the mobile shell, laid out as a bento
@@ -44,34 +47,6 @@ function fitCount(width: number, total: number, maxRows: number): { cols: number
   return { cols, count: Math.min(total, cols * rows) }
 }
 
-function Tile({ title, icon, action, span, children }: {
-  title?: string
-  icon?: JSX.Element
-  action?: { label: string; onClick: () => void }
-  span: string
-  children: React.ReactNode
-}): JSX.Element {
-  return (
-    <section className={`${span} min-w-0 min-h-0 flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface-overlay)]/50 p-4`}>
-      {title && (
-        <div className="flex items-center gap-2 mb-3 shrink-0">
-          <span className="text-text-muted">{icon}</span>
-          <h2 className="text-text-primary text-sm font-bold uppercase tracking-wider flex-1 min-w-0 truncate">{title}</h2>
-          {action && (
-            <button
-              onClick={action.onClick}
-              className="flex items-center gap-0.5 px-2 py-0.5 -mr-2 rounded-lg text-text-muted text-xs font-semibold hover:text-text-primary hover:bg-[var(--surface-raised)] transition-colors shrink-0"
-            >
-              {action.label}<ChevronRight size={13} />
-            </button>
-          )}
-        </div>
-      )}
-      {children}
-    </section>
-  )
-}
-
 function EmptyNote({ children }: { children: React.ReactNode }): JSX.Element {
   return <p className="text-text-muted text-xs">{children}</p>
 }
@@ -81,7 +56,7 @@ function EmptyNote({ children }: { children: React.ReactNode }): JSX.Element {
 function CoverGrid({ children, cols, bodyRef }: {
   children: React.ReactNode
   cols: number
-  bodyRef: React.RefObject<HTMLDivElement>
+  bodyRef: (node: HTMLDivElement | null) => void
 }): JSX.Element {
   return (
     <div ref={bodyRef}>
@@ -97,8 +72,7 @@ function RecentTile({ tracks, onPlay, span }: {
   onPlay: (track: Track) => void
   span: string
 }): JSX.Element {
-  const bodyRef = useRef<HTMLDivElement>(null)
-  const { width } = useElementSize(bodyRef)
+  const [bodyRef, { width }] = useElementSize<HTMLDivElement>()
   const { cols, count } = fitCount(width, tracks.length, 2)
   return (
     <Tile title="Recently played" icon={<Disc3 size={15} />} span={span}>
@@ -140,8 +114,7 @@ function PlaylistsTile({ playlists, onAll, span }: {
   onAll: () => void
   span: string
 }): JSX.Element {
-  const bodyRef = useRef<HTMLDivElement>(null)
-  const { width } = useElementSize(bodyRef)
+  const [bodyRef, { width }] = useElementSize<HTMLDivElement>()
   // One row only — Playlists is capped at 10 items upstream (useHomeData), so
   // a lone leftover on a second row was common and looked unfinished; the
   // rest is a click away via "All".
@@ -285,12 +258,52 @@ function Stat({ value, label }: { value: string; label: string }): JSX.Element {
   )
 }
 
+// Desktop counterpart to mobile Home's "More" button. Mobile's opens a sheet
+// of nav tabs that don't fit the bottom bar's cap — the sidebar has no such
+// cap, so there's nothing to overflow into it. This lists the destinations
+// that ship off by default instead (Wrapped, News, Liked Songs, API Docs —
+// see `defaultHidden` in navItems.tsx): still one click away without having
+// to turn them on in Settings first, just like mobile's sheet lets you reach
+// an overflowed tab without adding it to the bar.
+function MoreMenu({ open, onClose, items, onSelect }: {
+  open: boolean
+  onClose: () => void
+  items: { view: ViewType; label: string; icon: React.ReactNode }[]
+  onSelect: (view: ViewType) => void
+}): JSX.Element | null {
+  if (!open) return null
+  return (
+    <>
+      <div className="fixed inset-0 z-10" onClick={onClose} />
+      <div className="absolute right-0 top-full mt-2 z-20 min-w-[190px] rounded-xl border border-[var(--border)] bg-surface py-1 shadow-2xl">
+        {items.length === 0 ? (
+          <p className="px-3.5 py-2.5 text-xs text-text-muted whitespace-nowrap">Nothing else to show</p>
+        ) : items.map((item) => (
+          <button
+            key={item.view}
+            onClick={() => { onSelect(item.view); onClose() }}
+            className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm text-text-primary transition-colors hover:bg-[var(--surface-overlay)]"
+          >
+            <span className="flex items-center justify-center text-text-muted [&_svg]:w-4 [&_svg]:h-4">{item.icon}</span>
+            <span className="flex-1 truncate">{item.label}</span>
+          </button>
+        ))}
+      </div>
+    </>
+  )
+}
+
 export default function HomeViewDesktop(): JSX.Element {
   const {
     account, likedTrackIds, radioFmIsLive, radioFmNowPlaying, setActiveView,
     openProfile, showSection, recent, newsItems, games, playlistRow,
     totalPlays, distinctSongs, weekPlays, openTrack, openNewsItem,
   } = useHomeData()
+  const { navOrder, navVisibility } = useStorePick('navOrder', 'navVisibility')
+  const [showMore, setShowMore] = useState(false)
+  const hiddenNavItems = orderedNavItems(navOrder).filter(
+    (i) => i.defaultHidden && !isNavItemVisible(i, navVisibility, false),
+  )
 
   const showRecent = showSection('recent') && recent.length > 0
   const showNews = showSection('news') && newsItems.length > 0
@@ -328,6 +341,22 @@ export default function HomeViewDesktop(): JSX.Element {
           >
             <Search size={17} />
           </button>
+          <div className="relative shrink-0">
+            <button
+              onClick={() => setShowMore((v) => !v)}
+              aria-label="More"
+              title="More"
+              className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-[var(--surface-overlay)] transition-colors"
+            >
+              <MoreHorizontal size={19} />
+            </button>
+            <MoreMenu
+              open={showMore}
+              onClose={() => setShowMore(false)}
+              items={hiddenNavItems}
+              onSelect={setActiveView}
+            />
+          </div>
           {showListening && (
             <div className="ml-auto flex items-center gap-4 min-w-0">
               {totalPlays === 0 ? (
