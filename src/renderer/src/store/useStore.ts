@@ -1044,6 +1044,7 @@ export const useStore = create<AppStore>((set, get, store) => ({
       'admin': '/admin',
       'liked': '/liked',
       'playlists': '/playlists',
+      'docs': '/docs',
       'wrld': '/wrld',
       'news': '/news',
       'heardle': '/heardle',
