@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { Loader2, Trophy, FileEdit, ChevronLeft, RefreshCw, Plus, X, Search, Flag, ShieldCheck, FolderOpen } from 'lucide-react'
 import { useStore } from '../store/useStore'
-import { SongEditProposal } from '../lib/userApi'
+import { SongEditProposal, adminListProposals, adminListCompProposals, adminListApplications, adminListUsers } from '../lib/userApi'
+import * as reportsApi from '../lib/reportsApi'
 import ReportsTab from './ReportsTab'
 import AdminPage from './AdminPage'
-import CompProposalList, { CompFilterBar, filterCompProposals } from './CompProposalList'
+import CompProposalList, { CompFilterBar, filterCompProposals, compProposalSearchText, type CompFilterTab } from './CompProposalList'
 import RoleBadges from './RoleBadges'
 import { Tile } from './Tile'
 import ProposalListItem from './ProposalListItem'
@@ -100,6 +101,7 @@ export default function EditorProfileView(): JSX.Element {
   // ever see the toggle (non-contributors have no comp proposals to switch
   // to), so this stays 'songs' for everyone else.
   const [proposalsView, setProposalsView] = useState<'songs' | 'comp'>('songs')
+  const [compSearch, setCompSearch] = useState('')
 
   // Not `|| is_administrator`: this tile lists proposals *you* submitted, and
   // an admin who never contributed has none. Their review queue is the Admin
@@ -127,9 +129,63 @@ export default function EditorProfileView(): JSX.Element {
     withdrawingId: withdrawingCompId, handleWithdraw: handleWithdrawComp,
   } = useMyCompProposals(isContributor, activeChannel, refreshKey, () => setRefreshKey(k => k + 1))
 
+  const compTabCount = (tab: CompFilterTab): number => filterCompProposals(compProposals, tab).length
+
+  const filteredCompProposals = useMemo(() => {
+    const byStatus = filterCompProposals(compProposals, compFilter)
+    const q = compSearch.trim().toLowerCase()
+    if (!q) return byStatus
+    return byStatus.filter(p => compProposalSearchText(p).includes(q))
+  }, [compProposals, compFilter, compSearch])
+
   const {
     reports, status: reportStatus, setStatus: setReportStatus, loading: loadingReports,
   } = useReportsQueue(canReviewReports, refreshKey)
+
+  // Preview stats for the Admin/Manager tile — one per section of the queues
+  // it opens into. Deliberately its own fetch rather than reusing
+  // useAdminQueue: that hook only ever loads whichever tab is active inside
+  // AdminPage, so pulling eight counts out of it here would mean cycling
+  // through every tab just to populate a tile preview. Managers only ever see
+  // Song edits + Comp files in their own nav (see useAdminQueue's
+  // managerNavIds), so the admin-only sections (applications/users) are
+  // skipped for them rather than fetched against endpoints that would 403.
+  const [adminPreview, setAdminPreview] = useState<{
+    pendingProposals: number
+    pendingComp: number
+    pendingApplications: number | null
+    pendingReports: number | null
+    totalUsers: number | null
+    totalChannels: number
+    totalPending: number
+    otpEnabled: boolean | null
+  } | null>(null)
+  useEffect(() => {
+    if (!canReviewStaff) { setAdminPreview(null); return }
+    let cancelled = false
+    Promise.all([
+      adminListProposals('pending', activeChannel),
+      adminListCompProposals('pending', activeChannel),
+      isAdmin ? adminListApplications('pending') : Promise.resolve(null),
+      isAdmin ? reportsApi.listSongReports('pending') : Promise.resolve(null),
+      isAdmin ? adminListUsers() : Promise.resolve(null),
+    ]).then(([props, comp, apps, reps, users]) => {
+      if (cancelled) return
+      const pendingApplications = apps?.length ?? null
+      const pendingReports = reps?.length ?? null
+      setAdminPreview({
+        pendingProposals: props.length,
+        pendingComp: comp.length,
+        pendingApplications,
+        pendingReports,
+        totalUsers: users?.length ?? null,
+        totalChannels: channels.length,
+        totalPending: props.length + comp.length + (pendingApplications ?? 0) + (pendingReports ?? 0),
+        otpEnabled: isAdmin ? !!account?.otp_enabled : null,
+      })
+    }).catch(() => { if (!cancelled) setAdminPreview(null) })
+    return () => { cancelled = true }
+  }, [canReviewStaff, isAdmin, activeChannel, refreshKey, channels.length, account?.otp_enabled])
 
   const handleEdit = (p: SongEditProposal): void => {
     // p.song is null for 'create' proposals (new song, no backing record yet) —
@@ -218,9 +274,12 @@ export default function EditorProfileView(): JSX.Element {
 
           {/* Left column: identity + stats, then My Proposals filling the rest */}
           <div className="flex flex-col gap-3 md:gap-4 md:w-[42%] md:min-h-0">
-            <div className="grid grid-cols-2 gap-3 shrink-0">
-              <Tile span="col-span-1">
-                <div className="flex items-center gap-3">
+            {/* Identity + Stats — one tile: the two were separate cards
+                showing barely more than a name and three lines of text each,
+                which read as empty space more than information. */}
+            <Tile span="shrink-0">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3 min-w-0">
                   {account?.discord_avatar ? (
                     <img src={account.discord_avatar} alt="" className="w-12 h-12 rounded-full object-cover shrink-0 ring-2 ring-[var(--border)]" />
                   ) : (
@@ -237,22 +296,22 @@ export default function EditorProfileView(): JSX.Element {
                     </div>
                   </div>
                 </div>
-              </Tile>
 
-              <Tile title="Stats" icon={<Trophy size={13} />} span="col-span-1">
-                <div className="flex flex-col justify-center gap-1.5">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted">
-                    {myEntry ? `Rank #${myEntry.rank}` : 'Unranked'}
-                  </p>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted opacity-70">
-                    {myEntry ? `${myEntry.approved_count} approved` : '0 approved'}
-                  </p>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted opacity-70">
-                    {!loadingProposals ? `${proposals.length} proposal${proposals.length !== 1 ? 's' : ''} total` : '…'}
-                  </p>
+                <div className="w-px self-stretch bg-[var(--border)] shrink-0" />
+
+                <div className="flex items-center gap-1.5 text-text-muted shrink-0">
+                  <Trophy size={13} />
+                  <div className="flex flex-col gap-0.5">
+                    <p className="text-[10px] font-bold uppercase tracking-widest">
+                      {myEntry ? `Rank #${myEntry.rank}` : 'Unranked'}
+                    </p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest opacity-70">
+                      {myEntry ? `${myEntry.approved_count} approved` : '0 approved'} · {!loadingProposals ? `${proposals.length} proposal${proposals.length !== 1 ? 's' : ''} total` : '…'}
+                    </p>
+                  </div>
                 </div>
-              </Tile>
-            </div>
+              </div>
+            </Tile>
 
             <Tile
               title={isContributor ? undefined : 'My Proposals'}
@@ -302,7 +361,7 @@ export default function EditorProfileView(): JSX.Element {
                         </button>
                       )}
                     </div>
-                    <div className="flex gap-1">
+                    <div className="flex items-center gap-1">
                       {FILTER_TABS.map(({ key, label }) => {
                         const count = tabCount(key)
                         const active = filter === key
@@ -323,10 +382,19 @@ export default function EditorProfileView(): JSX.Element {
                           </button>
                         )
                       })}
+                      {(account?.is_editor || account?.is_administrator) && (
+                        <button
+                          onClick={() => setShowAddSong(true)}
+                          className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/15 hover:bg-accent/25 text-accent text-xs font-semibold transition-colors shrink-0"
+                          title="Propose a new song"
+                        >
+                          <Plus size={12} /> New song
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto min-h-0">
+                  <div className="flex-1 overflow-y-auto min-h-0 pr-1">
                     {loadingProposals ? (
                       <div className="flex justify-center py-12">
                         <Loader2 size={18} className="animate-spin text-text-muted" />
@@ -360,23 +428,46 @@ export default function EditorProfileView(): JSX.Element {
                 </>
               ) : (
                 <>
-                  <div className="flex items-center gap-2 mb-3 shrink-0">
-                    <CompFilterBar filter={compFilter} setFilter={setCompFilter} />
-                    <button
-                      onClick={() => go('contributor')}
-                      className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/15 hover:bg-accent/25 text-accent text-xs font-semibold transition-colors shrink-0"
-                      title="Propose a comp file change"
-                    >
-                      <Plus size={12} /> New comp proposal
-                    </button>
+                  <div className="mb-3 shrink-0">
+                    <div className="relative mb-2">
+                      <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                      <input
+                        type="text"
+                        value={compSearch}
+                        onChange={(e) => setCompSearch(e.target.value)}
+                        placeholder="Search comp files…"
+                        className="w-full bg-surface-overlay text-text-primary text-sm pl-7 pr-7 py-2 rounded-lg outline-none border border-transparent focus:ring-1 ring-accent focus:border-accent/40 placeholder:text-text-muted"
+                      />
+                      {compSearch && (
+                        <button onClick={() => setCompSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary">
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CompFilterBar
+                        filter={compFilter}
+                        setFilter={setCompFilter}
+                        counts={{ all: compTabCount('all'), pending: compTabCount('pending'), approved: compTabCount('approved'), rejected: compTabCount('rejected') }}
+                        size="md"
+                      />
+                      <button
+                        onClick={() => go('contributor')}
+                        className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/15 hover:bg-accent/25 text-accent text-xs font-semibold transition-colors shrink-0"
+                        title="Propose a comp file change"
+                      >
+                        <Plus size={12} /> New comp proposal
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex-1 overflow-y-auto min-h-0">
+                  <div className="flex-1 overflow-y-auto min-h-0 pr-1">
                     <CompProposalList
-                      proposals={filterCompProposals(compProposals, compFilter)}
+                      proposals={filteredCompProposals}
                       loading={loadingComp}
                       onSelect={() => go('contributor')}
                       onWithdraw={handleWithdrawComp}
                       withdrawingId={withdrawingCompId}
+                      empty={compSearch.trim() ? `No comp files match "${compSearch.trim()}"` : undefined}
                     />
                   </div>
                 </>
@@ -408,7 +499,7 @@ export default function EditorProfileView(): JSX.Element {
 
             <div className="grid grid-cols-2 gap-3 md:gap-4 md:flex-1 md:min-h-0 auto-rows-[minmax(16rem,1fr)] md:auto-rows-[minmax(0,1fr)]">
               <Tile title="Leaderboard" icon={<Trophy size={13} />}>
-                <div className="flex-1 overflow-y-auto min-h-0">
+                <div className="flex-1 overflow-y-auto min-h-0 pr-1">
                   {loadingLeaderboard ? (
                     <div className="flex justify-center py-12">
                       <Loader2 size={18} className="animate-spin text-text-muted" />
@@ -445,9 +536,32 @@ export default function EditorProfileView(): JSX.Element {
               {canReviewStaff && (
                 <button onClick={() => setMode('admin')} className="text-left min-h-0">
                   <Tile title={isAdmin ? 'Admin' : 'Manager'} icon={<ShieldCheck size={13} />} span="h-full hover:bg-[var(--surface-overlay)]/80 transition-colors cursor-pointer">
-                    <div className="flex-1 flex flex-col items-center justify-center gap-2 text-text-muted">
-                      <ShieldCheck size={28} />
-                      <p className="text-sm text-center">
+                    <div className="flex-1 flex flex-col justify-center gap-2 text-text-muted">
+                      {/* Managers only ever reach Song edits + Comp files, so
+                          they get those two counts, same as before. Admins
+                          get one box per queue their nav actually opens into,
+                          plus Channels (free — already in the store) and a
+                          Total pending rollup in place of a meaningless
+                          "Stats" count. */}
+                      <div className={`grid gap-2 ${isAdmin ? 'grid-cols-4' : 'grid-cols-2'}`}>
+                        <AdminStatBox label="Song edits" value={adminPreview?.pendingProposals} />
+                        <AdminStatBox label="Comp files" value={adminPreview?.pendingComp} />
+                        {isAdmin && (
+                          <>
+                            <AdminStatBox label="Applications" value={adminPreview?.pendingApplications} />
+                            <AdminStatBox label="Reports" value={adminPreview?.pendingReports} />
+                            <AdminStatBox label="Users" value={adminPreview?.totalUsers} accent={false} />
+                            <AdminStatBox label="Channels" value={adminPreview?.totalChannels} accent={false} />
+                            <AdminStatBox label="Total pending" value={adminPreview?.totalPending} />
+                            <AdminStatBox
+                              label="Security"
+                              value={adminPreview ? (adminPreview.otpEnabled ? 'ON' : 'OFF') : undefined}
+                              accent={adminPreview?.otpEnabled === false}
+                            />
+                          </>
+                        )}
+                      </div>
+                      <p className="text-xs text-center">
                         Open the {isAdmin ? 'admin' : 'manager'} review queues
                       </p>
                     </div>

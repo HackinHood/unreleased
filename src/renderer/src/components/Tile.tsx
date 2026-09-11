@@ -28,13 +28,20 @@ export function Tile({ title, icon, action, span = '', children }: {
           )}
         </div>
       )}
-      {/* min-h-0 lets this shrink below its content's natural size when the
-          grid track is fixed and short of room (the default flex-shrink
-          behavior is blocked by min-height:auto otherwise) — combined with
-          overflow-y-auto, a tile whose content doesn't fit its track scrolls
-          internally instead of spilling content out past the rounded border.
-          A no-op for a tile sized to its own content (nothing to shrink). */}
-      <div className="min-h-0 overflow-y-auto">
+      {/* flex flex-col (not just a plain block) so a consumer's own
+          `shrink-0` header + `flex-1 overflow-y-auto` list — the common
+          pattern for a tile with a search bar or filter row above a
+          scrollable list — actually gets real height to work with: without
+          `display:flex` here, that inner `flex-1` was a no-op, the list grew
+          to its full content height, and the header+list combined then
+          overflowed THIS wrapper — so the scrollbar that showed up started
+          at the header, not next to the list. min-h-0 lets this shrink below
+          its content's natural size when the grid track is short of room
+          (flex-shrink is blocked by min-height:auto otherwise); the
+          overflow-y-auto here is now just a fallback for tiles with no
+          scrollable region of their own — a no-op once an inner list is
+          properly sized and scrolling itself. */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
         {children}
       </div>
     </section>

@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { Loader2, Trophy, FileEdit, ChevronLeft, RefreshCw, Plus, X, Search, Flag, ShieldCheck, FolderOpen } from 'lucide-react'
 import { useStore } from '../store/useStore'
-import { SongEditProposal } from '../lib/userApi'
+import { SongEditProposal, adminListProposals, adminListCompProposals } from '../lib/userApi'
 import ReportsTab from './ReportsTab.mobile'
 import AdminPage from './AdminPage.mobile'
-import CompProposalList, { CompFilterBar, filterCompProposals } from './CompProposalList'
+import CompProposalList, { CompFilterBar, filterCompProposals, compProposalSearchText, type CompFilterTab } from './CompProposalList'
 import RoleBadges from './RoleBadges'
 import { Tile } from './Tile'
 import ProposalListItem from './ProposalListItem'
@@ -102,6 +102,7 @@ export default function EditorProfileView(): JSX.Element {
   // Which content the merged Proposals/Comp tile shows — see the desktop
   // file's identical toggle for why these two used to be separate tiles.
   const [proposalsView, setProposalsView] = useState<'songs' | 'comp'>('songs')
+  const [compSearch, setCompSearch] = useState('')
 
   const {
     proposals, loading: loadingProposals, refreshing,
@@ -118,9 +119,33 @@ export default function EditorProfileView(): JSX.Element {
     compProposals, loading: loadingComp, filter: compFilter, setFilter: setCompFilter,
   } = useMyCompProposals(isContributor, activeChannel, refreshKey, () => setRefreshKey(k => k + 1))
 
+  const compTabCount = (tab: CompFilterTab): number => filterCompProposals(compProposals, tab).length
+
+  const filteredCompProposals = useMemo(() => {
+    const byStatus = filterCompProposals(compProposals, compFilter)
+    const q = compSearch.trim().toLowerCase()
+    if (!q) return byStatus
+    return byStatus.filter(p => compProposalSearchText(p).includes(q))
+  }, [compProposals, compFilter, compSearch])
+
   const {
     reports, status: reportStatus, setStatus: setReportStatus, loading: loadingReports,
   } = useReportsQueue(canReviewReports, refreshKey)
+
+  // Lightweight preview for the Admin/Manager tile — see the desktop file's
+  // identical fetch for why this doesn't reuse useAdminQueue.
+  const [adminPreview, setAdminPreview] = useState<{ pendingProposals: number; pendingComp: number } | null>(null)
+  useEffect(() => {
+    if (!canReviewStaff) { setAdminPreview(null); return }
+    let cancelled = false
+    Promise.all([
+      adminListProposals('pending', activeChannel),
+      adminListCompProposals('pending', activeChannel),
+    ]).then(([props, comp]) => {
+      if (!cancelled) setAdminPreview({ pendingProposals: props.length, pendingComp: comp.length })
+    }).catch(() => { if (!cancelled) setAdminPreview(null) })
+    return () => { cancelled = true }
+  }, [canReviewStaff, activeChannel, refreshKey])
 
   const handleEdit = (p: SongEditProposal): void => {
     // p.song is null for 'create' proposals (new song, no backing record yet) —
@@ -284,7 +309,7 @@ export default function EditorProfileView(): JSX.Element {
                       </button>
                     )}
                   </div>
-                  <div className="flex gap-2 overflow-x-auto scrollbar-none">
+                  <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
                     {FILTER_TABS.map(({ key, label }) => {
                       const count = tabCount(key)
                       const active = filter === key
@@ -305,10 +330,18 @@ export default function EditorProfileView(): JSX.Element {
                         </button>
                       )
                     })}
+                    {(account?.is_editor || account?.is_administrator) && (
+                      <button
+                        onClick={() => setShowAddSong(true)}
+                        className="shrink-0 ml-auto flex items-center gap-1 h-8 px-3 rounded-full bg-accent/15 active:bg-accent/25 text-accent text-xs font-semibold transition-colors"
+                      >
+                        <Plus size={12} /> New song
+                      </button>
+                    )}
                   </div>
                 </div>
 
-                <div className="max-h-96 overflow-y-auto min-h-0">
+                <div className="max-h-96 overflow-y-auto min-h-0 pr-1">
                   {loadingProposals ? (
                     <div className="flex justify-center py-12">
                       <Loader2 size={18} className="animate-spin text-text-muted" />
@@ -342,8 +375,27 @@ export default function EditorProfileView(): JSX.Element {
               </>
             ) : (
               <>
+                <div className="relative mb-2">
+                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                  <input
+                    type="text"
+                    value={compSearch}
+                    onChange={(e) => setCompSearch(e.target.value)}
+                    placeholder="Search comp files…"
+                    className="w-full bg-surface-overlay text-text-primary text-sm pl-9 pr-9 py-2.5 rounded-xl outline-none border border-transparent focus:border-accent/40 placeholder:text-text-muted"
+                  />
+                  {compSearch && (
+                    <button onClick={() => setCompSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center text-text-muted active:text-text-primary">
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
                 <div className="flex items-center gap-2 flex-wrap mb-2 shrink-0">
-                  <CompFilterBar filter={compFilter} setFilter={setCompFilter} />
+                  <CompFilterBar
+                    filter={compFilter}
+                    setFilter={setCompFilter}
+                    counts={{ all: compTabCount('all'), pending: compTabCount('pending'), approved: compTabCount('approved'), rejected: compTabCount('rejected') }}
+                  />
                   <button
                     onClick={() => setActiveView('contributor')}
                     className="ml-auto flex items-center gap-1 h-7 px-2.5 rounded-full bg-accent/15 active:bg-accent/25 text-accent text-[11px] font-semibold transition-colors shrink-0"
@@ -354,11 +406,12 @@ export default function EditorProfileView(): JSX.Element {
                 <p className="text-xs text-text-muted mb-2 shrink-0">
                   {compProposals.filter(p => p.status === 'approved').length} approved comp proposals
                 </p>
-                <div className="max-h-96 overflow-y-auto min-h-0">
+                <div className="max-h-96 overflow-y-auto min-h-0 pr-1">
                   <CompProposalList
-                    proposals={filterCompProposals(compProposals, compFilter)}
+                    proposals={filteredCompProposals}
                     loading={loadingComp}
                     onSelect={() => setActiveView('contributor')}
+                    empty={compSearch.trim() ? `No comp files match "${compSearch.trim()}"` : undefined}
                   />
                 </div>
               </>
@@ -367,7 +420,7 @@ export default function EditorProfileView(): JSX.Element {
 
           {/* Leaderboard — full width */}
           <Tile title="Leaderboard" icon={<Trophy size={13} />} span="col-span-2">
-            <div className="max-h-64 overflow-y-auto min-h-0">
+            <div className="max-h-64 overflow-y-auto min-h-0 pr-1">
               {loadingLeaderboard ? (
                 <div className="flex justify-center py-8">
                   <Loader2 size={18} className="animate-spin text-text-muted" />
@@ -406,9 +459,23 @@ export default function EditorProfileView(): JSX.Element {
           {canReviewStaff && (
             <button onClick={() => setMode('admin')} className="text-left col-span-2">
               <Tile title={isAdmin ? 'Admin' : 'Manager'} icon={<ShieldCheck size={13} />} span="w-full active:bg-[var(--surface-overlay)]/80 transition-colors">
-                <div className="flex items-center justify-center gap-2 py-4 text-text-muted">
-                  <ShieldCheck size={20} />
-                  <p className="text-sm">
+                <div className="flex flex-col items-center justify-center gap-2 py-3 text-text-muted">
+                  <div className="flex items-center gap-6">
+                    <div className="text-center">
+                      <p className={`text-xl font-bold tabular-nums ${adminPreview?.pendingProposals ? 'text-accent' : 'text-text-primary'}`}>
+                        {adminPreview ? adminPreview.pendingProposals : '—'}
+                      </p>
+                      <p className="text-[10px] font-bold uppercase tracking-widest mt-0.5">Pending edits</p>
+                    </div>
+                    <div className="w-px h-7 bg-[var(--border)]" />
+                    <div className="text-center">
+                      <p className={`text-xl font-bold tabular-nums ${adminPreview?.pendingComp ? 'text-accent' : 'text-text-primary'}`}>
+                        {adminPreview ? adminPreview.pendingComp : '—'}
+                      </p>
+                      <p className="text-[10px] font-bold uppercase tracking-widest mt-0.5">Pending comp</p>
+                    </div>
+                  </div>
+                  <p className="text-xs">
                     Open the {isAdmin ? 'admin' : 'manager'} review queues
                   </p>
                 </div>
