@@ -535,7 +535,7 @@ export default function EditorProfileView(): JSX.Element {
 
               {canReviewReports && (
                 <Tile title="Reports" icon={<Flag size={13} />}>
-                  <div className="flex-1 relative min-h-0 overflow-y-auto -mx-4 -mb-4 px-4 pb-4">
+                  <div className="flex-1 relative min-h-0">
                     {loadingReports && (
                       <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--bg)]/60 backdrop-blur-[1px]">
                         <Loader2 size={20} className="animate-spin text-text-muted" />
@@ -546,6 +546,7 @@ export default function EditorProfileView(): JSX.Element {
                       status={reportStatus}
                       setStatus={setReportStatus}
                       onChanged={() => setRefreshKey(k => k + 1)}
+                      compact
                     />
                   </div>
                 </Tile>
