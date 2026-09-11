@@ -56,7 +56,12 @@ function stripSessionEditSuffix(title: string): string {
   return stripped
 }
 
-export async function loadSessionEditMatches(): Promise<Map<string, JWApiSong>> {
+export interface SessionEditMatches {
+  primary: Map<string, JWApiSong>
+  alt: Map<string, JWApiSong>
+}
+
+async function fetchSessionEditMatches(): Promise<SessionEditMatches> {
   const allSongs = await loadAllSongs()
   const songById = new Map<number, JWApiSong>()
   const primaryBySongId = new Map<string, Set<number>>()
@@ -76,21 +81,19 @@ export async function loadSessionEditMatches(): Promise<Map<string, JWApiSong>> 
       altBySongId.get(norm)!.add(song.id)
     }
   }
-  const map = new Map<string, JWApiSong>()
+  const primary = new Map<string, JWApiSong>()
   for (const [norm, ids] of primaryBySongId) {
-    if (ids.size === 1) map.set(norm, songById.get([...ids][0])!)
+    if (ids.size === 1) primary.set(norm, songById.get([...ids][0])!)
   }
+  const alt = new Map<string, JWApiSong>()
   for (const [norm, ids] of altBySongId) {
-    if (map.has(norm)) continue
-    if (ids.size === 1) map.set(norm, songById.get([...ids][0])!)
+    if (primary.has(norm)) continue
+    if (ids.size === 1) alt.set(norm, songById.get([...ids][0])!)
   }
-  return map
+  return { primary, alt }
 }
 
-export function matchSessionEdit(file: SessionEditFile, matches: Map<string, JWApiSong>): JWApiSong | null {
-  const norm = normalizeSongTitle(stripSessionEditSuffix(file.name))
-  return matches.get(norm) ?? null
-}
+export const loadSessionEditMatches = createTtlCache(5 * 60_000, fetchSessionEditMatches)
 
 export interface SessionEditLink {
   path: string
@@ -99,9 +102,14 @@ export interface SessionEditLink {
 
 async function buildLinkMap(channel: string): Promise<Map<number, SessionEditLink>> {
   const [files, matches] = await Promise.all([loadSessionEditFiles(channel), loadSessionEditMatches()])
+  const fileNorms = files.map((file) => ({ file, norm: normalizeSongTitle(stripSessionEditSuffix(file.name)) }))
   const map = new Map<number, SessionEditLink>()
-  for (const file of files) {
-    const song = matchSessionEdit(file, matches)
+  for (const { file, norm } of fileNorms) {
+    const song = matches.primary.get(norm)
+    if (song && !map.has(song.id)) map.set(song.id, { path: file.path, duration: file.duration })
+  }
+  for (const { file, norm } of fileNorms) {
+    const song = matches.alt.get(norm)
     if (song && !map.has(song.id)) map.set(song.id, { path: file.path, duration: file.duration })
   }
   return map

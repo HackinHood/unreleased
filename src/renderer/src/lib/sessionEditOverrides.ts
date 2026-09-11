@@ -3,18 +3,20 @@ import { ls } from './persist'
 export interface SessionEditOverride {
   path: string
   duration: string | null
-  channel: string
 }
 
-let _overrides: Record<number, SessionEditOverride> = ls.get<Record<number, SessionEditOverride>>('sessionEditOverrides') ?? {}
+type OverridesByChannel = Record<string, Record<number, SessionEditOverride>>
 
-export function peekSessionEditOverride(songId: number): SessionEditOverride | undefined {
-  return _overrides[songId]
+let _overridesByChannel: OverridesByChannel = ls.get<OverridesByChannel>('sessionEditOverrides') ?? {}
+
+export function peekSessionEditOverride(songId: number, channel: string): SessionEditOverride | undefined {
+  return _overridesByChannel[channel]?.[songId]
 }
 
-export function setSessionEditOverride(songId: number, override: SessionEditOverride | null): void {
-  _overrides = { ..._overrides }
-  if (override) _overrides[songId] = override
-  else delete _overrides[songId]
-  ls.set('sessionEditOverrides', _overrides)
+export function setSessionEditOverride(songId: number, channel: string, override: SessionEditOverride | null): void {
+  const forChannel = { ..._overridesByChannel[channel] }
+  if (override) forChannel[songId] = override
+  else delete forChannel[songId]
+  _overridesByChannel = { ..._overridesByChannel, [channel]: forChannel }
+  ls.set('sessionEditOverrides', _overridesByChannel)
 }

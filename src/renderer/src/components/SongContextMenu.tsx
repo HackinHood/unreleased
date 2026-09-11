@@ -114,7 +114,7 @@ function SubSheetHeader({ title, onBack }: { title: string; onBack: () => void }
 
 function downloadTrack(track: Track): void {
   const a = document.createElement('a')
-  a.href = buildStreamUrl(track.path)
+  a.href = track.streamUrl ?? buildStreamUrl(track.path)
   a.download = `${track.title}.mp3`
   a.target = '_blank'
   a.rel = 'noopener noreferrer'

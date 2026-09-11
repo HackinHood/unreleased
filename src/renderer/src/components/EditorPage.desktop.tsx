@@ -907,8 +907,8 @@ export default function EditorPage({ initialSongId = null }: {
     file_names: fileNames,
     instrumentals,
     instrumental_names: instrumentalNames,
-    session_titles: cat === 'recording_session' ? sessionTitles : (base.session_titles || ''),
-    session_tracking: cat === 'recording_session' ? sessionTracking : (base.session_tracking || ''),
+    session_titles: cat === 'recording_session' ? sessionTitles : '',
+    session_tracking: cat === 'recording_session' ? sessionTracking : '',
   }
   const patch        = diff(baseline(song), current)
   const changedCount = Object.keys(patch).length

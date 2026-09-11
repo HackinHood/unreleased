@@ -2767,7 +2767,7 @@ export default function ApiTrackerView(): JSX.Element {
       const res = await fetch(`${JWAPI_BASE}/files/zip-selection/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paths }),
+        body: JSON.stringify({ paths, channel: activeChannel || undefined }),
       })
       if (!res.ok) throw new Error()
       const contentType = res.headers.get('content-type') || ''
@@ -2833,14 +2833,14 @@ export default function ApiTrackerView(): JSX.Element {
       const entry = parseBrowseEntries(data).find((e) => e.path === path)
       duration = entry?.duration ?? null
     } catch (err) { console.error(err) }
-    setSessionEditOverride(song.id, { path, duration, channel: activeChannel })
+    setSessionEditOverride(song.id, activeChannel, { path, duration })
     setSessionEditOverrideVersion((v) => v + 1)
   }, [linkingSessionSong, activeChannel])
 
   const handleClearSessionLink = useCallback((song: JWApiSong): void => {
-    setSessionEditOverride(song.id, null)
+    setSessionEditOverride(song.id, activeChannel, null)
     setSessionEditOverrideVersion((v) => v + 1)
-  }, [])
+  }, [activeChannel])
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -3755,7 +3755,7 @@ export default function ApiTrackerView(): JSX.Element {
           liked={likedTrackIds.includes(`jw-${contextMenu.song.id}`)}
           onToggleLike={() => toggleLike(`jw-${contextMenu.song.id}`)}
           canLinkSessionFile={canLinkSessions}
-          hasSessionLinkOverride={!!peekSessionEditOverride(contextMenu.song.id)}
+          hasSessionLinkOverride={!!peekSessionEditOverride(contextMenu.song.id, activeChannel)}
           onLinkSessionFile={() => setLinkingSessionSong(contextMenu.song)}
           onClearSessionLink={() => handleClearSessionLink(contextMenu.song)}
         />

@@ -522,10 +522,10 @@ export function parseDuration(length: string | null | undefined): number {
 // in a field they might propose upstream.
 export function resolveSessionEditSource(song: { id: number; category: string; path: string; length: string }): { path: string; length: string; channel: string | undefined } {
   if (song.category !== 'recording_session') return { path: song.path, length: song.length, channel: undefined }
-  const override = peekSessionEditOverride(song.id)
-  if (override) return { path: override.path, length: override.duration ?? song.length, channel: override.channel }
-  if (song.path) return { path: song.path, length: song.length, channel: peekActiveChannel() }
   const channel = peekActiveChannel()
+  const override = peekSessionEditOverride(song.id, channel)
+  if (override) return { path: override.path, length: override.duration ?? song.length, channel }
+  if (song.path) return { path: song.path, length: song.length, channel }
   const link = peekSessionEditLink(song.id, channel)
   return link ? { path: link.path, length: link.duration ?? song.length, channel } : { path: song.path, length: song.length, channel: undefined }
 }

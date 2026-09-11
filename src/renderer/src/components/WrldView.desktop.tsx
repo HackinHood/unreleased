@@ -6,7 +6,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { parseLrc, getCurrentLineIndex, isLrcFormat, downloadSyncedLyrics, splitAdLibs, ADLIB_OPACITY, useLyricsVisible } from '../lib/lyrics'
 import { formatDuration } from '../lib/format'
 import { seekAudio, getAudioDuration, getAudioCurrentTime } from './Player'
-import { buildImageUrl, apiFetch, songToTrack, JWAPI_BASE, playlistCoverUrl, smallCoverUrl } from '../lib/juicewrldApi'
+import { buildImageUrl, apiFetch, songToTrack, JWAPI_BASE, playlistCoverUrl, smallCoverUrl, resolveSessionEditSource } from '../lib/juicewrldApi'
 import { getActiveRadioClient } from '../lib/radioSocketService'
 import { searchRadioLibrary } from '../lib/radioLibrary'
 import type { RadioLibraryTrack } from '../lib/radioLibrary'
@@ -285,7 +285,7 @@ export default function WrldView(): JSX.Element {
       const withPaths = await Promise.all(metas.map(async m => {
         try {
           const song = await apiFetch<JWApiSong>(`/songs/${m.songId}/`)
-          return song.path ? m : null
+          return resolveSessionEditSource(song).path ? m : null
         } catch { return null }
       }))
       if (cancelled) return
