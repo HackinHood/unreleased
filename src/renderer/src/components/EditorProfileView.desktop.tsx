@@ -96,6 +96,10 @@ export default function EditorProfileView(): JSX.Element {
   const [refreshKey, setRefreshKey] = useState(0)
   const [showAddSong, setShowAddSong] = useState(false)
   const [mode, setMode] = useState<ViewMode>('grid')
+  // Which content the merged Proposals/Comp tile shows — only contributors
+  // ever see the toggle (non-contributors have no comp proposals to switch
+  // to), so this stays 'songs' for everyone else.
+  const [proposalsView, setProposalsView] = useState<'songs' | 'comp'>('songs')
 
   // Not `|| is_administrator`: this tile lists proposals *you* submitted, and
   // an admin who never contributed has none. Their review queue is the Admin
@@ -251,81 +255,132 @@ export default function EditorProfileView(): JSX.Element {
             </div>
 
             <Tile
-              title="My Proposals"
-              icon={<FileEdit size={13} />}
+              title={isContributor ? undefined : 'My Proposals'}
+              icon={isContributor ? undefined : <FileEdit size={13} />}
               span="flex-1 min-h-[22rem] md:min-h-0"
             >
-              <div className="mb-3 shrink-0">
-                <div className="relative mb-2">
-                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search proposals…"
-                    className="w-full bg-surface-overlay text-text-primary text-sm pl-7 pr-7 py-2 rounded-lg outline-none border border-transparent focus:ring-1 ring-accent focus:border-accent/40 placeholder:text-text-muted"
-                  />
-                  {search && (
-                    <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary">
-                      <X size={13} />
-                    </button>
-                  )}
+              {/* Contributors get a toggle here instead of Tile's fixed
+                  title, since this tile now covers both song-edit proposals
+                  and comp-file proposals — two separate queues that used to
+                  be two separate tiles. */}
+              {isContributor && (
+                <div className="flex items-center gap-1 mb-3 shrink-0">
+                  <button
+                    onClick={() => setProposalsView('songs')}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm font-bold uppercase tracking-wider transition-colors ${
+                      proposalsView === 'songs' ? 'bg-accent/15 text-accent' : 'text-text-muted hover:text-text-primary'
+                    }`}
+                  >
+                    <FileEdit size={13} /> Proposals
+                  </button>
+                  <button
+                    onClick={() => setProposalsView('comp')}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm font-bold uppercase tracking-wider transition-colors ${
+                      proposalsView === 'comp' ? 'bg-accent/15 text-accent' : 'text-text-muted hover:text-text-primary'
+                    }`}
+                  >
+                    <FolderOpen size={13} /> Comp files
+                  </button>
                 </div>
-                <div className="flex gap-1">
-                  {FILTER_TABS.map(({ key, label }) => {
-                    const count = tabCount(key)
-                    const active = filter === key
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => setFilter(key)}
-                        className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-sm font-medium transition-colors ${
-                          active ? 'bg-accent/15 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-surface-overlay'
-                        }`}
-                      >
-                        {label}
-                        {count > 0 && (
-                          <span className={`text-[10px] tabular-nums ${active ? 'text-accent/70' : 'text-text-muted'}`}>
-                            {count}
-                          </span>
-                        )}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
+              )}
 
-              <div className="flex-1 overflow-y-auto min-h-0">
-                {loadingProposals ? (
-                  <div className="flex justify-center py-12">
-                    <Loader2 size={18} className="animate-spin text-text-muted" />
-                  </div>
-                ) : filteredProposals.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 gap-2 text-text-muted opacity-50">
-                    <FileEdit size={28} />
-                    <p className="text-sm">
-                      {search.trim()
-                        ? `No proposals match "${search.trim()}"`
-                        : filter === 'all' ? 'No proposals yet' : `No ${filter} proposals`}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    {filteredProposals.map((p) => (
-                      <ProposalListItem
-                        key={p.id}
-                        proposal={p}
-                        onEdit={handleEdit}
-                        onResubmit={handleResubmit}
-                        onDelete={handleDelete}
-                        resubmittingId={resubmittingId}
-                        deletingId={deletingId}
-                        variant="desktop"
+              {proposalsView === 'songs' || !isContributor ? (
+                <>
+                  <div className="mb-3 shrink-0">
+                    <div className="relative mb-2">
+                      <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                      <input
+                        type="text"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Search proposals…"
+                        className="w-full bg-surface-overlay text-text-primary text-sm pl-7 pr-7 py-2 rounded-lg outline-none border border-transparent focus:ring-1 ring-accent focus:border-accent/40 placeholder:text-text-muted"
                       />
-                    ))}
+                      {search && (
+                        <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary">
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex gap-1">
+                      {FILTER_TABS.map(({ key, label }) => {
+                        const count = tabCount(key)
+                        const active = filter === key
+                        return (
+                          <button
+                            key={key}
+                            onClick={() => setFilter(key)}
+                            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-sm font-medium transition-colors ${
+                              active ? 'bg-accent/15 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-surface-overlay'
+                            }`}
+                          >
+                            {label}
+                            {count > 0 && (
+                              <span className={`text-[10px] tabular-nums ${active ? 'text-accent/70' : 'text-text-muted'}`}>
+                                {count}
+                              </span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
-                )}
-              </div>
+
+                  <div className="flex-1 overflow-y-auto min-h-0">
+                    {loadingProposals ? (
+                      <div className="flex justify-center py-12">
+                        <Loader2 size={18} className="animate-spin text-text-muted" />
+                      </div>
+                    ) : filteredProposals.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-12 gap-2 text-text-muted opacity-50">
+                        <FileEdit size={28} />
+                        <p className="text-sm">
+                          {search.trim()
+                            ? `No proposals match "${search.trim()}"`
+                            : filter === 'all' ? 'No proposals yet' : `No ${filter} proposals`}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {filteredProposals.map((p) => (
+                          <ProposalListItem
+                            key={p.id}
+                            proposal={p}
+                            onEdit={handleEdit}
+                            onResubmit={handleResubmit}
+                            onDelete={handleDelete}
+                            resubmittingId={resubmittingId}
+                            deletingId={deletingId}
+                            variant="desktop"
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 mb-3 shrink-0">
+                    <CompFilterBar filter={compFilter} setFilter={setCompFilter} />
+                    <button
+                      onClick={() => go('contributor')}
+                      className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/15 hover:bg-accent/25 text-accent text-xs font-semibold transition-colors shrink-0"
+                      title="Propose a comp file change"
+                    >
+                      <Plus size={12} /> New comp proposal
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto min-h-0">
+                    <CompProposalList
+                      proposals={filterCompProposals(compProposals, compFilter)}
+                      loading={loadingComp}
+                      onSelect={() => go('contributor')}
+                      onWithdraw={handleWithdrawComp}
+                      withdrawingId={withdrawingCompId}
+                    />
+                  </div>
+                </>
+              )}
             </Tile>
           </div>
 
@@ -368,30 +423,6 @@ export default function EditorProfileView(): JSX.Element {
                   )}
                 </div>
               </Tile>
-
-              {isContributor && (
-                <Tile title="Comp Files" icon={<FolderOpen size={13} />}>
-                  <div className="flex items-center gap-2 mb-2 shrink-0">
-                    <CompFilterBar filter={compFilter} setFilter={setCompFilter} />
-                    <button
-                      onClick={() => go('contributor')}
-                      className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/15 hover:bg-accent/25 text-accent text-xs font-semibold transition-colors shrink-0"
-                      title="Propose a comp file change"
-                    >
-                      <Plus size={12} /> New comp proposal
-                    </button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto min-h-0">
-                    <CompProposalList
-                      proposals={filterCompProposals(compProposals, compFilter)}
-                      loading={loadingComp}
-                      onSelect={() => go('contributor')}
-                      onWithdraw={handleWithdrawComp}
-                      withdrawingId={withdrawingCompId}
-                    />
-                  </div>
-                </Tile>
-              )}
 
               {canReviewReports && (
                 <Tile title="Reports" icon={<Flag size={13} />}>

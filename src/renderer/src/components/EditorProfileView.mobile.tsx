@@ -99,6 +99,9 @@ export default function EditorProfileView(): JSX.Element {
   // directly rather than on a dashboard grid that's mostly empty for them.
   const managerOnly = isManager && !isAdmin
   const [mode, setMode] = useState<ViewMode>(managerOnly ? 'admin' : 'grid')
+  // Which content the merged Proposals/Comp tile shows — see the desktop
+  // file's identical toggle for why these two used to be separate tiles.
+  const [proposalsView, setProposalsView] = useState<'songs' | 'comp'>('songs')
 
   const {
     proposals, loading: loadingProposals, refreshing,
@@ -238,79 +241,128 @@ export default function EditorProfileView(): JSX.Element {
             </div>
           </Tile>
 
-          {/* My Proposals — full width */}
-          <Tile title="My Proposals" icon={<FileEdit size={13} />} span="col-span-2">
-            <div className="mb-2 shrink-0">
-              <div className="relative mb-2">
-                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search proposals…"
-                  className="w-full bg-surface-overlay text-text-primary text-sm pl-9 pr-9 py-2.5 rounded-xl outline-none border border-transparent focus:border-accent/40 placeholder:text-text-muted"
-                />
-                {search && (
-                  <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center text-text-muted active:text-text-primary">
-                    <X size={13} />
-                  </button>
-                )}
+          {/* My Proposals / Comp Files — merged, full width. Contributors get
+              a toggle here instead of Tile's fixed title, matching the
+              desktop variant. */}
+          <Tile title={isContributor ? undefined : 'My Proposals'} icon={isContributor ? undefined : <FileEdit size={13} />} span="col-span-2">
+            {isContributor && (
+              <div className="flex items-center gap-1 mb-2 shrink-0">
+                <button
+                  onClick={() => setProposalsView('songs')}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${
+                    proposalsView === 'songs' ? 'bg-accent/15 text-accent' : 'text-text-muted'
+                  }`}
+                >
+                  <FileEdit size={13} /> Proposals
+                </button>
+                <button
+                  onClick={() => setProposalsView('comp')}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${
+                    proposalsView === 'comp' ? 'bg-accent/15 text-accent' : 'text-text-muted'
+                  }`}
+                >
+                  <FolderOpen size={13} /> Comp files
+                </button>
               </div>
-              <div className="flex gap-2 overflow-x-auto scrollbar-none">
-                {FILTER_TABS.map(({ key, label }) => {
-                  const count = tabCount(key)
-                  const active = filter === key
-                  return (
-                    <button
-                      key={key}
-                      onClick={() => setFilter(key)}
-                      className={`shrink-0 flex items-center gap-1 h-8 px-3 rounded-full text-xs font-semibold transition-colors ${
-                        active ? 'bg-accent/15 text-accent' : 'text-text-muted bg-surface-overlay'
-                      }`}
-                    >
-                      {label}
-                      {count > 0 && (
-                        <span className={`text-[10px] tabular-nums ${active ? 'text-accent/70' : 'text-text-muted'}`}>
-                          {count}
-                        </span>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
+            )}
 
-            <div className="max-h-96 overflow-y-auto min-h-0">
-              {loadingProposals ? (
-                <div className="flex justify-center py-12">
-                  <Loader2 size={18} className="animate-spin text-text-muted" />
-                </div>
-              ) : filteredProposals.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 gap-2 text-text-muted opacity-50">
-                  <FileEdit size={28} />
-                  <p className="text-sm">
-                    {search.trim()
-                      ? `No proposals match "${search.trim()}"`
-                      : filter === 'all' ? 'No proposals yet' : `No ${filter} proposals`}
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-1.5">
-                  {filteredProposals.map((p) => (
-                    <ProposalListItem
-                      key={p.id}
-                      proposal={p}
-                      onEdit={handleEdit}
-                      onResubmit={handleResubmit}
-                      onDelete={handleDelete}
-                      resubmittingId={resubmittingId}
-                      deletingId={deletingId}
-                      variant="mobile"
+            {proposalsView === 'songs' || !isContributor ? (
+              <>
+                <div className="mb-2 shrink-0">
+                  <div className="relative mb-2">
+                    <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                    <input
+                      type="text"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search proposals…"
+                      className="w-full bg-surface-overlay text-text-primary text-sm pl-9 pr-9 py-2.5 rounded-xl outline-none border border-transparent focus:border-accent/40 placeholder:text-text-muted"
                     />
-                  ))}
+                    {search && (
+                      <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center text-text-muted active:text-text-primary">
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex gap-2 overflow-x-auto scrollbar-none">
+                    {FILTER_TABS.map(({ key, label }) => {
+                      const count = tabCount(key)
+                      const active = filter === key
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => setFilter(key)}
+                          className={`shrink-0 flex items-center gap-1 h-8 px-3 rounded-full text-xs font-semibold transition-colors ${
+                            active ? 'bg-accent/15 text-accent' : 'text-text-muted bg-surface-overlay'
+                          }`}
+                        >
+                          {label}
+                          {count > 0 && (
+                            <span className={`text-[10px] tabular-nums ${active ? 'text-accent/70' : 'text-text-muted'}`}>
+                              {count}
+                            </span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
-              )}
-            </div>
+
+                <div className="max-h-96 overflow-y-auto min-h-0">
+                  {loadingProposals ? (
+                    <div className="flex justify-center py-12">
+                      <Loader2 size={18} className="animate-spin text-text-muted" />
+                    </div>
+                  ) : filteredProposals.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 gap-2 text-text-muted opacity-50">
+                      <FileEdit size={28} />
+                      <p className="text-sm">
+                        {search.trim()
+                          ? `No proposals match "${search.trim()}"`
+                          : filter === 'all' ? 'No proposals yet' : `No ${filter} proposals`}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {filteredProposals.map((p) => (
+                        <ProposalListItem
+                          key={p.id}
+                          proposal={p}
+                          onEdit={handleEdit}
+                          onResubmit={handleResubmit}
+                          onDelete={handleDelete}
+                          resubmittingId={resubmittingId}
+                          deletingId={deletingId}
+                          variant="mobile"
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 flex-wrap mb-2 shrink-0">
+                  <CompFilterBar filter={compFilter} setFilter={setCompFilter} />
+                  <button
+                    onClick={() => setActiveView('contributor')}
+                    className="ml-auto flex items-center gap-1 h-7 px-2.5 rounded-full bg-accent/15 active:bg-accent/25 text-accent text-[11px] font-semibold transition-colors shrink-0"
+                  >
+                    <Plus size={11} /> New comp proposal
+                  </button>
+                </div>
+                <p className="text-xs text-text-muted mb-2 shrink-0">
+                  {compProposals.filter(p => p.status === 'approved').length} approved comp proposals
+                </p>
+                <div className="max-h-96 overflow-y-auto min-h-0">
+                  <CompProposalList
+                    proposals={filterCompProposals(compProposals, compFilter)}
+                    loading={loadingComp}
+                    onSelect={() => setActiveView('contributor')}
+                  />
+                </div>
+              </>
+            )}
           </Tile>
 
           {/* Leaderboard — full width */}
@@ -330,25 +382,6 @@ export default function EditorProfileView(): JSX.Element {
               )}
             </div>
           </Tile>
-
-          {/* Comp files (contributor only) — full width */}
-          {isContributor && (
-            <Tile title="Comp Files" icon={<FolderOpen size={13} />} span="col-span-2">
-              <div className="flex items-center gap-2 flex-wrap mb-2 shrink-0">
-                <CompFilterBar filter={compFilter} setFilter={setCompFilter} />
-              </div>
-              <p className="text-sm text-text-muted mb-2 shrink-0">
-                {compProposals.filter(p => p.status === 'approved').length} approved comp proposals
-              </p>
-              <div className="max-h-64 overflow-y-auto min-h-0">
-                <CompProposalList
-                  proposals={filterCompProposals(compProposals, compFilter)}
-                  loading={loadingComp}
-                  onSelect={() => setActiveView('contributor')}
-                />
-              </div>
-            </Tile>
-          )}
 
           {/* Reports — full width */}
           {canReviewReports && (
