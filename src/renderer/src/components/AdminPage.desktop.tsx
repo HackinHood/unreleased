@@ -178,12 +178,17 @@ const ProposalDiff = memo(function ProposalDiff({ proposal }: { proposal: SongEd
 // `embedded` renders the page as a panel inside another view (the editor
 // profile's Admin tab) — no back button, page title, or window-control
 // clearance, since the host view owns that chrome.
-export default function AdminPage({ embedded = false, initialTab }: {
+export default function AdminPage({ embedded = false, initialTab, onExit }: {
   embedded?: boolean
   /** Jump straight into a section's focused view on mount (skipping the
    *  overview grid) — used by EditorProfileView's Admin tile, which now
    *  offers one button per section instead of a single generic entry point. */
   initialTab?: AdminTab
+  /** When embedded, "back" from a focused section returns here instead of
+   *  this page's own overview grid — the host (EditorProfileView's Admin
+   *  tile) already shows that same one-tile-per-section overview with live
+   *  stats, so falling back to a second copy of it just doubles the page. */
+  onExit?: () => void
 }): JSX.Element {
   const { account, loadAccount, setActiveView, activeChannel, channels } = useStorePick('account', 'loadAccount', 'setActiveView', 'activeChannel', 'channels')
   const go = setActiveView
@@ -259,9 +264,9 @@ export default function AdminPage({ embedded = false, initialTab }: {
       <div className={`shrink-0 flex items-center gap-3 pb-0 border-b border-[var(--border)] ${embedded ? 'px-4' : 'px-6'}`}
         style={{ paddingTop: embedded ? 4 : 16 }}>
         {view === 'focused' ? (
-          <button onClick={() => setView('overview')}
+          <button onClick={() => embedded && onExit ? onExit() : setView('overview')}
             className="flex items-center gap-1.5 p-1.5 -ml-1.5 rounded-lg hover:bg-surface-overlay transition-colors text-text-muted hover:text-text-primary mb-3 text-xs font-semibold">
-            <ChevronLeft size={16} /> Overview
+            <ChevronLeft size={16} /> {embedded && onExit ? 'Dashboard' : 'Overview'}
           </button>
         ) : !embedded ? (
           <button onClick={() => go('api-tracker')}

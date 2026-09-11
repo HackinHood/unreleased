@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import {
   Loader2, Trophy, FileEdit, ChevronLeft, RefreshCw, Plus, X, Search, Flag, ShieldCheck, FolderOpen,
-  Clock, Users, TrendingUp, Radio, Shield, FileCheck,
+  Users, Shield,
 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { SongEditProposal, adminListProposals, adminListCompProposals, adminListApplications, adminListUsers } from '../lib/userApi'
@@ -32,39 +32,28 @@ import { RANK_STYLES, type ProposalFilterTab } from '../lib/proposalSearch'
 
 type ViewMode = 'grid' | 'admin'
 
-// Mirrors AdminPage.desktop.tsx's NAV_ICONS — one button per section instead
-// of a single generic "open the admin panel" entry point, each jumping
-// straight to that section's focused view (see initialTab below).
-const ADMIN_NAV: { id: AdminTab; label: string; icon: JSX.Element }[] = [
-  { id: 'proposals',      label: 'Song edits',   icon: <FileEdit size={14} /> },
-  { id: 'comp-proposals', label: 'Comp files',   icon: <FileCheck size={14} /> },
-  { id: 'applications',   label: 'Applications', icon: <Clock size={14} /> },
-  { id: 'reports',        label: 'Reports',      icon: <Flag size={14} /> },
-  { id: 'users',          label: 'Users',        icon: <Users size={14} /> },
-  { id: 'stats',          label: 'Stats',        icon: <TrendingUp size={14} /> },
-  { id: 'channels',       label: 'Channels',     icon: <Radio size={14} /> },
-  { id: 'security',       label: 'Security',     icon: <Shield size={14} /> },
-]
-// Matches useAdminQueue's managerNavIds for AdminPage.desktop.tsx — a
-// manager's own nav only ever reaches these two, so that's all they get
-// buttons for here too.
-const MANAGER_ADMIN_NAV_IDS: AdminTab[] = ['proposals', 'comp-proposals']
 
-function AdminStatBox({ label, value, highlight }: {
+function AdminStatBox({ label, value, highlight, onClick }: {
   label: string
   value: number | string | null | undefined
   /** Render the value in accent color — pass for a "pending" count that's
    *  nonzero, or any other value worth calling out. Plain totals (Users,
    *  Channels) leave this unset. */
   highlight?: boolean
+  onClick?: () => void
 }): JSX.Element {
+  const Comp = onClick ? 'button' : 'div'
   return (
-    <div className="rounded-lg bg-[var(--surface-raised)]/60 px-2 py-1.5 text-center min-w-0">
+    <Comp
+      type={onClick ? 'button' : undefined}
+      onClick={onClick}
+      className={`rounded-lg bg-[var(--surface-raised)]/60 px-2 py-1.5 text-center min-w-0 ${onClick ? 'hover:bg-[var(--surface-raised)] transition-colors cursor-pointer' : ''}`}
+    >
       <p className={`text-base font-bold tabular-nums truncate ${highlight ? 'text-accent' : 'text-text-primary'}`}>
         {value === null || value === undefined ? '—' : value}
       </p>
       <p className="text-[9px] font-bold uppercase tracking-wider text-text-muted mt-0.5 truncate">{label}</p>
-    </div>
+    </Comp>
   )
 }
 
@@ -204,6 +193,12 @@ export default function EditorProfileView(): JSX.Element {
     totalChannels: number
     totalPending: number
     otpEnabled: boolean | null
+    totalProposals: number | null
+    approvedProposals: number | null
+    approvalPct: number | null
+    editors: number | null
+    managers: number | null
+    applicants: number | null
   } | null>(null)
   useEffect(() => {
     if (!canReviewStaff) { setAdminPreview(null); return }
@@ -223,10 +218,16 @@ export default function EditorProfileView(): JSX.Element {
         isAdmin ? adminListApplications('pending') : Promise.resolve(null),
         isAdmin ? reportsApi.listSongReports('pending') : Promise.resolve(null),
         isAdmin ? adminListUsers() : Promise.resolve(null),
-      ]).then(([props, comp, apps, reps, users]) => {
+        // Full (unfiltered) proposal list — only used for the approved-count
+        // / approval-rate figures the old standalone Stats tab showed, which
+        // now live directly on this tile instead of behind a "Stats" button.
+        isAdmin ? adminListProposals(undefined, activeChannel) : Promise.resolve(null),
+      ]).then(([props, comp, apps, reps, users, allProps]) => {
         if (cancelled) return
         const pendingApplications = apps?.length ?? null
         const pendingReports = reps?.length ?? null
+        const approved = allProps?.filter(p => p.status === 'approved').length ?? null
+        const reviewed = allProps?.filter(p => p.status !== 'pending').length ?? 0
         setAdminPreview({
           pendingProposals: props.length,
           pendingComp: comp.length,
@@ -236,6 +237,12 @@ export default function EditorProfileView(): JSX.Element {
           totalChannels: channels.length,
           totalPending: props.length + comp.length + (pendingApplications ?? 0) + (pendingReports ?? 0),
           otpEnabled: isAdmin ? !!account?.otp_enabled : null,
+          totalProposals: allProps?.length ?? null,
+          approvedProposals: approved,
+          approvalPct: allProps && reviewed > 0 ? Math.round((approved ?? 0) / reviewed * 100) : allProps ? 0 : null,
+          editors: users ? users.filter(u => u.role === 'editor').length : null,
+          managers: users ? users.filter(u => !!u.manager_enabled).length : null,
+          applicants: users ? users.filter(u => u.role === 'applicant').length : null,
         })
       }).catch(() => { if (!cancelled) setAdminPreview(null) })
     })
@@ -271,7 +278,7 @@ export default function EditorProfileView(): JSX.Element {
         </div>
         <div className="flex-1 overflow-hidden p-4 md:p-5 pt-2">
           <div className="h-full rounded-2xl border border-[var(--border)] bg-surface-raised/50 overflow-hidden flex flex-col">
-            <AdminPage embedded initialTab={adminInitialTab} />
+            <AdminPage embedded initialTab={adminInitialTab} onExit={() => setMode('grid')} />
           </div>
         </div>
       </div>
@@ -337,36 +344,38 @@ export default function EditorProfileView(): JSX.Element {
                 which read as empty space more than information. */}
             <div className="md:w-[42%]">
               <Tile span="h-full">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-3 min-w-0">
-                    {account?.discord_avatar ? (
-                      <img src={account.discord_avatar} alt="" className="w-12 h-12 rounded-full object-cover shrink-0 ring-2 ring-[var(--border)]" />
-                    ) : (
-                      <div className="w-12 h-12 rounded-full bg-accent/20 text-accent flex items-center justify-center text-lg font-bold shrink-0">
-                        {(account?.display_name || account?.discord_username || '?').charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                    <div className="min-w-0">
-                      <h1 className="text-text-primary text-base font-bold truncate">
-                        {account?.display_name || account?.discord_username || 'My Profile'}
-                      </h1>
-                      <div className="mt-1">
-                        <RoleBadges isAdmin={isAdmin} isManager={isManager} isEditor={!!account?.is_editor} isContributor={isContributor} />
+                <div className="flex-1 flex items-center">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {account?.discord_avatar ? (
+                        <img src={account.discord_avatar} alt="" className="w-12 h-12 rounded-full object-cover shrink-0 ring-2 ring-[var(--border)]" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-accent/20 text-accent flex items-center justify-center text-lg font-bold shrink-0">
+                          {(account?.display_name || account?.discord_username || '?').charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <h1 className="text-text-primary text-base font-bold truncate">
+                          {account?.display_name || account?.discord_username || 'My Profile'}
+                        </h1>
+                        <div className="mt-1">
+                          <RoleBadges isAdmin={isAdmin} isManager={isManager} isEditor={!!account?.is_editor} isContributor={isContributor} />
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="w-px self-stretch bg-[var(--border)] shrink-0" />
+                    <div className="w-px self-stretch bg-[var(--border)] shrink-0" />
 
-                  <div className="flex items-center gap-1.5 text-text-muted shrink-0">
-                    <Trophy size={13} />
-                    <div className="flex flex-col gap-0.5">
-                      <p className="text-[10px] font-bold uppercase tracking-widest">
-                        {myEntry ? `Rank #${myEntry.rank}` : 'Unranked'}
-                      </p>
-                      <p className="text-[10px] font-bold uppercase tracking-widest opacity-70">
-                        {myEntry ? `${myEntry.approved_count} approved` : '0 approved'} · {!loadingProposals ? `${proposals.length} proposal${proposals.length !== 1 ? 's' : ''} total` : '…'}
-                      </p>
+                    <div className="flex items-center gap-1.5 text-text-muted shrink-0">
+                      <Trophy size={13} />
+                      <div className="flex flex-col gap-0.5">
+                        <p className="text-[10px] font-bold uppercase tracking-widest">
+                          {myEntry ? `Rank #${myEntry.rank}` : 'Unranked'}
+                        </p>
+                        <p className="text-[10px] font-bold uppercase tracking-widest opacity-70">
+                          {myEntry ? `${myEntry.approved_count} approved` : '0 approved'} · {!loadingProposals ? `${proposals.length} proposal${proposals.length !== 1 ? 's' : ''} total` : '…'}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -606,8 +615,8 @@ export default function EditorProfileView(): JSX.Element {
 
               {canReviewStaff && (
                 // Spans the full width of this 2-col grid (was one cell) —
-                // eight section buttons plus the stat row need more room
-                // than a single generic "open the panel" tile did.
+                // the clickable stat rows need more room than a single
+                // generic "open the panel" tile did.
                 <Tile title={isAdmin ? 'Admin' : 'Manager'} icon={<ShieldCheck size={13} />} span="col-span-2">
                   <div className="flex-1 flex flex-col gap-3 text-text-muted">
                     {/* Managers only ever reach Song edits + Comp files, so
@@ -617,55 +626,40 @@ export default function EditorProfileView(): JSX.Element {
                         Total pending rollup in place of a meaningless
                         "Stats" count. */}
                     <div className={`grid gap-2 ${isAdmin ? 'grid-cols-4' : 'grid-cols-2'}`}>
-                      <AdminStatBox label="Song edits" value={adminPreview?.pendingProposals} highlight={!!adminPreview?.pendingProposals} />
-                      <AdminStatBox label="Comp files" value={adminPreview?.pendingComp} highlight={!!adminPreview?.pendingComp} />
+                      <AdminStatBox label="Song edits" value={adminPreview?.pendingProposals} highlight={!!adminPreview?.pendingProposals} onClick={() => openAdmin('proposals')} />
+                      <AdminStatBox label="Comp files" value={adminPreview?.pendingComp} highlight={!!adminPreview?.pendingComp} onClick={() => openAdmin('comp-proposals')} />
                       {isAdmin && (
                         <>
-                          <AdminStatBox label="Applications" value={adminPreview?.pendingApplications} highlight={!!adminPreview?.pendingApplications} />
-                          <AdminStatBox label="Reports" value={adminPreview?.pendingReports} highlight={!!adminPreview?.pendingReports} />
-                          <AdminStatBox label="Users" value={adminPreview?.totalUsers} />
-                          <AdminStatBox label="Channels" value={adminPreview?.totalChannels} />
+                          <AdminStatBox label="Applications" value={adminPreview?.pendingApplications} highlight={!!adminPreview?.pendingApplications} onClick={() => openAdmin('applications')} />
+                          <AdminStatBox label="Reports" value={adminPreview?.pendingReports} highlight={!!adminPreview?.pendingReports} onClick={() => openAdmin('reports')} />
+                          <AdminStatBox label="Users" value={adminPreview?.totalUsers} onClick={() => openAdmin('users')} />
+                          <AdminStatBox label="Channels" value={adminPreview?.totalChannels} onClick={() => openAdmin('channels')} />
                           <AdminStatBox label="Total pending" value={adminPreview?.totalPending} highlight={!!adminPreview?.totalPending} />
                           <AdminStatBox
                             label="Security"
                             value={adminPreview ? (adminPreview.otpEnabled ? 'ON' : 'OFF') : undefined}
                             highlight={adminPreview?.otpEnabled === false}
+                            onClick={() => openAdmin('security')}
                           />
                         </>
                       )}
                     </div>
 
-                    {/* One button per section — each opens AdminPage's
-                        focused view straight on that tab, instead of always
-                        landing on Song edits and having to navigate from
-                        there. */}
-                    <div className={`grid gap-2 ${isAdmin ? 'grid-cols-4' : 'grid-cols-2'}`}>
-                      {ADMIN_NAV.filter(n => isAdmin || MANAGER_ADMIN_NAV_IDS.includes(n.id)).map(n => {
-                        const badge =
-                          n.id === 'proposals' ? adminPreview?.pendingProposals :
-                          n.id === 'comp-proposals' ? adminPreview?.pendingComp :
-                          n.id === 'applications' ? adminPreview?.pendingApplications :
-                          n.id === 'reports' ? adminPreview?.pendingReports :
-                          undefined
-                        return (
-                          <button
-                            key={n.id}
-                            onClick={() => openAdmin(n.id)}
-                            className="flex flex-col items-center justify-center gap-1 rounded-lg bg-[var(--surface-raised)]/60 hover:bg-[var(--surface-raised)] px-2 py-2.5 transition-colors"
-                          >
-                            <span className="relative text-text-muted">
-                              {n.icon}
-                              {!!badge && (
-                                <span className="absolute -top-1.5 -right-2 bg-accent text-[var(--bg)] text-[9px] font-bold rounded-full min-w-[14px] h-[14px] flex items-center justify-center px-0.5">
-                                  {badge > 9 ? '9+' : badge}
-                                </span>
-                              )}
-                            </span>
-                            <span className="text-[10px] font-semibold text-text-secondary truncate max-w-full">{n.label}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
+                    {/* Every section already opens from the stat box above
+                        it — no leftover "Stats" button, so the old Stats
+                        tab's own metrics (previously hidden behind that
+                        button) get laid out right here instead, in the
+                        space that freed up. */}
+                    {isAdmin && (
+                      <div className="grid grid-cols-4 gap-2">
+                        <AdminStatBox label="Total proposals" value={adminPreview?.totalProposals} />
+                        <AdminStatBox label="Approved" value={adminPreview?.approvedProposals} highlight={!!adminPreview?.approvedProposals} />
+                        <AdminStatBox label="Approval rate" value={adminPreview?.approvalPct != null ? `${adminPreview.approvalPct}%` : undefined} />
+                        <AdminStatBox label="Editors" value={adminPreview?.editors} />
+                        <AdminStatBox label="Managers" value={adminPreview?.managers} />
+                        <AdminStatBox label="Applicants" value={adminPreview?.applicants} />
+                      </div>
+                    )}
                   </div>
                 </Tile>
               )}

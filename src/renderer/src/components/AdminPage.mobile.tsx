@@ -180,12 +180,17 @@ function ProposalDiff({ proposal }: { proposal: SongEditProposal }): JSX.Element
 // `embedded` renders the page as a panel inside another view (the editor
 // profile's Admin tab) — no back button, page title, or window-control
 // clearance, since the host view owns that chrome.
-export default function AdminPage({ embedded = false, initialTab }: {
+export default function AdminPage({ embedded = false, initialTab, onExit }: {
   embedded?: boolean
   /** Jump straight into a section's focused view on mount (skipping the
    *  overview grid) — used by EditorProfileView's Admin tile, which now
    *  offers one button per section instead of a single generic entry point. */
   initialTab?: AdminTab
+  /** When embedded, "back" from a focused section returns here instead of
+   *  this page's own overview grid — the host (EditorProfileView's Admin
+   *  tile) already shows that same one-tile-per-section overview with live
+   *  stats, so falling back to a second copy of it just doubles the page. */
+  onExit?: () => void
 }): JSX.Element {
   const { account, setActiveView, loadAccount, activeChannel, channels } = useStorePick('account', 'setActiveView', 'loadAccount', 'activeChannel', 'channels')
   // The header's rightmost controls (refresh + tabs) sit at the same corner
@@ -261,7 +266,7 @@ export default function AdminPage({ embedded = false, initialTab }: {
       <div className={`shrink-0 ${embedded ? 'px-3 pt-1' : 'px-2 pt-1'}`}>
         <div className="flex items-center gap-1">
           {view === 'focused' ? (
-            <button onClick={() => setView('overview')}
+            <button onClick={() => embedded && onExit ? onExit() : setView('overview')}
               className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full text-text-primary active:bg-surface-overlay transition-colors">
               <ChevronLeft size={20} />
             </button>
