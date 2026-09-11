@@ -102,7 +102,16 @@ export default function App(): JSX.Element {
 
   // Sync view from URL on mount + handle back/forward
   useEffect(() => {
-    const syncFromPath = (): void => {
+    const syncFromPath = (state?: unknown): void => {
+      // The embedded admin panel inside the editor/manager profile pushes
+      // its own history entries (see EditorProfileView's openAdmin/exitAdmin)
+      // tagged `{ view: 'editor-profile' }` so its section deep links (e.g.
+      // /users) have a real, shareable URL without actually leaving that
+      // page — activeView never changed to 'admin' when those were pushed,
+      // so a back/forward through them must not reroute here either; that
+      // component's own popstate listener handles resyncing its embedded
+      // panel instead.
+      if (state && typeof state === 'object' && (state as { view?: string }).view === 'editor-profile') return
       const view = getViewFromPath(window.location.pathname)
       useStore.setState({ activeView: view })
       // Playlists keeps its open playlist selected across tab switches (it
@@ -122,8 +131,9 @@ export default function App(): JSX.Element {
       }
     }
     syncFromPath()
-    window.addEventListener('popstate', syncFromPath)
-    return () => window.removeEventListener('popstate', syncFromPath)
+    const onPopState = (e: PopStateEvent): void => syncFromPath(e.state)
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
   }, [])
 
   // Give each route its own title/description/canonical. Web only — no-op in

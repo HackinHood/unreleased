@@ -9,6 +9,7 @@ import { SongEditProposal, adminListProposals, adminListCompProposals, adminList
 import * as reportsApi from '../lib/reportsApi'
 import ReportsTab from './ReportsTab'
 import AdminPage from './AdminPage'
+import { ADMIN_TAB_PATHS } from '../hooks/useAdminQueue'
 import type { AdminTab } from '../hooks/useAdminQueue'
 import CompProposalList, { CompFilterBar, filterCompProposals, compProposalSearchText, type CompFilterTab } from './CompProposalList'
 import RoleBadges from './RoleBadges'
@@ -130,7 +131,38 @@ export default function EditorProfileView(): JSX.Element {
   // on — undefined means "whatever AdminPage defaults to" (the generic path,
   // e.g. if this were ever reached some other way).
   const [adminInitialTab, setAdminInitialTab] = useState<AdminTab | undefined>(undefined)
-  const openAdmin = (tab?: AdminTab): void => { setAdminInitialTab(tab); setMode('admin') }
+  // The embedded admin panel stays "in place" inside this page (no full
+  // navigation, no activeView change) — but it still gets its own real,
+  // shareable URL (see ADMIN_TAB_PATHS) so the address bar matches what's on
+  // screen, via a plain pushState rather than the store's setActiveAdminTab
+  // (that one's gated on activeView === 'admin', which never happens here).
+  // The pushed state tags itself `{ view: 'editor-profile' }` so the
+  // popstate handler below can tell "back to an embedded-admin history
+  // entry" apart from "actually navigate to the standalone console" even
+  // though the pathname looks identical either way.
+  const openAdmin = (tab?: AdminTab): void => {
+    setAdminInitialTab(tab)
+    setMode('admin')
+    const path = tab && ADMIN_TAB_PATHS[tab]
+    if (path) window.history.pushState({ view: 'editor-profile', embeddedAdminTab: tab }, '', path)
+  }
+  const exitAdmin = (): void => {
+    setMode('grid')
+    window.history.pushState({ view: 'editor-profile' }, '', '/editor-profile')
+  }
+  // Mirrors the pushes above on browser back/forward — this component has no
+  // other way to hear about a history navigation that never changes
+  // activeView (App.tsx's own popstate sync ignores these entries; see the
+  // state tag it checks for).
+  useEffect(() => {
+    const onPopState = (e: PopStateEvent): void => {
+      if (e.state?.view !== 'editor-profile') return
+      const tab: AdminTab | undefined = e.state?.embeddedAdminTab
+      if (tab) { setAdminInitialTab(tab); setMode('admin') } else { setMode('grid') }
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
   // Which content the merged Proposals/Comp tile shows — only contributors
   // ever see the toggle (non-contributors have no comp proposals to switch
   // to), so this stays 'songs' for everyone else.
@@ -270,7 +302,7 @@ export default function EditorProfileView(): JSX.Element {
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         <div className="px-4 md:px-5 pt-4 pb-2 shrink-0">
           <button
-            onClick={() => setMode('grid')}
+            onClick={exitAdmin}
             className="flex items-center gap-1.5 text-text-muted hover:text-text-primary text-xs transition-colors"
           >
             <ChevronLeft size={14} /> Back to dashboard
@@ -278,7 +310,7 @@ export default function EditorProfileView(): JSX.Element {
         </div>
         <div className="flex-1 overflow-hidden p-4 md:p-5 pt-2">
           <div className="h-full rounded-2xl border border-[var(--border)] bg-surface-raised/50 overflow-hidden flex flex-col">
-            <AdminPage embedded initialTab={adminInitialTab} onExit={() => setMode('grid')} />
+            <AdminPage embedded initialTab={adminInitialTab} onExit={exitAdmin} />
           </div>
         </div>
       </div>
