@@ -4,6 +4,7 @@
 //
 // Live endpoints (both unauthenticated, throttled at 10/min):
 //   POST /juicewrld/feedback/  { message, contact?, automated? }
+//   GET  /juicewrld/feedback/  (?automated=true|false, editor token)
 //   POST /juicewrld/reports/   { song_id | public_id, message, contact? }
 // `automated` flags a feedback report ErrorBoundary sent on its own (see
 // autoReportErrors) rather than one a person actually wrote, so the API can
@@ -37,9 +38,27 @@ async function post(url: string, body: unknown): Promise<void> {
   })
 }
 
+export interface FeedbackRow {
+  id: number
+  message: string
+  contact?: string | null
+  automated: boolean
+  created_at?: string | null
+}
+
 export async function submitFeedback(r: PendingFeedback, contact?: string | null): Promise<void> {
   const message = `[${FEEDBACK_CATEGORY_LABELS[r.category]}] ${r.message}\n\n— Unreleased v${r.appVersion}`
   await post(FEEDBACK_URL, { message, ...(contact ? { contact } : {}), ...(r.automated ? { automated: true } : {}) })
+}
+
+export async function listFeedback(automated?: boolean): Promise<FeedbackRow[]> {
+  const url = new URL(FEEDBACK_URL)
+  if (automated !== undefined) url.searchParams.set('automated', automated ? 'true' : 'false')
+  const data = await apiRequest<FeedbackRow[] | { results?: FeedbackRow[] }>(url.toString(), {
+    method: 'GET',
+    headers: authHeaders(),
+  })
+  return Array.isArray(data) ? data : (data?.results ?? [])
 }
 
 // ── Editor review ─────────────────────────────────────────────────────────────

@@ -1224,6 +1224,58 @@ FormData:
           extension), with no <Code>file</Code> and no <Code>destination_path</Code>. On approval the empty folder is
           created under <Code>comp/</Code>, ready to be filled with upload proposals.
         </p>
+        <p className="text-xs text-text-muted font-semibold mt-3">Chunked upload (files &ge; 16&nbsp;MB):</p>
+        <p className="text-xs text-text-muted">
+          For an <Code>upload</Code>/<Code>replace</Code> whose file is 16&nbsp;MB or larger, send it in pieces
+          instead of one multipart body &mdash; the single-request path above is prone to timing out or getting
+          dropped mid-transfer at that size. The three calls below replace a single{' '}
+          <Code>POST /accounts/contributor/proposals/</Code> for that file only; every other <Code>change_type</Code>
+          (including small uploads) still uses the plain multipart endpoint.
+        </p>
+        <Table
+          headers={['Method', 'Path', 'Description']}
+          rows={[
+            ['POST', '/accounts/contributor/proposals/upload/init/', 'Start a chunked upload, get an upload_id and chunk size'],
+            ['POST', '/accounts/contributor/proposals/upload/chunk/', 'Upload one chunk (multipart, repeat per chunk_index)'],
+            ['POST', '/accounts/contributor/proposals/upload/complete/', 'Finish the upload and create the proposal from the assembled file'],
+          ]}
+        />
+        <Pre>{`POST /accounts/contributor/proposals/upload/init/
+Authorization: Token <token>
+Content-Type: application/json
+
+{ "filename": "Song.wav", "total_size": 41943040, "channel": "optional, defaults to the primary channel" }
+
+→ { "upload_id": "...", "chunk_size": 8388608, "total_chunks": 5 }
+
+POST /accounts/contributor/proposals/upload/chunk/          (multipart, repeat for every chunk_index)
+Authorization: Token <token>
+
+FormData:
+  upload_id     "..."                    // from init
+  chunk_index   "0"                      // 0-based, in order
+  chunk         <binary>                 // file.slice(start, end) for this chunk_size
+  channel       "optional, same as init"
+
+POST /accounts/contributor/proposals/upload/complete/        (once every chunk has been uploaded)
+Authorization: Token <token>
+Content-Type: application/json
+
+{
+  "upload_id": "...",
+  "change_type": "upload" | "replace",
+  "file_path": "Compilation/Unreleased/Song.wav",
+  "destination_path": "optional, \\"replace\\" only",
+  "contributor_notes": "optional",
+  "channel": "optional, same as init"
+}
+
+→ the same comp file proposal object shape as the plain multipart endpoint`}</Pre>
+        <p className="text-xs text-text-muted">
+          Chunks must be uploaded in order and each must match <Code>chunk_size</Code> from <Code>init</Code> (the
+          last chunk may be shorter, up to the remainder of <Code>total_size</Code>). <Code>complete</Code> fails if
+          any chunk is missing.
+        </p>
         <p className="text-xs text-text-muted font-semibold mt-3">Folder change types</p>
         <p className="text-xs text-text-muted">
           No file is attached for any of the three &mdash; sending <Code>file</Code> on a folder proposal is

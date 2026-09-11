@@ -646,15 +646,15 @@ export default function ApiFilesView(): JSX.Element {
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {/* Header */}
         <div className="px-5 pb-3 shrink-0 pt-5">
-          <div className="flex items-center justify-between mb-3 gap-4">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
+          <div className="flex items-center flex-wrap gap-x-4 gap-y-2 mb-3">
+            <div className="flex items-center gap-2.5 min-w-0">
               <HardDrive size={18} className="text-text-muted shrink-0" />
               <h1 className="text-text-primary text-xl font-bold shrink-0">API Files</h1>
               {channelDescription && (
-                <p className="text-text-muted text-sm truncate">{channelDescription}</p>
+                <p className="text-text-muted text-sm truncate max-w-xl">{channelDescription}</p>
               )}
             </div>
-            <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-3 ml-auto">
               {channels.length > 0 && (
                 <div className="flex items-center bg-surface-overlay rounded-lg p-1 gap-0.5">
                   {channels.map((ch) => (
