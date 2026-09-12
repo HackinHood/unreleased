@@ -32,6 +32,7 @@ import { allFolderedKeys, folderOfPlaylist, parsePlaylistKey } from '../lib/play
 import type { PlaylistFolder } from '../lib/playlistFolders'
 import { Folder, FolderPlus, FolderOpen, FolderMinus } from 'lucide-react'
 import { useMultiSelect } from '../hooks/useMultiSelect'
+import { useLongPress } from '../hooks/useLongPress'
 import { ClampedMenu } from './ClampedMenu'
 import { loadEraFullNames, eraLabel } from '../lib/eras'
 import { getSkin } from '../lib/skins'
@@ -943,6 +944,9 @@ export default function PlaylistsView(): JSX.Element {
     ctrlA: { getAll: () => new Map(displayTracks.map(t => [t.id, t])) },
   })
   const toggleTrackSelect = useCallback((track: Track) => toggleTrackSelectRaw(track.id, track), [toggleTrackSelectRaw])
+  // Shared across both track list layouts below (grid PlaylistCards handle
+  // their own hold internally; this instance backs the plain-div list rows).
+  const trackRowLongPress = useLongPress()
 
   const selectedTrackList = useMemo(() => [...selectedTracks.values()], [selectedTracks])
 
@@ -1609,6 +1613,7 @@ export default function PlaylistsView(): JSX.Element {
             if (plSelectMode) { togglePlaylistSelect(plKey); return }
             toggleExpanded(plKey, !inFolder)
           }}
+          onLongPress={() => togglePlaylistSelect(plKey)}
           onDoubleClick={() => { if (!plSelectMode) { setExpandedKey(null); setSelectedId(p.id) } }}
           onContextMenu={e => {
             e.preventDefault(); e.stopPropagation()
@@ -1666,6 +1671,7 @@ export default function PlaylistsView(): JSX.Element {
             if (plSelectMode) { togglePlaylistSelect(plKey); return }
             toggleExpanded(plKey, !inFolder)
           }}
+          onLongPress={() => togglePlaylistSelect(plKey)}
           onDoubleClick={() => { if (!plSelectMode) { setExpandedKey(null); setLocalSelectedId(lp.id) } }}
           onContextMenu={e => {
             e.preventDefault(); e.stopPropagation()
@@ -2703,6 +2709,7 @@ export default function PlaylistsView(): JSX.Element {
                           selected={isSelected}
                           selectMode={selectMode}
                           onClick={e => { if (e.ctrlKey || e.metaKey || selectMode) toggleTrackSelect(track) }}
+                          onLongPress={() => toggleTrackSelect(track)}
                           onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setTrackMenu({ track, songId, x: e.clientX, y: e.clientY }) }}
                           onMenuButton={e => setTrackMenu({ track, songId, x: e.clientX, y: e.clientY })}
                           onPlay={() => { if (selectMode) toggleTrackSelect(track); else playTrack(track, displayTracks) }}
@@ -2738,7 +2745,8 @@ export default function PlaylistsView(): JSX.Element {
                   onDragOver={e => { if (!dragEnabled || selectMode) return; e.preventDefault(); setDropIdx(displayIdx) }}
                   onDragEnd={() => { setDragIdx(null); setDropIdx(null) }}
                   onDrop={() => dragEnabled && !selectMode && handleDrop(displayIdx)}
-                  onClick={e => { if (e.ctrlKey || e.metaKey || selectMode) toggleTrackSelect(track) }}
+                  onClick={e => { if (trackRowLongPress.consumeFired()) return; if (e.ctrlKey || e.metaKey || selectMode) toggleTrackSelect(track) }}
+                  {...trackRowLongPress.bind(() => toggleTrackSelect(track))}
                   onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setTrackMenu({ track, songId, x: e.clientX, y: e.clientY }) }}
                   className={`group grid items-center gap-3 px-4 py-2 rounded-lg transition-colors cursor-default select-none ${
                     isDragging ? 'opacity-40 bg-surface-raised' : isDropTarget ? 'border-t-2 border-accent bg-surface-overlay' : isSelected ? 'bg-accent/10' : 'hover:bg-surface-raised'

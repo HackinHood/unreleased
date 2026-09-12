@@ -27,6 +27,7 @@ import {
 } from '../lib/juicewrldApi'
 import { getFileExt, getMediaType, toFileUrl } from '../lib/fileTypes'
 import { useMultiSelect } from '../hooks/useMultiSelect'
+import { useLongPress } from '../hooks/useLongPress'
 import { ClampedMenu } from './ClampedMenu'
 import { Track } from '../types'
 import { ProgressiveCover } from './ProgressiveCover'
@@ -632,6 +633,9 @@ export default function ApiFilesView(): JSX.Element {
     setCtxMenu(null)
   }
   const toggleSelect = (path: string): void => toggle(path, path)
+  // Mouse press-and-hold — the desktop equivalent of the touch long-press
+  // above, as a second way into select mode alongside Ctrl/Cmd+click.
+  const mouseLongPress = useLongPress()
 
   const crumbs = breadcrumbs(currentPath)
   const channelDescription = channels.find((c) => c.slug === activeChannel)?.description?.trim() || ''
@@ -823,6 +827,7 @@ export default function ApiFilesView(): JSX.Element {
                       isSelected ? 'bg-accent/10 hover:bg-accent/15' : 'hover:bg-surface-overlay'
                     }`}
                     onClick={(e) => {
+                      if (mouseLongPress.consumeFired()) return
                       if (e.ctrlKey || e.metaKey) {
                         toggleSelect(entry.path)
                         return
@@ -834,6 +839,7 @@ export default function ApiFilesView(): JSX.Element {
                     }}
                     onDoubleClick={() => { if (!selectMode && mt === 'audio') handlePlay(entry) }}
                     onContextMenu={e => { e.preventDefault(); openContextMenu(entry, e.clientX, e.clientY) }}
+                    {...mouseLongPress.bind(() => enterSelectMode(entry))}
                     onTouchStart={() => handleLongPressStart(entry)}
                     onTouchEnd={handleLongPressEnd}
                   >
@@ -932,6 +938,7 @@ export default function ApiFilesView(): JSX.Element {
                       isSelected ? 'bg-accent/10 ring-2 ring-accent/40' : 'bg-surface-overlay hover:bg-surface-raised'
                     }`}
                     onClick={(e) => {
+                      if (mouseLongPress.consumeFired()) return
                       if (e.ctrlKey || e.metaKey) {
                         toggleSelect(entry.path)
                         return
@@ -943,6 +950,7 @@ export default function ApiFilesView(): JSX.Element {
                       else if (mt === 'text') openApiText(entry)
                     }}
                     onContextMenu={e => { e.preventDefault(); openContextMenu(entry, e.clientX, e.clientY) }}
+                    {...mouseLongPress.bind(() => enterSelectMode(entry))}
                     onTouchStart={() => handleLongPressStart(entry)}
                     onTouchEnd={handleLongPressEnd}
                   >
