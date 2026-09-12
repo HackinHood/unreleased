@@ -177,7 +177,7 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
    *  return to its own page. */
   onExit?: () => void
 }): JSX.Element {
-  const { account, loadAccount, setActiveView, activeChannel, channels, activeAdminTab } = useStorePick('account', 'loadAccount', 'setActiveView', 'activeChannel', 'channels', 'activeAdminTab')
+  const { account, loadAccount, setActiveView, setActiveAdminTab, activeChannel, channels, activeAdminTab } = useStorePick('account', 'loadAccount', 'setActiveView', 'setActiveAdminTab', 'activeChannel', 'channels', 'activeAdminTab')
   const go = setActiveView
   // Falls back to the standalone console's own deep link (see
   // ADMIN_TAB_PATHS) when nobody passed an explicit initialTab — only
@@ -193,7 +193,7 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
   const otpEnabled = !!account?.otp_enabled
 
   const {
-    tab,
+    tab, setTab,
     loading, error,
     refreshKey,
     applications, setApplications,
@@ -219,8 +219,15 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
   // (see ADMIN_TAB_PATHS) and its own entry point on the profile page's
   // Admin tile, so a second, in-page "pick a section" screen was a
   // redundant extra hop rather than a real navigation aid. AdminPage now
-  // just shows whichever single section it was asked for, directly.
+  // just shows whichever single section it was asked for, directly, but
+  // still offers a compact in-page tab row below to move between sections
+  // without leaving the page (embedded mode only ever switches local state;
+  // standalone also updates the URL so the switch is a real deep link).
   const activeNavItem = nav.find(n => n.id === tab)
+  const switchTab = (t: AdminTab): void => {
+    setTab(t)
+    if (!embedded) setActiveAdminTab(t)
+  }
 
   if (!canAccessStaff) return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center">
@@ -272,6 +279,22 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
           <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
+
+      {nav.length > 1 && (
+        <div className={`shrink-0 flex items-center gap-1 overflow-x-auto border-b border-[var(--border)] scrollbar-none ${embedded ? 'px-4' : 'px-6'}`}>
+          {nav.map(item => (
+            <button key={item.id} onClick={() => switchTab(item.id)}
+              className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 my-1 rounded-lg text-[11px] font-semibold transition-colors ${
+                tab === item.id ? 'bg-accent/15 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-surface-overlay'
+              }`}>
+              {item.label}
+              {!!item.badge && (
+                <span className="text-[9px] font-bold px-1 min-w-[14px] text-center rounded-full bg-accent/20 text-accent">{item.badge}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
 
       {error && (
         <div className="mx-6 mt-3 flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs shrink-0">
@@ -745,20 +768,20 @@ function ProposalsTab({ proposals, status, setStatus, onChanged, onReviewed, cha
           <div className="flex gap-1 flex-wrap items-center">
             {FILTERS.map(f => (
               <button key={f.id || 'all'} onClick={() => setStatus(f.id)}
-                className={`px-2.5 py-1 rounded-md text-[10px] font-semibold transition-colors ${
+                className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
                   status === f.id
-                    ? 'bg-accent text-[var(--bg)]'
-                    : 'text-text-muted hover:text-text-muted bg-surface-overlay'
+                    ? 'bg-accent/15 text-accent'
+                    : 'text-text-muted hover:text-text-primary hover:bg-surface-overlay'
                 }`}>{f.label}
               </button>
             ))}
             <div className="ml-auto flex gap-1 shrink-0">
               {SORTS.map(s => (
                 <button key={s.id} onClick={() => setSortBy(s.id)}
-                  className={`px-2.5 py-1 rounded-md text-[10px] font-semibold transition-colors ${
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
                     sortBy === s.id
-                      ? 'bg-surface-overlay text-text-primary ring-1 ring-[var(--border)]'
-                      : 'text-text-muted hover:text-text-primary bg-transparent'
+                      ? 'bg-accent/15 text-accent'
+                      : 'text-text-muted hover:text-text-primary hover:bg-surface-overlay'
                   }`}>{s.label}
                 </button>
               ))}
@@ -1193,11 +1216,11 @@ function UsersTab({ users, onChanged, currentUserId }: { users: AdminUser[]; onC
           <div className="flex flex-wrap gap-1">
             {FILTERS.map(f => (
               <button key={f.id} onClick={() => setFilter(f.id)}
-                className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors ${
-                  filter === f.id ? 'bg-accent text-[var(--bg)] font-semibold' : 'text-text-muted hover:bg-surface-overlay'
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
+                  filter === f.id ? 'bg-accent/15 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-surface-overlay'
                 }`}>
                 {f.label}
-                <span className={`text-[9px] px-1 rounded ${filter === f.id ? 'bg-white/20' : 'bg-surface-raised'}`}>{f.count}</span>
+                <span className={`text-[9px] px-1 rounded-full ${filter === f.id ? 'bg-accent/20' : 'bg-surface-raised'}`}>{f.count}</span>
               </button>
             ))}
           </div>

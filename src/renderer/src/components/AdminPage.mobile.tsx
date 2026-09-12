@@ -179,7 +179,7 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
    *  return to its own page. */
   onExit?: () => void
 }): JSX.Element {
-  const { account, setActiveView, loadAccount, activeChannel, channels, activeAdminTab } = useStorePick('account', 'setActiveView', 'loadAccount', 'activeChannel', 'channels', 'activeAdminTab')
+  const { account, setActiveView, setActiveAdminTab, loadAccount, activeChannel, channels, activeAdminTab } = useStorePick('account', 'setActiveView', 'setActiveAdminTab', 'loadAccount', 'activeChannel', 'channels', 'activeAdminTab')
   // Falls back to the standalone console's own deep link (see
   // ADMIN_TAB_PATHS) when nobody passed an explicit initialTab — only
   // relevant when not embedded, since the embedded panel has no URL of its
@@ -199,7 +199,7 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
   const otpEnabled = !!account?.otp_enabled
 
   const {
-    tab,
+    tab, setTab,
     loading, error,
     refreshKey,
     applications, setApplications,
@@ -228,8 +228,14 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
   // (see ADMIN_TAB_PATHS) and its own entry point on the profile page's
   // Admin tile, so a second, in-page "pick a section" screen was a
   // redundant extra hop rather than a real navigation aid. AdminPage now
-  // just shows whichever single section it was asked for, directly.
+  // just shows whichever single section it was asked for, directly, but
+  // still offers a compact in-page tab row to move between sections
+  // without leaving the page.
   const activeNavItem = nav.find(n => n.id === tab)
+  const switchTab = (t: AdminTab): void => {
+    setTab(t)
+    if (!embedded) setActiveAdminTab(t)
+  }
 
   if (!canReviewStaff) return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center">
@@ -273,6 +279,22 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
           </button>
         </div>
       </div>
+
+      {nav.length > 1 && (
+        <div className="shrink-0 flex items-center gap-1 overflow-x-auto px-2 pb-1.5 scrollbar-none">
+          {nav.map(item => (
+            <button key={item.id} onClick={() => switchTab(item.id)}
+              className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                tab === item.id ? 'bg-accent/15 text-accent' : 'text-text-muted active:bg-surface-overlay'
+              }`}>
+              {item.label}
+              {!!item.badge && (
+                <span className="text-[9px] font-bold px-1 min-w-[14px] text-center rounded-full bg-accent/20 text-accent">{item.badge}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
 
       {error && (
         <div className="mx-3 mb-2 flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs shrink-0">
@@ -875,8 +897,8 @@ function ProposalsTab({ proposals, status, setStatus, onChanged, channel }: {
           <div className="flex gap-2 overflow-x-auto scrollbar-none">
             {FILTERS.map(f => (
               <button key={f.id || 'all'} onClick={() => setStatus(f.id)}
-                className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-                  status === f.id ? 'bg-accent text-[var(--bg)]' : 'text-text-muted bg-surface-overlay'
+                className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                  status === f.id ? 'bg-accent/15 text-accent' : 'text-text-muted active:bg-surface-overlay'
                 }`}>{f.label}
               </button>
             ))}
@@ -884,8 +906,8 @@ function ProposalsTab({ proposals, status, setStatus, onChanged, channel }: {
           <div className="ml-auto flex gap-1 shrink-0">
             {SORTS.map(s => (
               <button key={s.id} onClick={() => setSortBy(s.id)}
-                className={`px-2.5 py-1.5 rounded-full text-[11px] font-semibold transition-colors ${
-                  sortBy === s.id ? 'bg-surface-overlay text-text-primary ring-1 ring-[var(--border)]' : 'text-text-muted'
+                className={`px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-colors ${
+                  sortBy === s.id ? 'bg-accent/15 text-accent' : 'text-text-muted active:bg-surface-overlay'
                 }`}>{s.label}
               </button>
             ))}
@@ -1107,11 +1129,11 @@ function UsersTab({ users, onChanged, currentUserId }: { users: AdminUser[]; onC
         <div className="flex gap-2 overflow-x-auto scrollbar-none">
           {FILTERS.map(f => (
             <button key={f.id} onClick={() => setFilter(f.id)}
-              className={`shrink-0 flex items-center gap-1.5 h-9 px-3 rounded-full text-xs font-semibold transition-colors ${
-                filter === f.id ? 'bg-accent text-[var(--bg)]' : 'text-text-muted bg-surface-overlay'
+              className={`shrink-0 flex items-center gap-1.5 h-9 px-3 rounded-full text-xs font-medium transition-colors ${
+                filter === f.id ? 'bg-accent/15 text-accent' : 'text-text-muted active:bg-surface-overlay'
               }`}>
               {f.label}
-              <span className={`text-[10px] px-1 rounded ${filter === f.id ? 'bg-white/20' : 'bg-surface-raised'}`}>{f.count}</span>
+              <span className={`text-[10px] px-1 rounded-full ${filter === f.id ? 'bg-accent/20' : 'bg-surface-raised'}`}>{f.count}</span>
             </button>
           ))}
         </div>

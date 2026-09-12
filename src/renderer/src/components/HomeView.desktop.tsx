@@ -33,7 +33,7 @@ import type { Track, ViewType } from '../types'
 // hero's row of numbers, where it costs no vertical space of its own.
 
 const GAP = 12          // matches gap-3 on the cover grids
-const MIN_TILE = 130    // narrowest a cover may get before dropping a column
+const MIN_TILE = 104    // narrowest a cover may get before dropping a column
 const MAX_NEWS = 20
 
 // Whole rows only — see the header note. `width` decides how many columns
@@ -199,43 +199,34 @@ function ShortcutCard({ icon, title, subtitle, tone = 'accent', onClick }: {
   )
 }
 
-function GamesTile({ games, onOpen, span }: {
+function GamesCard({ games, onOpen }: {
   games: GameCard[]
   onOpen: (view: GameCard['view']) => void
-  span: string
 }): JSX.Element {
   return (
-    <Tile title="Games" icon={<Gamepad2 size={15} />} span={span}>
-      <div className="grid grid-cols-3 gap-3">
-        {games.map((g) => (
-          <button
-            key={g.view}
-            onClick={() => onOpen(g.view)}
-            className="group flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-overlay)] px-3.5 py-2.5 text-left hover:border-[var(--accent)] hover:bg-surface-highest transition-colors"
-          >
-            <span className="w-9 h-9 rounded-lg bg-accent/15 flex items-center justify-center shrink-0">
-              <Gamepad2 size={17} className="text-accent" />
+    <div className="w-full flex items-stretch gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-2.5">
+      {games.map((g) => (
+        <button
+          key={g.view}
+          onClick={() => onOpen(g.view)}
+          title={g.label}
+          className="group flex-1 min-w-0 flex flex-col items-center gap-1 rounded-lg py-1 hover:bg-surface-highest transition-colors"
+        >
+          <span className="w-9 h-9 rounded-lg bg-accent/15 flex items-center justify-center shrink-0">
+            <Gamepad2 size={16} className="text-accent" />
+          </span>
+          <span className="text-text-primary text-[11px] font-semibold leading-tight truncate max-w-full">{g.label}</span>
+          {g.kind === 'daily' ? (
+            <span className="flex items-center gap-1 text-[10px] text-text-muted">
+              <Flame size={10} className={g.streak > 0 ? 'text-accent' : ''} />
+              <span className="tabular-nums">{g.streak}</span>
             </span>
-            <span className="flex-1 min-w-0">
-              <span className="block text-text-primary text-sm font-semibold truncate">{g.label}</span>
-              {g.kind === 'daily' ? (
-                <span className="flex items-center gap-2 mt-0.5 min-w-0">
-                  <span className="flex items-center gap-1 text-text-muted shrink-0">
-                    <Flame size={11} className={g.streak > 0 ? 'text-accent' : ''} />
-                    <span className="text-[11px] tabular-nums">{g.streak}</span>
-                  </span>
-                  <span className={`text-[11px] font-medium truncate ${g.done ? 'text-accent' : 'text-text-muted'}`}>
-                    {g.done ? 'Played today' : 'Not played today'}
-                  </span>
-                </span>
-              ) : (
-                <span className="block text-[11px] mt-0.5 text-text-muted truncate">{g.sub}</span>
-              )}
-            </span>
-          </button>
-        ))}
-      </div>
-    </Tile>
+          ) : (
+            <span className="text-[10px] text-text-muted truncate max-w-full">{g.sub}</span>
+          )}
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -314,7 +305,7 @@ export default function HomeViewDesktop(): JSX.Element {
   const showListening = showSection('listening')
 
   const mainShown = showRecent || showPlaylists
-  const sideShown = showNews || showRadio || showLiked
+  const sideShown = showNews || showRadio || showLiked || showGames
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
@@ -379,7 +370,7 @@ export default function HomeViewDesktop(): JSX.Element {
         </div>
 
         {/* ── Main: recently played + playlists stacked, full width ──
-            ── Side rail: news, 999 FM, liked — compact, narrow ── */}
+            ── Side rail: news, 999 FM, liked, games — compact, narrow ── */}
         {(mainShown || sideShown) && (
           <div className="flex-1 min-h-0 flex gap-4">
             {mainShown && (
@@ -427,19 +418,15 @@ export default function HomeViewDesktop(): JSX.Element {
                     onClick={() => setActiveView('liked')}
                   />
                 )}
+                {showGames && (
+                  <GamesCard games={games} onOpen={(view) => setActiveView(view)} />
+                )}
               </div>
             )}
           </div>
         )}
 
-        {/* ── Games: full width ── */}
-        {showGames && (
-          <div className="shrink-0">
-            <GamesTile games={games} onOpen={(view) => setActiveView(view)} span="w-full" />
-          </div>
-        )}
-
-        {!mainShown && !sideShown && !showGames && (
+        {!mainShown && !sideShown && (
           <div className="flex-1 flex flex-col items-center justify-center text-center">
             <Music2 size={34} className="text-text-muted mb-3" />
             <p className="text-text-primary text-sm font-semibold mb-1">Nothing to show</p>
