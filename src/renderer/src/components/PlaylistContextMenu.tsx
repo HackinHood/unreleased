@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  Play, Shuffle, ListEnd, Archive, Link, Globe, Lock, Pencil, Trash2, FolderInput, Loader2, Check,
+  Play, Shuffle, ListEnd, Archive, Link, Globe, Lock, Pencil, Trash2, FolderInput, Loader2, Check, Download,
 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { useShallow } from 'zustand/react/shallow'
@@ -59,6 +59,7 @@ export default function PlaylistContextMenu({ state, onClose }: {
 
   const [playlist, setPlaylist] = useState(state.playlist)
   const [showPlaylists, setShowPlaylists] = useState(false)
+  const [showExport, setShowExport] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameVal, setRenameVal] = useState(state.playlist.name)
   const [zipState, setZipState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
@@ -106,6 +107,44 @@ export default function PlaylistContextMenu({ state, onClose }: {
       setZipState('done')
     } catch { setZipState('error') }
     setTimeout(() => setZipState('idle'), 2500)
+  }
+
+  const downloadBlob = (content: string, mime: string, filename: string): void => {
+    const blob = new Blob([content], { type: mime })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = filename; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const exportJson = async (): Promise<void> => {
+    onClose()
+    const d = await userApi.getPlaylist(playlist.id)
+    const data = {
+      name: d.name,
+      description: d.description,
+      tracks: d.items.map(i => ({
+        id: i.song.id,
+        title: i.song.name,
+        artist: i.song.credited_artists,
+        album: i.song.album ?? null,
+        era: i.song.era?.name ?? null,
+        path: i.song.path,
+        image_url: i.song.image_url,
+      })),
+    }
+    downloadBlob(JSON.stringify(data, null, 2), 'application/json', `${playlist.name}.json`)
+  }
+
+  const exportM3u = async (): Promise<void> => {
+    onClose()
+    const d = await userApi.getPlaylist(playlist.id)
+    const tracks = d.items.map(i => userApi.liteSongToTrack(i.song))
+    const lines = ['#EXTM3U']
+    for (const t of tracks) {
+      lines.push(`#EXTINF:${Math.round(t.duration)},${t.artist} - ${t.title}`)
+      lines.push(t.streamUrl ?? t.path)
+    }
+    downloadBlob(lines.join('\n'), 'audio/x-mpegurl', `${playlist.name}.m3u`)
   }
 
   const copyShare = async (): Promise<void> => {
@@ -176,7 +215,7 @@ export default function PlaylistContextMenu({ state, onClose }: {
     const top = Math.max(8, Math.min(state.y, window.innerHeight - rect.height - 8))
     const left = Math.max(8, Math.min(state.x, window.innerWidth - rect.width - 8))
     setPos(prev => (prev.top === top && prev.left === left ? prev : { top, left }))
-  }, [state.x, state.y, renaming, showPlaylists])
+  }, [state.x, state.y, renaming, showPlaylists, showExport])
 
   return createPortal(
     <>
@@ -209,6 +248,24 @@ export default function PlaylistContextMenu({ state, onClose }: {
               disabled={zipState === 'loading'}
               onClick={downloadZip}
             />
+            <MenuItem
+              icon={Download}
+              label="Export playlist"
+              trailing={<span className="text-text-muted text-xs">{showExport ? '⌄' : '›'}</span>}
+              onClick={() => setShowExport(v => !v)}
+            />
+            {showExport && (
+              <div className="border-t border-b border-[var(--border)]">
+                <button onClick={exportJson}
+                  className="w-full text-left pl-9 pr-3.5 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-overlay transition-colors">
+                  As JSON
+                </button>
+                <button onClick={exportM3u}
+                  className="w-full text-left pl-9 pr-3.5 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-overlay transition-colors">
+                  As M3U
+                </button>
+              </div>
+            )}
             <div className="border-t border-[var(--border)] my-1" />
             <MenuItem icon={shareCopied ? Check : Link} label={shareCopied ? 'Link copied!' : 'Copy share link'} onClick={copyShare} />
             <MenuItem icon={playlist.is_public ? Globe : Lock} label={playlist.is_public ? 'Make private' : 'Make public'} disabled={busy} onClick={togglePublic} />
