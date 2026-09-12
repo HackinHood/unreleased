@@ -1301,6 +1301,7 @@ const SongCard = memo(function SongCard({
   const track = songToTrack(song)
   const title = pref?.name || song.name
   const canPlay = !!song.path
+  const longPress = useLongPress()
 
   // The site's status line: leak type, then the release/leak date after it.
   const statusDate = song.release_date
@@ -1313,9 +1314,10 @@ const SongCard = memo(function SongCard({
     // disappearing under the cursor.
     <div
       className={`group flex flex-col h-full overflow-hidden rounded-xl border bg-surface transition-colors ${selected ? 'border-accent bg-accent/10' : 'border-[var(--border)] hover:border-accent/40'}`}
-      onClick={(e) => { if (e.ctrlKey || e.metaKey || selectMode) onToggleSelect(song) }}
+      onClick={(e) => { if (longPress.consumeFired()) return; if (e.ctrlKey || e.metaKey || selectMode) onToggleSelect(song) }}
       onDoubleClick={() => { if (!selectMode) onInfo(song) }}
       onContextMenu={(e) => { e.preventDefault(); onContextMenu(song, e) }}
+      {...longPress.bind(() => onToggleSelect(song))}
     >
       {/* Cover */}
       <div className="relative shrink-0 w-full bg-surface-overlay" style={{ height: coverH }}>
@@ -1699,13 +1701,15 @@ const LyricResultRow = memo(function LyricResultRow({
   const title = pref?.name || song.name
   const canPlay = !!song.path
   const snippet = useMemo(() => getLyricSnippet(song.lyrics, query), [song.lyrics, query])
+  const longPress = useLongPress()
 
   return (
     <div
       className={`group flex items-start gap-3 px-3 py-3 hover:bg-surface-overlay active:bg-surface-overlay rounded-lg transition-colors cursor-default ${selected ? 'bg-accent/10' : ''}`}
-      onClick={(e) => { if (e.ctrlKey || e.metaKey || selectMode) onToggleSelect(song) }}
+      onClick={(e) => { if (longPress.consumeFired()) return; if (e.ctrlKey || e.metaKey || selectMode) onToggleSelect(song) }}
       onDoubleClick={() => { if (!selectMode) onInfo(song) }}
       onContextMenu={(e) => { e.preventDefault(); onContextMenu(song, e) }}
+      {...longPress.bind(() => onToggleSelect(song))}
     >
       {selectMode && (
         <div className="shrink-0 pt-1.5">
