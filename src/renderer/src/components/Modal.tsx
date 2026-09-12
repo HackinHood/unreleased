@@ -424,7 +424,7 @@ export function ModalOverlay({
         }}
       >
         <div
-          className={`relative overflow-hidden ${panelClassName}`}
+          className={`relative flex flex-col overflow-hidden ${panelClassName}`}
           style={{
             transform: dragY ? `translateY(${dragY}px)` : undefined,
             transition: dragging ? 'none' : 'transform 0.25s ease-out',
@@ -452,7 +452,7 @@ export function ModalOverlay({
           classes (w-full max-w-*, h-[...]) just lose to panelStyle's explicit
           width/height/maxWidth/maxHeight via inline-style specificity, while
           its border/radius/shadow/bg/overflow-hidden keep applying either way. */}
-      <div ref={panelRef} className={`relative overflow-hidden ${panelClassName}`} style={panelStyle}>
+      <div ref={panelRef} className={`relative flex flex-col overflow-hidden ${panelClassName}`} style={panelStyle}>
         {children({ onHandleMouseDown, locked, toggleLock, canLock: true })}
         <ResizeHandle onMouseDown={onResizeHandleMouseDown} />
       </div>

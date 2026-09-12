@@ -195,7 +195,6 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
   const {
     tab, setTab,
     loading, error,
-    refreshKey,
     applications, setApplications,
     propStatus, setPropStatus,
     proposals, setProposals,
@@ -274,10 +273,6 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
             <span className="text-text-muted text-xs ml-2">{account.discord_username}</span>
           )}
         </div>
-        <button onClick={() => refresh()} disabled={loading}
-          className="p-1.5 rounded-lg hover:bg-surface-overlay transition-colors text-text-muted hover:text-text-primary mb-3 disabled:opacity-40">
-          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-        </button>
       </div>
 
       {nav.length > 1 && (
@@ -293,6 +288,19 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
               )}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* A tab's data loads once per visit (see the sig comment in
+          useAdminQueue) rather than refetching every time it's reselected —
+          this is the explicit way back to fresh data instead. */}
+      {tab !== 'comp-proposals' && tab !== 'channels' && tab !== 'security' && (
+        <div className={`shrink-0 flex items-center justify-between border-b border-[var(--border)] ${embedded ? 'px-4' : 'px-6'} py-1.5`}>
+          <span className="text-[10px] text-text-muted">Data loads once per visit to this tab</span>
+          <button onClick={() => refresh()} disabled={loading}
+            className="flex items-center gap-1.5 text-[11px] font-semibold text-accent hover:text-accent/80 transition-colors disabled:opacity-40">
+            <RefreshCw size={11} className={loading ? 'animate-spin' : ''} /> Refresh
+          </button>
         </div>
       )}
 

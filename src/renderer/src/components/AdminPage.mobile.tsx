@@ -201,7 +201,6 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
   const {
     tab, setTab,
     loading, error,
-    refreshKey,
     applications, setApplications,
     propStatus, setPropStatus,
     proposals, setProposals,
@@ -273,10 +272,6 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
             <h1 className="text-text-primary text-[20px] font-bold leading-tight truncate">{activeNavItem?.label ?? (managerOnly ? 'Manager' : 'Admin')}</h1>
             {!embedded && account?.discord_username && <p className="text-text-muted text-xs truncate">{account.discord_username}</p>}
           </div>
-          <button onClick={() => refresh()} disabled={loading}
-            className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full text-text-muted active:bg-surface-overlay transition-colors disabled:opacity-40">
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-          </button>
         </div>
       </div>
 
@@ -293,6 +288,19 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
               )}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* A tab's data loads once per visit (see the sig comment in
+          useAdminQueue) rather than refetching every time it's reselected —
+          this is the explicit way back to fresh data instead. */}
+      {tab !== 'comp-proposals' && tab !== 'channels' && tab !== 'security' && (
+        <div className="shrink-0 flex items-center justify-between px-3 pb-1.5">
+          <span className="text-[10px] text-text-muted">Data loads once per visit to this tab</span>
+          <button onClick={() => refresh()} disabled={loading}
+            className="flex items-center gap-1.5 text-xs font-semibold text-accent active:text-accent/80 transition-colors disabled:opacity-40">
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
+          </button>
         </div>
       )}
 

@@ -1,4 +1,4 @@
-// Extracts AdminPage's load() effect, tab state, refreshKey, per-tab data,
+// Extracts AdminPage's load() effect, tab state, per-tab refresh keys/data,
 // and the pendingApps/pendingProps/pendingReports/fullNav/nav derivation —
 // the highest-leverage extraction in the rewrite given the near-total
 // hook-name overlap already observed between AdminPage.desktop.tsx and
@@ -16,7 +16,7 @@
 //      "Song edits" and "Comp files" (managerNavIds), mobile gives managers
 //      only "Comp files". Both are deliberate, pre-existing differences —
 //      not something to unify here.
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import * as userApi from '../lib/userApi'
 import { CONTRIBUTOR_ENABLED } from '../lib/userApi'
 import type { AdminUser, EditorApplication, ProposalStatus, SongEditProposal } from '../lib/userApi'
@@ -80,7 +80,11 @@ export function useAdminQueue(opts: UseAdminQueueOptions) {
   const [tab, setTab] = useState<AdminTab>(initialTab)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [refreshKey, setRefreshKey] = useState(0)
+  // Per-tab, not a single shared counter: bumping it only invalidates the tab
+  // that was actually asked to refresh, so pressing refresh on Reports doesn't
+  // also force Users (already loaded, filters unchanged) to refetch the next
+  // time it's visited.
+  const [refreshKeys, setRefreshKeys] = useState<Partial<Record<AdminTab, number>>>({})
   const [applications, setApplications] = useState<EditorApplication[]>([])
   const [propStatus, setPropStatus] = useState<ProposalStatus | ''>('pending')
   const [proposals, setProposals] = useState<SongEditProposal[]>([])
@@ -96,6 +100,26 @@ export function useAdminQueue(opts: UseAdminQueueOptions) {
   // Collapsing it to a channel-independent constant for every other tab
   // keeps `load`'s identity stable across that correction.
   const channelDep = (tab === 'proposals' || tab === 'stats') ? activeChannel : ''
+
+  // Identifies "the data this tab should currently be showing" — the status
+  // filter it queries by, the channel (only for the two tabs that are
+  // channel-scoped), and its own refresh counter. As long as a tab's sig is
+  // unchanged from the last time it actually fetched, switching to it (via
+  // the nav tab row, a deep link, browser back/forward, etc.) reuses what's
+  // already in state instead of refetching — that's what stopped e.g. Users
+  // from re-querying every single time it was reselected. A tab's sig only
+  // changes when something that should genuinely invalidate its data changes
+  // (its own filter, its channel, or its own refresh button), never merely
+  // because some other tab became active in between.
+  const tabRefreshKey = refreshKeys[tab] ?? 0
+  // Only the params the active tab's own query actually reads — e.g. Reports
+  // switching status filters must not also mark Users' already-cached sig
+  // stale, and vice versa.
+  const sig = tab === 'proposals' ? `${propStatus}|${channelDep}|${tabRefreshKey}`
+    : tab === 'reports' ? `${reportStatus}|${tabRefreshKey}`
+    : tab === 'stats' ? `${channelDep}|${tabRefreshKey}`
+    : `${tabRefreshKey}`
+  const loadedSigRef = useRef<Partial<Record<AdminTab, string>>>({})
 
   const load = useCallback(async () => {
     if (!canLoad) return
@@ -128,7 +152,13 @@ export function useAdminQueue(opts: UseAdminQueueOptions) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- channelDep stands in for activeChannel; see comment above
   }, [tab, canLoad, isFullAdmin, gateNonProposalTabs, propStatus, reportStatus, channelDep])
 
-  useStrictModeSafeEffect(() => { load() }, [load, refreshKey])
+  useStrictModeSafeEffect(() => {
+    if (!canLoad) return
+    if (loadedSigRef.current[tab] === sig) return
+    loadedSigRef.current[tab] = sig
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sig already encodes every input `load` reads for the active tab (see comment above); `load` itself would fire this on every render otherwise.
+  }, [tab, sig, canLoad])
 
   // Mobile-only re-forcing effect: account can still be loading when the page
   // first mounts (deep link, page refresh) — managerOnly flips from false to
@@ -158,7 +188,8 @@ export function useAdminQueue(opts: UseAdminQueueOptions) {
     tab, setTab,
     loading,
     error,
-    refreshKey, refresh: () => setRefreshKey(k => k + 1),
+    // Scoped to whichever tab is active when called — see the sig comment above.
+    refresh: () => setRefreshKeys(k => ({ ...k, [tab]: (k[tab] ?? 0) + 1 })),
     applications, setApplications,
     propStatus, setPropStatus,
     proposals, setProposals,

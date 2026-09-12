@@ -210,7 +210,7 @@ export default function SongInfoModal({ song, onClose, onEdit }: Props): JSX.Ele
     >
       {({ onHandleMouseDown, locked, toggleLock, canLock }) => (
       <div
-        className="select-text bg-surface w-full h-full flex flex-col overflow-hidden"
+        className="select-text bg-surface w-full flex-1 min-h-0 flex flex-col overflow-hidden"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
 
