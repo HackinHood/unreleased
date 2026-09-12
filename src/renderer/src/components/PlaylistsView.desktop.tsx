@@ -507,11 +507,13 @@ export default function PlaylistsView(): JSX.Element {
   const [newFolderName, setNewFolderName] = useState('')
   const [folderMenu, setFolderMenu] = useState<{ folder: PlaylistFolder; x: number; y: number; renaming?: boolean; renameVal?: string } | null>(null)
 
-  // Drag-to-move-into-a-folder — dragged key is the same "api:<id>"/"local:<id>"
+  // Drag-to-move-into-a-folder — dragged keys are the same "api:<id>"/"local:<id>"
   // composite the multi-select already uses. Transient gesture state, so it's
   // fine as local state (unlike the store-backed selection that survives tab
-  // switches).
-  const [draggedPlaylistKey, setDraggedPlaylistKey] = useState<string | null>(null)
+  // switches). Usually just the one card under the cursor, but dragging a
+  // card that's part of the current selection carries the whole selection
+  // along with it.
+  const [draggedPlaylistKeys, setDraggedPlaylistKeys] = useState<string[]>([])
   const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null>(null)
   // Dropping one ungrouped playlist card directly onto another (as opposed to
   // onto a folder tile, handled by dropTargetFolderId above) bundles the two
@@ -1558,22 +1560,28 @@ export default function PlaylistsView(): JSX.Element {
 
   // Shared drag-source wiring for playlist cards — dropped onto a folder tile
   // to move them in (see the folder tiles' onDrop in renderFoldersSection).
-  // Disabled in select mode so drag doesn't fight click-to-toggle-selection.
+  // Works from inside select mode now (rather than being disabled there) so
+  // a multi-selection can be dragged as a unit — dragging a card that's part
+  // of the current selection carries every selected card along with it;
+  // dragging an unselected one (select mode or not) moves just that card.
   const dragSourceProps = (plKey: string): {
     draggable: boolean
     onDragStart: (e: React.DragEvent) => void
     onDragEnd: () => void
     isDragging: boolean
   } => ({
-    draggable: !plSelectMode,
-    onDragStart: e => { e.dataTransfer.effectAllowed = 'move'; setDraggedPlaylistKey(plKey) },
-    onDragEnd: () => { setDraggedPlaylistKey(null); setDropTargetFolderId(null); setDropTargetPlaylistKey(null) },
-    isDragging: draggedPlaylistKey === plKey,
+    draggable: true,
+    onDragStart: e => {
+      e.dataTransfer.effectAllowed = 'move'
+      setDraggedPlaylistKeys(plSelectMode && selectedPlaylistKeys.has(plKey) ? [...selectedPlaylistKeys.keys()] : [plKey])
+    },
+    onDragEnd: () => { setDraggedPlaylistKeys([]); setDropTargetFolderId(null); setDropTargetPlaylistKey(null) },
+    isDragging: draggedPlaylistKeys.includes(plKey),
   })
 
   // Dropping a dragged playlist card onto another (ungrouped) playlist card
   // bundles both into a new folder — if the target is already in one, the
-  // dragged playlist just joins it instead of nesting folders.
+  // dragged playlist(s) just join it instead of nesting folders.
   const dropOntoPlaylistProps = (plKey: string): {
     onDragOver: (e: React.DragEvent) => void
     onDragLeave: () => void
@@ -1581,21 +1589,35 @@ export default function PlaylistsView(): JSX.Element {
     isDropTarget: boolean
   } => ({
     onDragOver: e => {
-      if (!draggedPlaylistKey || draggedPlaylistKey === plKey) return
+      if (draggedPlaylistKeys.length === 0 || draggedPlaylistKeys.includes(plKey)) return
       e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDropTargetPlaylistKey(plKey)
     },
     onDragLeave: () => setDropTargetPlaylistKey(prev => (prev === plKey ? null : prev)),
     onDrop: e => {
-      e.preventDefault()
-      if (draggedPlaylistKey && draggedPlaylistKey !== plKey) {
+      e.preventDefault(); e.stopPropagation()
+      if (draggedPlaylistKeys.length > 0 && !draggedPlaylistKeys.includes(plKey)) {
         const existingFolder = folderOfPlaylist(playlistFolders, plKey)
-        if (existingFolder) movePlaylistsToFolder([draggedPlaylistKey], existingFolder.id)
-        else createFolder(uniqueFolderName(), [plKey, draggedPlaylistKey])
+        if (existingFolder) movePlaylistsToFolder(draggedPlaylistKeys, existingFolder.id)
+        else createFolder(uniqueFolderName(), [plKey, ...draggedPlaylistKeys])
       }
-      setDraggedPlaylistKey(null); setDropTargetFolderId(null); setDropTargetPlaylistKey(null)
+      setDraggedPlaylistKeys([]); setDropTargetFolderId(null); setDropTargetPlaylistKey(null)
     },
     isDropTarget: dropTargetPlaylistKey === plKey,
   })
+
+  // Dropping a dragged folder member onto empty grid background (rather than
+  // onto a specific card or folder tile, both of which stopPropagation so
+  // this never double-fires) pulls it back out to ungrouped — the drag-out
+  // counterpart of dragging a playlist onto a folder tile to file it away.
+  // Harmless no-op if the dragged playlist(s) weren't in a folder already.
+  const gridBackgroundDropProps = {
+    onDragOver: (e: React.DragEvent): void => { if (draggedPlaylistKeys.length === 0) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move' },
+    onDrop: (e: React.DragEvent): void => {
+      e.preventDefault()
+      if (draggedPlaylistKeys.length > 0) movePlaylistsToFolder(draggedPlaylistKeys, null)
+      setDraggedPlaylistKeys([]); setDropTargetFolderId(null); setDropTargetPlaylistKey(null)
+    },
+  }
 
   const apiEntry = (p: PlaylistSummary, inFolder = false): GridEntry => {
     const plKey = `api:${p.id}`
@@ -1866,18 +1888,28 @@ export default function PlaylistsView(): JSX.Element {
           onMenuButton={e => setFolderMenu({ folder: f, x: e.clientX, y: e.clientY })}
           onPlay={() => openFolder(f.id)}
           isDropTarget={dropTargetFolderId === f.id}
-          onDragOver={e => { if (!draggedPlaylistKey) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDropTargetFolderId(f.id) }}
+          onDragOver={e => { if (draggedPlaylistKeys.length === 0) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDropTargetFolderId(f.id) }}
           onDragLeave={() => setDropTargetFolderId(prev => (prev === f.id ? null : prev))}
           onDrop={e => {
-            e.preventDefault()
-            if (draggedPlaylistKey) movePlaylistsToFolder([draggedPlaylistKey], f.id)
-            setDraggedPlaylistKey(null)
+            e.preventDefault(); e.stopPropagation()
+            if (draggedPlaylistKeys.length > 0) movePlaylistsToFolder(draggedPlaylistKeys, f.id)
+            setDraggedPlaylistKeys([])
             setDropTargetFolderId(null)
           }}
         />
       )
       const panel = isOpen ? (
-        <div key={`panel-folder-${f.id}`} className="col-span-full rounded-2xl bg-surface-overlay border border-[var(--border)] p-4" onClick={e => e.stopPropagation()}>
+        <div
+          key={`panel-folder-${f.id}`}
+          className="col-span-full rounded-2xl bg-surface-overlay border border-[var(--border)] p-4"
+          onClick={e => e.stopPropagation()}
+          // Dropping a member back onto its own folder's empty background
+          // (rather than dragging it out to the main grid) should leave it
+          // right where it is, not bubble up into the outer grid's drag-out
+          // handler.
+          onDragOver={e => { if (draggedPlaylistKeys.length > 0) { e.preventDefault(); e.stopPropagation() } }}
+          onDrop={e => { e.preventDefault(); e.stopPropagation() }}
+        >
           {memberEntries.length === 0 ? (
             <p className="text-text-muted text-sm py-1">This folder is empty. Drag a playlist onto it, or right-click one and choose “Move to folder”.</p>
           ) : (
@@ -2030,7 +2062,7 @@ export default function PlaylistsView(): JSX.Element {
                   synced-playlist ids) — folders holding only synced
                   playlists are hidden here since their members can't render
                   without an account. */}
-              <div ref={setAuthGridEl} className="grid gap-4 mb-8" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+              <div ref={setAuthGridEl} className="grid gap-4 mb-8" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }} {...gridBackgroundDropProps}>
                 {layoutGridEntries([...folderTileEntries(true), ...ungroupedLocal.map(lp => localEntry(lp))], authGridCols)}
               </div>
             </>
@@ -3079,7 +3111,7 @@ export default function PlaylistsView(): JSX.Element {
         {/* ── Playlists section — folders sit right in the same grid as the
             playlists they group, rather than a separate section above it. ── */}
         <h2 className="text-text-muted text-xs font-semibold uppercase tracking-widest mb-3">Playlists</h2>
-        <div ref={setMainGridEl} className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+        <div ref={setMainGridEl} className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }} {...gridBackgroundDropProps}>
           {layoutGridEntries([
             {
               key: 'liked',
@@ -3134,7 +3166,7 @@ export default function PlaylistsView(): JSX.Element {
         {ungroupedLocal.length > 0 && (
           <>
             <h2 className="text-text-muted text-xs font-semibold uppercase tracking-widest mb-3 mt-9">On This Device</h2>
-            <div ref={setDeviceGridEl} className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+            <div ref={setDeviceGridEl} className="grid gap-x-4 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }} {...gridBackgroundDropProps}>
               {layoutGridEntries(ungroupedLocal.map(lp => localEntry(lp)), deviceGridCols)}
             </div>
           </>

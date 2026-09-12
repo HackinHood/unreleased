@@ -67,7 +67,7 @@ export default function PlaylistCard({
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
       draggable={draggable}
-      onDragStart={onDragStart}
+      onDragStart={(e) => { longPress.cancel(); onDragStart?.(e) }}
       onDragEnd={onDragEnd}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}

@@ -30,6 +30,12 @@ export interface UseLongPressResult {
    *  this click is its trailing click, so the caller should return early
    *  instead of running its normal click behavior. Resets on read. */
   consumeFired: () => boolean
+  /** Call from a native `onDragStart` so a drag-and-drop gesture never turns
+   *  into a selection. `onMouseMove`'s slop check normally catches this on
+   *  its own, but native drag hijacks mouse events once it takes over, so a
+   *  hold that hasn't moved far enough yet can still fire mid-drag without
+   *  this explicit cancel. */
+  cancel: () => void
 }
 
 export function useLongPress(): UseLongPressResult {
@@ -67,5 +73,5 @@ export function useLongPress(): UseLongPressResult {
     return v
   }, [])
 
-  return { bind, consumeFired }
+  return { bind, consumeFired, cancel }
 }
