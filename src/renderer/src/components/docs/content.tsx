@@ -2580,7 +2580,7 @@ export function TabPanel({ tab, query, register, visible, showLabel }: {
   const ctx = useMemo(() => ({ query, tab: tab.id, register }), [query, tab.id, register])
   const Content = TAB_CONTENT[tab.id]
   return (
-    <div hidden={!visible}>
+    <div id={`docs-panel-${tab.id}`} hidden={!visible}>
       <DocsSearchContext.Provider value={ctx}>
         {showLabel && (
           <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-3 mt-2">{tab.label}</p>

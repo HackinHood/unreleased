@@ -113,9 +113,16 @@ export default function DocsPage(): JSX.Element {
             return (
               <button
                 key={tab.id}
-                // Tapping a tab while searching is a "take me there" action —
-                // clear the query so the tab shows in full.
-                onClick={() => { setActiveTab(tab.id); setRawQuery('') }}
+                // Tapping a tab while searching jumps to that category's
+                // results instead of clearing the query — every matching tab
+                // stays rendered (stacked, filtered by `visible` below), so
+                // this just scrolls the target section into view.
+                onClick={() => {
+                  setActiveTab(tab.id)
+                  if (query && hits > 0) {
+                    document.getElementById(`docs-panel-${tab.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                  }
+                }}
                 className={`shrink-0 flex items-center gap-1.5 h-9 px-3.5 rounded-full text-[13px] font-medium transition-colors ${
                   active ? 'bg-accent text-white'
                     : dimmed ? 'bg-[var(--surface-overlay)] text-text-muted/40'
