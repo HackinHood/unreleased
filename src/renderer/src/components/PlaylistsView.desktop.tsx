@@ -512,6 +512,10 @@ export default function PlaylistsView(): JSX.Element {
   // switches).
   const [draggedPlaylistKey, setDraggedPlaylistKey] = useState<string | null>(null)
   const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null>(null)
+  // Dropping one ungrouped playlist card directly onto another (as opposed to
+  // onto a folder tile, handled by dropTargetFolderId above) bundles the two
+  // into a brand-new folder — the "drag a playlist onto a playlist" gesture.
+  const [dropTargetPlaylistKey, setDropTargetPlaylistKey] = useState<string | null>(null)
 
   // Multi-select of tracks within an open playlist — mirrors the Tracker's
   // bulk-select (ApiTrackerView). Keyed by track.id (Track has a string id;
@@ -1559,8 +1563,34 @@ export default function PlaylistsView(): JSX.Element {
   } => ({
     draggable: !plSelectMode,
     onDragStart: e => { e.dataTransfer.effectAllowed = 'move'; setDraggedPlaylistKey(plKey) },
-    onDragEnd: () => { setDraggedPlaylistKey(null); setDropTargetFolderId(null) },
+    onDragEnd: () => { setDraggedPlaylistKey(null); setDropTargetFolderId(null); setDropTargetPlaylistKey(null) },
     isDragging: draggedPlaylistKey === plKey,
+  })
+
+  // Dropping a dragged playlist card onto another (ungrouped) playlist card
+  // bundles both into a new folder — if the target is already in one, the
+  // dragged playlist just joins it instead of nesting folders.
+  const dropOntoPlaylistProps = (plKey: string): {
+    onDragOver: (e: React.DragEvent) => void
+    onDragLeave: () => void
+    onDrop: (e: React.DragEvent) => void
+    isDropTarget: boolean
+  } => ({
+    onDragOver: e => {
+      if (!draggedPlaylistKey || draggedPlaylistKey === plKey) return
+      e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDropTargetPlaylistKey(plKey)
+    },
+    onDragLeave: () => setDropTargetPlaylistKey(prev => (prev === plKey ? null : prev)),
+    onDrop: e => {
+      e.preventDefault()
+      if (draggedPlaylistKey && draggedPlaylistKey !== plKey) {
+        const existingFolder = folderOfPlaylist(playlistFolders, plKey)
+        if (existingFolder) movePlaylistsToFolder([draggedPlaylistKey], existingFolder.id)
+        else createFolder(uniqueFolderName(), [plKey, draggedPlaylistKey])
+      }
+      setDraggedPlaylistKey(null); setDropTargetFolderId(null); setDropTargetPlaylistKey(null)
+    },
+    isDropTarget: dropTargetPlaylistKey === plKey,
   })
 
   const apiEntry = (p: PlaylistSummary, inFolder = false): GridEntry => {
@@ -1596,6 +1626,7 @@ export default function PlaylistsView(): JSX.Element {
             if (trks.length) playCollection(trks)
           }}
           {...dragSourceProps(plKey)}
+          {...(inFolder ? {} : dropOntoPlaylistProps(plKey))}
         />
     )
     const panel = expandedKey === plKey ? (
@@ -1651,6 +1682,7 @@ export default function PlaylistsView(): JSX.Element {
             if (qt.length) playCollection(qt)
           }}
           {...dragSourceProps(plKey)}
+          {...(inFolder ? {} : dropOntoPlaylistProps(plKey))}
         />
     )
     const panel = expandedKey === plKey ? (

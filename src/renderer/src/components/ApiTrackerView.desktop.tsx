@@ -34,6 +34,7 @@ import { formatDuration } from '../lib/format'
 import { parseSearchQuery, matchesFieldFilters, SEARCH_FIELD_HELP } from '../lib/trackerSearch'
 import { loadEraFullNames, eraLabel } from '../lib/eras'
 import { useMultiSelect } from '../hooks/useMultiSelect'
+import { useLongPress } from '../hooks/useLongPress'
 
 type Category = 'released' | 'unreleased' | 'unsurfaced' | 'recording_session' | ''
 type ViewMode = 'list' | 'detail' | 'grid'
@@ -683,13 +684,15 @@ const SongRow = memo(function SongRow({
   const title = pref?.name || song.name
   const altTitles = song.track_titles ?? []
   const canPlay = !!song.path
+  const longPress = useLongPress()
 
   return (
     <div
       className={`group flex items-center gap-3 px-3 py-2.5 md:py-2 hover:bg-surface-overlay active:bg-surface-overlay rounded-lg transition-colors cursor-default ${selected ? 'bg-accent/10' : ''}`}
-      onClick={(e) => { if (e.ctrlKey || e.metaKey || selectMode) onToggleSelect(song) }}
+      onClick={(e) => { if (longPress.consumeFired()) return; if (e.ctrlKey || e.metaKey || selectMode) onToggleSelect(song) }}
       onDoubleClick={() => { if (!selectMode) onInfo(song) }}
       onContextMenu={(e) => { e.preventDefault(); onContextMenu(song, e) }}
+      {...longPress.bind(() => onToggleSelect(song))}
     >
       {selectMode && (
         <div className="shrink-0">
@@ -853,13 +856,15 @@ const DetailedSongRow = memo(function DetailedSongRow({
   const title = pref?.name || song.name
   const canPlay = !!song.path
   const altTitles = song.track_titles ?? []
+  const longPress = useLongPress()
 
   return (
     <div
       className={`group flex gap-3 px-3 py-2 h-full overflow-hidden rounded-lg border border-[var(--border)] hover:bg-surface-overlay active:bg-surface-overlay transition-colors cursor-default ${selected ? 'bg-accent/10' : ''}`}
-      onClick={(e) => { if (e.ctrlKey || e.metaKey || selectMode) onToggleSelect(song) }}
+      onClick={(e) => { if (longPress.consumeFired()) return; if (e.ctrlKey || e.metaKey || selectMode) onToggleSelect(song) }}
       onDoubleClick={() => { if (!selectMode) onInfo(song) }}
       onContextMenu={(e) => { e.preventDefault(); onContextMenu(song, e) }}
+      {...longPress.bind(() => onToggleSelect(song))}
     >
       {selectMode && (
         <div className="shrink-0 pt-1">
