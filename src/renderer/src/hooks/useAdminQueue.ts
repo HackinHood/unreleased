@@ -22,6 +22,7 @@ import { CONTRIBUTOR_ENABLED } from '../lib/userApi'
 import type { AdminUser, EditorApplication, ProposalStatus, SongEditProposal } from '../lib/userApi'
 import * as reportsApi from '../lib/reportsApi'
 import type { SongReportRow, SongReportStatus } from '../lib/reportsApi'
+import { useStrictModeSafeEffect } from './useStrictModeSafeEffect'
 
 export type AdminTab = 'proposals' | 'comp-proposals' | 'applications' | 'reports' | 'users' | 'stats' | 'security' | 'channels'
 
@@ -87,6 +88,15 @@ export function useAdminQueue(opts: UseAdminQueueOptions) {
   const [reportStatus, setReportStatus] = useState<SongReportStatus | ''>('pending')
   const [reports, setReports] = useState<SongReportRow[]>([])
 
+  // Only 'proposals' and 'stats' actually query by channel. activeChannel is
+  // corrected asynchronously right after mount (it starts from a possibly
+  // stale localStorage value until loadChannels() confirms/fixes it), which
+  // would otherwise re-run `load` — and refetch tabs like 'users' a second
+  // time — for a value change those tabs never used in the first place.
+  // Collapsing it to a channel-independent constant for every other tab
+  // keeps `load`'s identity stable across that correction.
+  const channelDep = (tab === 'proposals' || tab === 'stats') ? activeChannel : ''
+
   const load = useCallback(async () => {
     if (!canLoad) return
     setLoading(true); setError(null)
@@ -115,9 +125,10 @@ export function useAdminQueue(opts: UseAdminQueueOptions) {
       else if (tab === 'users' || tab === 'stats') setUsers([])
     }
     finally { setLoading(false) }
-  }, [tab, canLoad, isFullAdmin, gateNonProposalTabs, propStatus, reportStatus, activeChannel])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- channelDep stands in for activeChannel; see comment above
+  }, [tab, canLoad, isFullAdmin, gateNonProposalTabs, propStatus, reportStatus, channelDep])
 
-  useEffect(() => { load() }, [load, refreshKey])
+  useStrictModeSafeEffect(() => { load() }, [load, refreshKey])
 
   // Mobile-only re-forcing effect: account can still be loading when the page
   // first mounts (deep link, page refresh) — managerOnly flips from false to

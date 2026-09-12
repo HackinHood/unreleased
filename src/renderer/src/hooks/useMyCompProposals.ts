@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { getMyCompProposals, withdrawCompProposal } from '../lib/userApi'
 import type { CompFileProposal } from '../lib/userApi'
 import type { CompFilterTab } from '../components/CompProposalList'
+import { useStrictModeSafeEffect } from './useStrictModeSafeEffect'
 
 // Owns the contributor's own comp-proposal list + filter + withdraw, shared
 // by EditorProfileView.desktop.tsx/.mobile.tsx (and, per the rewrite plan,
@@ -24,10 +25,13 @@ export function useMyCompProposals(
   const [filter, setFilter] = useState<CompFilterTab>('all')
   const [withdrawingId, setWithdrawingId] = useState<number | null>(null)
 
-  useEffect(() => {
+  useStrictModeSafeEffect((isCancelled) => {
     if (!enabled) return
     setLoading(true)
-    getMyCompProposals(activeChannel).then(setCompProposals).catch(() => {}).finally(() => setLoading(false))
+    getMyCompProposals(activeChannel)
+      .then((data) => { if (!isCancelled()) setCompProposals(data) })
+      .catch(() => {})
+      .finally(() => { if (!isCancelled()) setLoading(false) })
   }, [enabled, refreshKey, activeChannel])
 
   const handleWithdraw = async (id: number): Promise<void> => {

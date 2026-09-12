@@ -24,6 +24,7 @@ import { useStaffRoles } from '../hooks/useStaffRoles'
 import { useAdminQueue, type AdminTab, type AdminNavItem } from '../hooks/useAdminQueue'
 import { useOtpGate } from '../hooks/useOtpGate'
 import { Tile } from './Tile'
+import RoleBadges from './RoleBadges'
 
 type Tab = AdminTab
 
@@ -1118,6 +1119,10 @@ function UsersTab({ users, onChanged, currentUserId }: { users: AdminUser[]; onC
   const [actionId, setActionId] = useState<number | null>(null)
   const [filter,   setFilter]   = useState<'all' | 'admins' | 'editors' | 'contributors' | 'managers' | 'applicants'>('all')
   const [search,   setSearch]   = useState('')
+  // Collapsed-by-default accordion instead of always-expanded cards — one
+  // row open at a time, mirroring the desktop master/detail split adapted to
+  // a single column.
+  const [expandedId, setExpandedId] = useState<number | null>(null)
 
   const doUpdate = async (uid: number, payload: Parameters<typeof userApi.adminUpdateUser>[1]) => {
     setActionId(uid)
@@ -1137,13 +1142,15 @@ function UsersTab({ users, onChanged, currentUserId }: { users: AdminUser[]; onC
     { id: 'applicants' as const, label: 'Applicants', count: users.filter(u => u.role === 'applicant').length },
   ]
 
-  const ROLE = {
-    administrator: 'text-accent bg-accent/15 border-accent/20',
-    editor:        'text-emerald-400 bg-emerald-500/15 border-emerald-500/20',
-    applicant:     'text-text-muted bg-surface-raised border-[var(--border)]',
-  } as Record<string, string>
-  const CONTRIBUTOR_BADGE = 'text-sky-400 bg-sky-500/15 border-sky-500/20'
-  const MANAGER_BADGE = 'text-amber-400 bg-amber-500/15 border-amber-500/20'
+  // One haystack per user, built once per users-array change rather than
+  // per keystroke (see buildHaystack's own doc comment) — also widens search
+  // to match role/contributor/manager keywords, not just the display name
+  // like the old plain substring match did.
+  const haystack = useMemo(() => new Map(users.map(u => [u.user_id,
+    buildHaystack(u.discord_username, u.username, u.role,
+      u.contributor_enabled ? 'contributor' : undefined,
+      u.manager_enabled ? 'manager' : undefined),
+  ])), [users])
 
   const visible = useMemo(() => users.filter(u => {
     const ok = filter === 'all'
@@ -1157,9 +1164,10 @@ function UsersTab({ users, onChanged, currentUserId }: { users: AdminUser[]; onC
             : filter === 'managers'
               ? !!u.manager_enabled
               : u.role === 'applicant'
-    const q = search.toLowerCase()
-    return ok && (!q || (u.discord_username || u.username || '').toLowerCase().includes(q))
-  }), [users, filter, search])
+    return ok && matchesHaystack(search, haystack.get(u.user_id))
+  }), [users, filter, search, haystack])
+
+  const canAct = (u: AdminUser): boolean => u.user_id !== currentUserId && u.role !== 'administrator'
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -1176,92 +1184,119 @@ function UsersTab({ users, onChanged, currentUserId }: { users: AdminUser[]; onC
             </button>
           ))}
         </div>
-        <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…"
-          className="w-full bg-surface-overlay border border-[var(--border)] rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent/40" />
+        <QueueSearch value={search} onChange={setSearch} placeholder="Search users…" matches={visible.length} total={users.length} />
       </div>
 
       {/* Rows */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto divide-y divide-[var(--border)]">
         {visible.length === 0 && <Empty label="No users" />}
-        {visible.map(u => (
-          <div key={u.user_id} className="flex flex-col gap-2 px-3 py-3 border-b border-[var(--border)]">
-            <div className="flex items-center gap-2.5">
-              <Avatar src={u.discord_avatar} name={u.discord_username || u.username} size={9} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="text-text-primary text-sm font-medium truncate">{u.discord_username || u.username}</p>
-                  {!u.is_active && <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded text-red-400 bg-red-500/15 shrink-0">disabled</span>}
-                  {u.user_id === currentUserId && <span className="text-[10px] text-text-muted italic shrink-0">you</span>}
+        {visible.map(u => {
+          const isOpen = expandedId === u.user_id
+          return (
+            <div key={u.user_id}>
+              <button className="w-full flex items-center gap-3 px-3 py-3 text-left active:bg-surface-raised"
+                onClick={() => setExpandedId(isOpen ? null : u.user_id)}>
+                <Avatar src={u.discord_avatar} name={u.discord_username || u.username} size={9} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-text-primary text-sm font-medium truncate flex items-center gap-1.5">
+                    {u.discord_username || u.username}
+                    {u.user_id === currentUserId && <span className="text-[10px] text-text-muted italic font-normal shrink-0">you</span>}
+                  </p>
+                  <div className="flex gap-1 flex-wrap mt-0.5">
+                    <RoleBadges isAdmin={u.role === 'administrator'} isManager={!!u.manager_enabled}
+                      isEditor={u.role === 'editor'} isContributor={u.contributor_enabled} />
+                    {u.role === 'applicant' && !u.contributor_enabled && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide text-text-muted bg-surface-raised">Applicant</span>
+                    )}
+                    {!u.is_active && <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded text-red-400 bg-red-500/15">disabled</span>}
+                  </div>
                 </div>
-                <p className="text-text-muted text-xs">joined {shortDate(u.date_joined)} · {u.approved_count} approved · {u.proposal_count} props</p>
-              </div>
-            </div>
+                <ChevronDown size={16} className={`text-text-muted transition-transform shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
+              </button>
 
-            <div className="flex flex-wrap items-center gap-1">
-              <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border ${ROLE[u.role] ?? 'text-text-muted bg-surface-raised border-[var(--border)]'}`}>
-                {u.role}
-              </span>
-              {u.contributor_enabled && (
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border ${CONTRIBUTOR_BADGE}`}>
-                  contributor
-                </span>
-              )}
-              {!!u.manager_enabled && (
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border ${MANAGER_BADGE}`}>
-                  manager
-                </span>
+              {isOpen && (
+                <div className="px-3 pb-3 space-y-3">
+                  <p className="text-text-muted text-xs">
+                    Joined {shortDate(u.date_joined)} · {u.approved_count} approved · {u.proposal_count} props
+                    {u.contributor_enabled && <> · {u.comp_approved_count} comp approved · {u.comp_proposal_count} comp props</>}
+                  </p>
+                  <p className="text-text-muted text-xs">Last seen {relativeTime(u.last_login)}</p>
+
+                  {u.badges.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {u.badges.map(b => (
+                        <span key={b.slug} title={b.description}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-surface-overlay text-[11px] text-text-secondary">
+                          <span>{b.icon}</span>{b.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {actionId === u.user_id ? (
+                    <div className="flex justify-center py-1"><Loader2 size={14} className="animate-spin text-text-muted" /></div>
+                  ) : canAct(u) ? (
+                    <>
+                      {(u.role === 'editor' || u.contributor_enabled) && (
+                        <div className="space-y-1.5">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted">Auto-approve</p>
+                          {u.role === 'editor' && (
+                            <label className="flex items-center justify-between gap-2 text-sm text-text-secondary">
+                              Song edit proposals
+                              <input type="checkbox" checked={u.auto_approve_proposals}
+                                onChange={e => doUpdate(u.user_id, { auto_approve_proposals: e.target.checked })}
+                                className="w-4 h-4 accent-[var(--accent)]" />
+                            </label>
+                          )}
+                          {u.contributor_enabled && (
+                            <label className="flex items-center justify-between gap-2 text-sm text-text-secondary">
+                              Comp file proposals
+                              <input type="checkbox" checked={u.auto_approve_comp_proposals}
+                                onChange={e => doUpdate(u.user_id, { auto_approve_comp_proposals: e.target.checked })}
+                                className="w-4 h-4 accent-[var(--accent)]" />
+                            </label>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {u.role === 'editor' ? (
+                          <button onClick={() => doUpdate(u.user_id, { role: 'applicant' })}
+                            className="h-9 rounded-lg text-xs font-semibold text-red-400 bg-red-500/10 active:bg-red-500/15 transition-colors">−Editor</button>
+                        ) : (
+                          <button onClick={() => doUpdate(u.user_id, { role: 'editor' })}
+                            className="h-9 rounded-lg text-xs font-semibold text-emerald-400 bg-emerald-500/10 active:bg-emerald-500/15 transition-colors">+Editor</button>
+                        )}
+                        {u.contributor_enabled ? (
+                          <button onClick={() => doUpdate(u.user_id, { contributor_enabled: false })}
+                            className="h-9 rounded-lg text-xs font-semibold text-red-400 bg-red-500/10 active:bg-red-500/15 transition-colors">−Contrib</button>
+                        ) : (
+                          <button onClick={() => doUpdate(u.user_id, { contributor_enabled: true })}
+                            className="h-9 rounded-lg text-xs font-semibold text-emerald-400 bg-emerald-500/10 active:bg-emerald-500/15 transition-colors">+Contrib</button>
+                        )}
+                        {u.manager_enabled ? (
+                          <button onClick={() => doUpdate(u.user_id, { manager_enabled: false })}
+                            className="h-9 rounded-lg text-xs font-semibold text-red-400 bg-red-500/10 active:bg-red-500/15 transition-colors">−Manager</button>
+                        ) : (
+                          <button onClick={() => doUpdate(u.user_id, { manager_enabled: true })}
+                            className="h-9 rounded-lg text-xs font-semibold text-emerald-400 bg-emerald-500/10 active:bg-emerald-500/15 transition-colors">+Manager</button>
+                        )}
+                        <button onClick={() => doUpdate(u.user_id, { is_active: !u.is_active })}
+                          className="col-span-2 h-9 rounded-lg text-xs font-semibold text-text-secondary bg-surface-overlay active:bg-surface-raised transition-colors">
+                          {u.is_active ? 'Disable account' : 'Enable account'}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-text-muted text-xs italic">
+                      {u.user_id === currentUserId ? "You can't modify your own account here." : 'Administrators can only be modified elsewhere.'}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
-
-            {actionId === u.user_id ? (
-              <div className="flex justify-center py-1"><Loader2 size={14} className="animate-spin text-text-muted" /></div>
-            ) : u.user_id !== currentUserId && u.role !== 'administrator' ? (
-              <div className="flex flex-wrap items-center gap-1.5">
-                {u.role === 'editor' && (
-                  <label className="flex items-center gap-1.5 text-[11px] text-text-muted h-8 px-2">
-                    <input type="checkbox" checked={u.auto_approve_proposals}
-                      onChange={e => doUpdate(u.user_id, { auto_approve_proposals: e.target.checked })}
-                      className="w-3.5 h-3.5 accent-[var(--accent)]" />
-                    auto
-                  </label>
-                )}
-                {u.contributor_enabled && (
-                  <label className="flex items-center gap-1.5 text-[11px] text-text-muted h-8 px-2">
-                    <input type="checkbox" checked={u.auto_approve_comp_proposals}
-                      onChange={e => doUpdate(u.user_id, { auto_approve_comp_proposals: e.target.checked })}
-                      className="w-3.5 h-3.5 accent-[var(--accent)]" />
-                    auto
-                  </label>
-                )}
-                {u.role === 'editor' ? (
-                  <button onClick={() => doUpdate(u.user_id, { role: 'applicant' })}
-                    className="h-8 px-2.5 rounded-lg text-[11px] text-text-muted active:text-red-400 active:bg-red-500/10 transition-colors font-semibold bg-surface-overlay">−Editor</button>
-                ) : (
-                  <button onClick={() => doUpdate(u.user_id, { role: 'editor' })}
-                    className="h-8 px-2.5 rounded-lg text-[11px] text-emerald-400 active:bg-emerald-500/10 transition-colors font-semibold bg-surface-overlay">+Editor</button>
-                )}
-                {u.contributor_enabled ? (
-                  <button onClick={() => doUpdate(u.user_id, { contributor_enabled: false })}
-                    className="h-8 px-2.5 rounded-lg text-[11px] text-text-muted active:text-red-400 active:bg-red-500/10 transition-colors font-semibold bg-surface-overlay">−Contrib</button>
-                ) : (
-                  <button onClick={() => doUpdate(u.user_id, { contributor_enabled: true })}
-                    className="h-8 px-2.5 rounded-lg text-[11px] text-emerald-400 active:bg-emerald-500/10 transition-colors font-semibold bg-surface-overlay">+Contrib</button>
-                )}
-                {u.manager_enabled ? (
-                  <button onClick={() => doUpdate(u.user_id, { manager_enabled: false })}
-                    className="h-8 px-2.5 rounded-lg text-[11px] text-text-muted active:text-red-400 active:bg-red-500/10 transition-colors font-semibold bg-surface-overlay">−Manager</button>
-                ) : (
-                  <button onClick={() => doUpdate(u.user_id, { manager_enabled: true })}
-                    className="h-8 px-2.5 rounded-lg text-[11px] text-emerald-400 active:bg-emerald-500/10 transition-colors font-semibold bg-surface-overlay">+Manager</button>
-                )}
-                <button onClick={() => doUpdate(u.user_id, { is_active: !u.is_active })}
-                  className="h-8 px-2.5 rounded-lg text-[11px] text-text-muted active:bg-surface-raised transition-colors font-semibold bg-surface-overlay">
-                  {u.is_active ? 'Disable' : 'Enable'}
-                </button>
-              </div>
-            ) : null}
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

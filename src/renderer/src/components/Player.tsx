@@ -25,7 +25,7 @@ import {
 import { useStore, useStorePick } from '../store/useStore'
 import { eventToCombo, resolveAction, registerHotkeyDispatch } from '../lib/hotkeys'
 import { formatDuration } from '../lib/format'
-import { apiFetch, smallCoverUrl, JWApiSong } from '../lib/juicewrldApi'
+import { getSongById, smallCoverUrl } from '../lib/juicewrldApi'
 import { trackIdToSongId, showStaffProfile, staffProfileView } from '../lib/userApi'
 import { rememberRecentTrack } from '../lib/recentTracks'
 import { useCanEdit } from '../hooks/useChannelRoles'
@@ -392,7 +392,7 @@ export default function Player(): JSX.Element {
         // otherwise.
         setCurrentTrackFull({ ...synthetic, lyricsPending: true })
         lyricsFetchInFlight = songId
-        apiFetch<JWApiSong>(`/songs/${songId}/`)
+        getSongById(songId)
           .then((song) => {
             const syncedLyrics = song.synced_lyrics || null
             const lyrics = song.lyrics || null

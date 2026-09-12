@@ -11,6 +11,10 @@ import ViewSkeleton from './components/ViewSkeleton'
 import { ViewType } from './types'
 import { ADMIN_PATH_TABS } from './hooks/useAdminQueue'
 
+// Minimum gap between window-focus-triggered refetches (playlists, news) —
+// alt-tabbing back and forth shouldn't refire a request on every focus event.
+const FOCUS_REFRESH_MIN_INTERVAL_MS = 60 * 1000
+
 function getViewFromPath(pathname: string): ViewType {
   if (pathname === '/home') return 'home'
   // Desktop and installed apps land on Home; a mobile browser tab still gets
@@ -166,9 +170,17 @@ export default function App(): JSX.Element {
   // Re-fetch playlists on window focus — playlist edits made elsewhere (the
   // web player, another device, or a playlist saved from a shared link) don't
   // otherwise reach this window until it's restarted. refreshPlaylists() is a
-  // no-op while signed out.
+  // no-op while signed out. Throttled so alt-tabbing back and forth doesn't
+  // refire the request on every focus — only refetch if it's actually been a
+  // while since the last one.
   useEffect(() => {
-    const onFocus = (): void => { refreshPlaylists() }
+    let lastRun = 0
+    const onFocus = (): void => {
+      const now = Date.now()
+      if (now - lastRun < FOCUS_REFRESH_MIN_INTERVAL_MS) return
+      lastRun = now
+      refreshPlaylists()
+    }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
   }, [refreshPlaylists])

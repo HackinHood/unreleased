@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import {
-  Loader2, Trophy, FileEdit, ChevronLeft, RefreshCw, Plus, X, Search, Flag, ShieldCheck, FolderOpen,
+  Loader2, Trophy, FileEdit, RefreshCw, Plus, X, Search, Flag, ShieldCheck, FolderOpen,
   Users, Shield,
 } from 'lucide-react'
 import { useStore } from '../store/useStore'
@@ -9,7 +9,6 @@ import { SongEditProposal, adminListProposals, adminListCompProposals, adminList
 import * as reportsApi from '../lib/reportsApi'
 import ReportsTab from './ReportsTab.mobile'
 import AdminPage from './AdminPage.mobile'
-import { ADMIN_TAB_PATHS } from '../hooks/useAdminQueue'
 import type { AdminTab } from '../hooks/useAdminQueue'
 import CompProposalList, { CompFilterBar, filterCompProposals, compProposalSearchText, type CompFilterTab } from './CompProposalList'
 import RoleBadges from './RoleBadges'
@@ -100,9 +99,10 @@ function LeaderboardRows({ entries, myUsername }: {
 }
 
 export default function EditorProfileView(): JSX.Element {
-  const { account, setActiveView, setPendingEditorSongId, setPendingEditProposal, activeChannel, channels, setActiveChannel, loadChannels } = useStore(useShallow(s => ({
+  const { account, setActiveView, setActiveAdminTab, setPendingEditorSongId, setPendingEditProposal, activeChannel, channels, setActiveChannel, loadChannels } = useStore(useShallow(s => ({
     account: s.account,
     setActiveView: s.setActiveView,
+    setActiveAdminTab: s.setActiveAdminTab,
     setPendingEditorSongId: s.setPendingEditorSongId,
     setPendingEditProposal: s.setPendingEditProposal,
     activeChannel: s.activeChannel,
@@ -117,6 +117,13 @@ export default function EditorProfileView(): JSX.Element {
   // channel meant leaving the profile to flip it in Files first.
   useEffect(() => { if (channels.length === 0) loadChannels().catch(() => {}) }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Read live in the admin-preview effect below without being a dependency
+  // of it — channels.length changes once loadChannels() resolves just after
+  // mount, and that used to re-run the whole admin fetch (a second /users
+  // request etc.) purely to update a count nothing else in that fetch needs.
+  const channelsRef = useRef(channels)
+  useEffect(() => { channelsRef.current = channels }, [channels])
+
   const [refreshKey, setRefreshKey] = useState(0)
   const [showAddSong, setShowAddSong] = useState(false)
 
@@ -125,41 +132,19 @@ export default function EditorProfileView(): JSX.Element {
   // no song-edit or report-review power, so they land in its focused view
   // directly rather than on a dashboard grid that's mostly empty for them.
   const managerOnly = isManager && !isAdmin
+  // Managers with nothing else to see land straight in the embedded admin
+  // panel (see the comment above) — that's the only reason this page still
+  // has an embedded AdminPage at all. Everyone else's tile clicks now leave
+  // the page entirely (see openAdmin below), so 'admin' mode is otherwise
+  // unreachable — a click used to just expand an embedded panel in place,
+  // which read as a cramped "tile" for a wide layout like the Users
+  // master/detail view.
   const [mode, setMode] = useState<ViewMode>(managerOnly ? 'admin' : 'grid')
-  // Which admin section a tap from the tile's own button row should land on.
-  const [adminInitialTab, setAdminInitialTab] = useState<AdminTab | undefined>(undefined)
-  // The embedded admin panel stays "in place" inside this page (no full
-  // navigation, no activeView change) — but it still gets its own real,
-  // shareable URL (see ADMIN_TAB_PATHS) so the address bar matches what's on
-  // screen, via a plain pushState rather than the store's setActiveAdminTab
-  // (that one's gated on activeView === 'admin', which never happens here).
-  // The pushed state tags itself `{ view: 'editor-profile' }` so the
-  // popstate handler below can tell "back to an embedded-admin history
-  // entry" apart from "actually navigate to the standalone console" even
-  // though the pathname looks identical either way.
-  const openAdmin = (tab?: AdminTab): void => {
-    setAdminInitialTab(tab)
-    setMode('admin')
-    const path = tab && ADMIN_TAB_PATHS[tab]
-    if (path) window.history.pushState({ view: 'editor-profile', embeddedAdminTab: tab }, '', path)
+  const exitAdmin = (): void => setMode('grid')
+  const openAdmin = (tab: AdminTab): void => {
+    setActiveAdminTab(tab)
+    setActiveView('admin')
   }
-  const exitAdmin = (): void => {
-    setMode('grid')
-    window.history.pushState({ view: 'editor-profile' }, '', '/editor-profile')
-  }
-  // Mirrors the pushes above on browser back/forward — this component has no
-  // other way to hear about a history navigation that never changes
-  // activeView (App.tsx's own popstate sync ignores these entries; see the
-  // state tag it checks for).
-  useEffect(() => {
-    const onPopState = (e: PopStateEvent): void => {
-      if (e.state?.view !== 'editor-profile') return
-      const tab: AdminTab | undefined = e.state?.embeddedAdminTab
-      if (tab) { setAdminInitialTab(tab); setMode('admin') } else { setMode('grid') }
-    }
-    window.addEventListener('popstate', onPopState)
-    return () => window.removeEventListener('popstate', onPopState)
-  }, [])
   // Which content the merged Proposals/Comp tile shows — see the desktop
   // file's identical toggle for why these two used to be separate tiles.
   const [proposalsView, setProposalsView] = useState<'songs' | 'comp'>('songs')
@@ -246,7 +231,7 @@ export default function EditorProfileView(): JSX.Element {
           pendingApplications,
           pendingReports,
           totalUsers: users?.length ?? null,
-          totalChannels: channels.length,
+          totalChannels: channelsRef.current.length,
           totalPending: props.length + comp.length + (pendingApplications ?? 0) + (pendingReports ?? 0),
           otpEnabled: isAdmin ? !!account?.otp_enabled : null,
           totalProposals: allProps?.length ?? null,
@@ -259,7 +244,9 @@ export default function EditorProfileView(): JSX.Element {
       }).catch(() => { if (!cancelled) setAdminPreview(null) })
     })
     return () => { cancelled = true }
-  }, [canReviewStaff, isAdmin, activeChannel, refreshKey, channels.length, account?.otp_enabled])
+    // channels.length deliberately excluded — see channelsRef comment above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canReviewStaff, isAdmin, activeChannel, refreshKey, account?.otp_enabled])
 
   const handleEdit = (p: SongEditProposal): void => {
     // p.song is null for 'create' proposals (new song, no backing record yet) —
@@ -276,21 +263,14 @@ export default function EditorProfileView(): JSX.Element {
     { key: 'rejected', label: 'Rejected' },
   ]
 
-  // ── Focused mode: Admin/Manager tile fills the screen ──
+  // ── Focused mode: managers with no dashboard of their own land straight
+  // here (see the mode/managerOnly comment above) — reachable only for them
+  // now, so there's no "back to dashboard" control; there's nothing to go
+  // back to. ──
   if (mode === 'admin' && canReviewStaff) {
     return (
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {!managerOnly && (
-          <div className="px-3 pt-2 pb-1 shrink-0">
-            <button
-              onClick={exitAdmin}
-              className="flex items-center gap-1.5 text-text-muted active:text-text-primary text-xs transition-colors"
-            >
-              <ChevronLeft size={14} /> Back to dashboard
-            </button>
-          </div>
-        )}
-        <AdminPage embedded initialTab={adminInitialTab} onExit={exitAdmin} />
+        <AdminPage embedded onExit={exitAdmin} />
       </div>
     )
   }

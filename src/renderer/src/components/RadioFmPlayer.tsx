@@ -3,7 +3,7 @@ import { useStore, useStorePick } from '../store/useStore'
 import { RadioStreamClient, setActiveRadioClient } from '../lib/radioSocketService'
 import { fetchRadioLive } from '../lib/radioLive'
 import type { RadioVote } from '../lib/radioLive'
-import { apiFetch, buildImageUrl } from '../lib/juicewrldApi'
+import { apiFetch, buildImageUrl, getSongById } from '../lib/juicewrldApi'
 import type { JWApiSong } from '../lib/juicewrldApi'
 import { attachAudioElement, resumeEffectsContext } from '../lib/audioEffects'
 
@@ -131,7 +131,7 @@ export default function RadioFmPlayer(): JSX.Element {
     // Prefer direct song_id fetch; fall back to title search
     const songId = radioFmNowPlaying?.song_id
     if (songId) {
-      apiFetch<JWApiSong>(`/songs/${songId}/`)
+      getSongById(songId)
         .then(apply)
         .catch(() => {
           // song_id fetch failed — fall back to title search

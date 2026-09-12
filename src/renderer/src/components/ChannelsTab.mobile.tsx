@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useState, useCallback } from 'react'
+import { useStrictModeSafeEffect } from '../hooks/useStrictModeSafeEffect'
 import {
   Loader2, Plus, Check, AlertCircle, Radio, Users, ChevronLeft, Pencil, Power, X,
 } from 'lucide-react'
@@ -158,7 +159,7 @@ function ChannelDetail({ channel, users, onBack, onChanged }: {
       .finally(() => setLoading(false))
   }, [channel.id])
 
-  useEffect(() => { reload() }, [reload])
+  useStrictModeSafeEffect(() => { reload() }, [reload])
 
   const setFlag = async (userId: number, patch: Partial<ChannelMembershipRow>): Promise<void> => {
     setBusyUser(userId)
@@ -332,7 +333,7 @@ export default function ChannelsTab(): JSX.Element {
     loadChannels().catch(() => {})
   }, [loadChannels])
 
-  useEffect(() => { reload() }, [reload])
+  useStrictModeSafeEffect(() => { reload() }, [reload])
 
   const selected = channels.find((c) => c.id === selectedId) ?? null
 

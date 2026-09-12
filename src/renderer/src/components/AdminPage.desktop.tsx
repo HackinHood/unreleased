@@ -20,6 +20,7 @@ import { useStaffRoles } from '../hooks/useStaffRoles'
 import { useAdminQueue, type AdminTab, type AdminNavItem } from '../hooks/useAdminQueue'
 import { useOtpGate } from '../hooks/useOtpGate'
 import { Tile } from './Tile'
+import RoleBadges from './RoleBadges'
 
 type Tab = AdminTab
 
@@ -1194,6 +1195,11 @@ function UsersTab({ users, onChanged, currentUserId }: { users: AdminUser[]; onC
   const [actionId, setActionId] = useState<number | null>(null)
   const [filter,   setFilter]   = useState<'all' | 'admins' | 'editors' | 'contributors' | 'managers' | 'applicants'>('all')
   const [search,   setSearch]   = useState('')
+  // Master/detail instead of one wide row per user — a click on the roster
+  // rail (left) drives which user's full stat/badge/action surface shows on
+  // the right, rather than every user's actions competing for space in a
+  // single dense line.
+  const [selectedId, setSelectedId] = useState<number | null>(null)
 
   const doUpdate = async (uid: number, payload: Parameters<typeof userApi.adminUpdateUser>[1]) => {
     setActionId(uid)
@@ -1213,13 +1219,15 @@ function UsersTab({ users, onChanged, currentUserId }: { users: AdminUser[]; onC
     { id: 'applicants' as const, label: 'Applicants', count: users.filter(u => u.role === 'applicant').length },
   ]
 
-  const ROLE = {
-    administrator: 'text-accent bg-accent/15 border-accent/20',
-    editor:        'text-emerald-400 bg-emerald-500/15 border-emerald-500/20',
-    applicant:     'text-text-muted bg-surface-raised border-[var(--border)]',
-  } as Record<string, string>
-  const CONTRIBUTOR_BADGE = 'text-sky-400 bg-sky-500/15 border-sky-500/20'
-  const MANAGER_BADGE = 'text-amber-400 bg-amber-500/15 border-amber-500/20'
+  // One haystack per user, built once per users-array change rather than
+  // per keystroke (see buildHaystack's own doc comment) — also widens search
+  // to match role/contributor/manager keywords, not just the display name
+  // like the old plain substring match did.
+  const haystack = useMemo(() => new Map(users.map(u => [u.user_id,
+    buildHaystack(u.discord_username, u.username, u.role,
+      u.contributor_enabled ? 'contributor' : undefined,
+      u.manager_enabled ? 'manager' : undefined),
+  ])), [users])
 
   const visible = useMemo(() => users.filter(u => {
     const ok = filter === 'all'
@@ -1233,125 +1241,175 @@ function UsersTab({ users, onChanged, currentUserId }: { users: AdminUser[]; onC
             : filter === 'managers'
               ? !!u.manager_enabled
               : u.role === 'applicant'
-    const q = search.toLowerCase()
-    return ok && (!q || (u.discord_username || u.username || '').toLowerCase().includes(q))
-  }), [users, filter, search])
+    return ok && matchesHaystack(search, haystack.get(u.user_id))
+  }), [users, filter, search, haystack])
+
+  // Keep a valid selection as filter/search narrows the roster — falls back
+  // to the first visible row, or nothing once the list is empty.
+  useEffect(() => {
+    if (selectedId != null && visible.some(u => u.user_id === selectedId)) return
+    setSelectedId(visible[0]?.user_id ?? null)
+  }, [visible, selectedId])
+
+  const selected = visible.find(u => u.user_id === selectedId) ?? null
+  const canAct = (u: AdminUser): boolean => u.user_id !== currentUserId && u.role !== 'administrator'
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      {/* Toolbar */}
-      <div className="shrink-0 flex items-center gap-3 px-6 py-3 border-b border-[var(--border)] bg-surface-raised">
-        <div className="flex gap-1">
-          {FILTERS.map(f => (
-            <button key={f.id} onClick={() => setFilter(f.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                filter === f.id ? 'bg-accent text-[var(--bg)] font-semibold' : 'text-text-muted hover:text-text-muted hover:bg-surface-overlay'
+    <div className="h-full flex overflow-hidden">
+      {/* Roster rail */}
+      <div className="w-[300px] shrink-0 border-r border-[var(--border)] flex flex-col overflow-hidden">
+        <div className="shrink-0 flex flex-col gap-2 p-3 border-b border-[var(--border)]">
+          <div className="flex flex-wrap gap-1">
+            {FILTERS.map(f => (
+              <button key={f.id} onClick={() => setFilter(f.id)}
+                className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors ${
+                  filter === f.id ? 'bg-accent text-[var(--bg)] font-semibold' : 'text-text-muted hover:bg-surface-overlay'
+                }`}>
+                {f.label}
+                <span className={`text-[9px] px-1 rounded ${filter === f.id ? 'bg-white/20' : 'bg-surface-raised'}`}>{f.count}</span>
+              </button>
+            ))}
+          </div>
+          <QueueSearch value={search} onChange={setSearch} placeholder="Search users…" matches={visible.length} total={users.length} />
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {visible.length === 0 && <Empty label="No users" />}
+          {visible.map(u => (
+            <button key={u.user_id} onClick={() => setSelectedId(u.user_id)}
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 border-b border-[var(--border)] text-left transition-colors ${
+                selectedId === u.user_id ? 'bg-accent/10' : 'hover:bg-surface-raised'
               }`}>
-              {f.label}
-              <span className={`text-[9px] px-1 rounded ${filter === f.id ? 'bg-white/20' : 'bg-surface-raised'}`}>{f.count}</span>
+              <Avatar src={u.discord_avatar} name={u.discord_username || u.username} size={8} />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-text-primary truncate flex items-center gap-1.5">
+                  {u.discord_username || u.username}
+                  {!u.is_active && <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />}
+                </p>
+                <div className="flex gap-1 flex-wrap mt-0.5">
+                  <RoleBadges isAdmin={u.role === 'administrator'} isManager={!!u.manager_enabled}
+                    isEditor={u.role === 'editor'} isContributor={u.contributor_enabled} />
+                  {u.role === 'applicant' && !u.contributor_enabled && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide text-text-muted bg-surface-raised">Applicant</span>
+                  )}
+                </div>
+              </div>
             </button>
           ))}
         </div>
-        <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…"
-          className="ml-auto bg-surface-overlay border border-[var(--border)] rounded-lg px-3 py-1.5 text-text-primary text-xs focus:outline-none focus:border-accent/40 w-52" />
       </div>
 
-      {/* Table header */}
-      <div className="shrink-0 grid grid-cols-[auto_1fr_120px_100px_80px_minmax(220px,1fr)] items-center gap-3 px-6 py-2 border-b border-[var(--border)] bg-surface-raised">
-        {['', 'User', 'Role', 'Approved', 'Props', 'Actions'].map(h => (
-          <p key={h} className="text-[9px] font-bold uppercase tracking-widest text-text-muted">{h}</p>
-        ))}
-      </div>
-
-      {/* Rows */}
-      <div className="flex-1 overflow-y-auto">
-        {visible.length === 0 && <Empty label="No users" />}
-        {visible.map(u => (
-          <div key={u.user_id} className="grid grid-cols-[auto_1fr_120px_100px_80px_minmax(220px,1fr)] items-center gap-3 px-6 py-3 border-b border-[var(--border)] hover:bg-surface-raised transition-colors">
-            <Avatar src={u.discord_avatar} name={u.discord_username || u.username} size={8} />
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <p className="text-text-primary text-sm font-medium truncate">{u.discord_username || u.username}</p>
-                {!u.is_active && <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded text-red-400 bg-red-500/15">disabled</span>}
-                {u.user_id === currentUserId && <span className="text-[9px] text-text-muted italic">you</span>}
+      {/* Detail panel */}
+      <div className="flex-1 overflow-y-auto p-6">
+        {!selected ? <Empty label="Select a user" /> : (
+          <div className="max-w-2xl space-y-5">
+            <div className="flex items-center gap-4">
+              <Avatar src={selected.discord_avatar} name={selected.discord_username || selected.username} size={16} />
+              <div className="min-w-0">
+                <h2 className="text-text-primary text-lg font-bold truncate flex items-center gap-2">
+                  {selected.discord_username || selected.username}
+                  {!selected.is_active && <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded text-red-400 bg-red-500/15">disabled</span>}
+                  {selected.user_id === currentUserId && <span className="text-xs text-text-muted italic font-normal">you</span>}
+                </h2>
+                <p className="text-text-muted text-xs mt-0.5">
+                  Joined {shortDate(selected.date_joined)} · Last seen {relativeTime(selected.last_login)}
+                </p>
               </div>
-              <p className="text-text-muted text-[10px]">joined {shortDate(u.date_joined)}</p>
             </div>
-            <div className="flex flex-wrap items-center gap-1">
-              {u.role !== 'administrator' && (
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border ${ROLE[u.role] ?? 'text-text-muted bg-surface-raised border-[var(--border)]'}`}>
-                  {u.role}
-                </span>
-              )}
-              {u.role === 'administrator' && (
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border ${ROLE.administrator}`}>
-                  administrator
-                </span>
-              )}
-              {u.contributor_enabled && (
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border ${CONTRIBUTOR_BADGE}`}>
-                  contributor
-                </span>
-              )}
-              {!!u.manager_enabled && (
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border ${MANAGER_BADGE}`}>
-                  manager
-                </span>
+
+            <div className="flex flex-wrap gap-1.5">
+              <RoleBadges isAdmin={selected.role === 'administrator'} isManager={!!selected.manager_enabled}
+                isEditor={selected.role === 'editor'} isContributor={selected.contributor_enabled} />
+              {selected.role === 'applicant' && !selected.contributor_enabled && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide text-text-muted bg-surface-raised">Applicant</span>
               )}
             </div>
-            <p className="text-text-primary text-sm font-semibold">{u.approved_count}</p>
-            <p className="text-text-muted text-sm">{u.proposal_count}</p>
-            <div className="flex items-center gap-1 flex-wrap justify-end">
-              {actionId === u.user_id ? (
-                <Loader2 size={13} className="animate-spin text-text-muted" />
-              ) : u.user_id !== currentUserId && u.role !== 'administrator' ? (
+
+            <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm">
+              <span><span className="text-text-primary font-bold">{selected.approved_count}</span> <span className="text-text-muted">approved</span></span>
+              <span><span className="text-text-primary font-bold">{selected.proposal_count}</span> <span className="text-text-muted">proposals</span></span>
+              {selected.contributor_enabled && (
                 <>
-                  {u.role === 'editor' && (
-                    <label className="flex items-center gap-1 text-[10px] text-text-muted cursor-pointer mr-2 hover:text-text-muted">
-                      <input type="checkbox" checked={u.auto_approve_proposals}
-                        onChange={e => doUpdate(u.user_id, { auto_approve_proposals: e.target.checked })}
-                        className="w-3 h-3 accent-[var(--accent)]" />
-                      auto
-                    </label>
-                  )}
-                  {u.contributor_enabled && (
-                    <label className="flex items-center gap-1 text-[10px] text-text-muted cursor-pointer mr-2 hover:text-text-muted">
-                      <input type="checkbox" checked={u.auto_approve_comp_proposals}
-                        onChange={e => doUpdate(u.user_id, { auto_approve_comp_proposals: e.target.checked })}
-                        className="w-3 h-3 accent-[var(--accent)]" />
-                      auto
-                    </label>
-                  )}
-                  {u.role === 'editor' ? (
-                    <button onClick={() => doUpdate(u.user_id, { role: 'applicant' })}
-                      className="px-2 py-1 rounded text-[10px] text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors font-medium">−Editor</button>
-                  ) : (
-                    <button onClick={() => doUpdate(u.user_id, { role: 'editor' })}
-                      className="px-2 py-1 rounded text-[10px] text-emerald-400 hover:bg-emerald-500/10 transition-colors font-medium">+Editor</button>
-                  )}
-                  {u.contributor_enabled ? (
-                    <button onClick={() => doUpdate(u.user_id, { contributor_enabled: false })}
-                      className="px-2 py-1 rounded text-[10px] text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors font-medium">−Contrib</button>
-                  ) : (
-                    <button onClick={() => doUpdate(u.user_id, { contributor_enabled: true })}
-                      className="px-2 py-1 rounded text-[10px] text-emerald-400 hover:bg-emerald-500/10 transition-colors font-medium">+Contrib</button>
-                  )}
-                  {u.manager_enabled ? (
-                    <button onClick={() => doUpdate(u.user_id, { manager_enabled: false })}
-                      className="px-2 py-1 rounded text-[10px] text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors font-medium">−Manager</button>
-                  ) : (
-                    <button onClick={() => doUpdate(u.user_id, { manager_enabled: true })}
-                      className="px-2 py-1 rounded text-[10px] text-emerald-400 hover:bg-emerald-500/10 transition-colors font-medium">+Manager</button>
-                  )}
-                  <button onClick={() => doUpdate(u.user_id, { is_active: !u.is_active })}
-                    className="px-2 py-1 rounded text-[10px] text-text-muted hover:text-text-muted hover:bg-surface-raised transition-colors font-medium">
-                    {u.is_active ? 'Disable' : 'Enable'}
-                  </button>
+                  <span><span className="text-text-primary font-bold">{selected.comp_approved_count}</span> <span className="text-text-muted">comp approved</span></span>
+                  <span><span className="text-text-primary font-bold">{selected.comp_proposal_count}</span> <span className="text-text-muted">comp proposals</span></span>
                 </>
-              ) : <span className="text-text-muted text-[10px]">—</span>}
+              )}
             </div>
+
+            {selected.badges.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {selected.badges.map(b => (
+                  <span key={b.slug} title={b.description}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-surface-overlay text-[11px] text-text-secondary">
+                    <span>{b.icon}</span>{b.name}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {actionId === selected.user_id ? (
+              <div className="flex items-center gap-2 text-text-muted text-sm"><Loader2 size={14} className="animate-spin" /> Updating…</div>
+            ) : canAct(selected) ? (
+              <div className="space-y-4">
+                {(selected.role === 'editor' || selected.contributor_enabled) && (
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted">Auto-approve</p>
+                    {selected.role === 'editor' && (
+                      <label className="flex items-center justify-between gap-2 text-sm text-text-secondary cursor-pointer">
+                        Song edit proposals
+                        <input type="checkbox" checked={selected.auto_approve_proposals}
+                          onChange={e => doUpdate(selected.user_id, { auto_approve_proposals: e.target.checked })}
+                          className="w-4 h-4 accent-[var(--accent)]" />
+                      </label>
+                    )}
+                    {selected.contributor_enabled && (
+                      <label className="flex items-center justify-between gap-2 text-sm text-text-secondary cursor-pointer">
+                        Comp file proposals
+                        <input type="checkbox" checked={selected.auto_approve_comp_proposals}
+                          onChange={e => doUpdate(selected.user_id, { auto_approve_comp_proposals: e.target.checked })}
+                          className="w-4 h-4 accent-[var(--accent)]" />
+                      </label>
+                    )}
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-2">Role & status</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {selected.role === 'editor' ? (
+                      <button onClick={() => doUpdate(selected.user_id, { role: 'applicant' })}
+                        className="px-3 py-2 rounded-lg text-xs font-semibold text-red-400 bg-red-500/10 hover:bg-red-500/15 transition-colors">−Editor</button>
+                    ) : (
+                      <button onClick={() => doUpdate(selected.user_id, { role: 'editor' })}
+                        className="px-3 py-2 rounded-lg text-xs font-semibold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/15 transition-colors">+Editor</button>
+                    )}
+                    {selected.contributor_enabled ? (
+                      <button onClick={() => doUpdate(selected.user_id, { contributor_enabled: false })}
+                        className="px-3 py-2 rounded-lg text-xs font-semibold text-red-400 bg-red-500/10 hover:bg-red-500/15 transition-colors">−Contrib</button>
+                    ) : (
+                      <button onClick={() => doUpdate(selected.user_id, { contributor_enabled: true })}
+                        className="px-3 py-2 rounded-lg text-xs font-semibold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/15 transition-colors">+Contrib</button>
+                    )}
+                    {selected.manager_enabled ? (
+                      <button onClick={() => doUpdate(selected.user_id, { manager_enabled: false })}
+                        className="px-3 py-2 rounded-lg text-xs font-semibold text-red-400 bg-red-500/10 hover:bg-red-500/15 transition-colors">−Manager</button>
+                    ) : (
+                      <button onClick={() => doUpdate(selected.user_id, { manager_enabled: true })}
+                        className="px-3 py-2 rounded-lg text-xs font-semibold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/15 transition-colors">+Manager</button>
+                    )}
+                    <button onClick={() => doUpdate(selected.user_id, { is_active: !selected.is_active })}
+                      className="col-span-2 px-3 py-2 rounded-lg text-xs font-semibold text-text-secondary bg-surface-overlay hover:bg-surface-raised transition-colors">
+                      {selected.is_active ? 'Disable account' : 'Enable account'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-text-muted text-xs italic">
+                {selected.user_id === currentUserId ? "You can't modify your own account here." : 'Administrators can only be modified elsewhere.'}
+              </p>
+            )}
           </div>
-        ))}
+        )}
       </div>
     </div>
   )

@@ -14,7 +14,7 @@ import SkinEditorModal from './SkinEditorModal'
 import { FONTS } from '../lib/fonts'
 import { orderedNavItems, isNavItemVisible, DEFAULT_NAV_ORDER, DEFAULT_NAV_VISIBILITY, orderedNavControls, isNavControlAvailable, DEFAULT_NAV_CONTROL_ORDER, DEFAULT_NAV_CONTROL_VISIBILITY } from '../lib/navItems'
 import { HOME_SECTIONS, DEFAULT_HOME_SECTION_VISIBILITY, isHomeSectionVisible } from '../lib/homeSections'
-import { getToken, CONTRIBUTOR_ENABLED, staffProfileLabel, staffProfileView, showStaffProfile } from '../lib/userApi'
+import { getToken, CONTRIBUTOR_ENABLED } from '../lib/userApi'
 import { APP_VERSION, COMMIT_HASH } from '../lib/appVersion'
 import {
   lastfmConfigured, lastfmGetAuthToken, lastfmAuthUrl, lastfmTryGetSession, lastfmDisconnect,
@@ -1162,53 +1162,6 @@ export default function Settings(): JSX.Element {
                     })}
                   </div>
                 </div>
-                {/* Editor/admin-only tabs on the mobile bottom bar (Albums, and
-                    the Editor/Admin profile tab). They aren't part of the
-                    NAV_ITEMS registry above (which drives the desktop side
-                    menu) — desktop reaches those views via the profile avatar /
-                    "Edit albums" button — so they get their own toggle here,
-                    shown only to editors/admins on the web build where the
-                    bottom bar exists. Reuses the shared navVisibility map. */}
-                {showStaffProfile(account) && (
-                  <div className="py-3 border-b border-[var(--border)] last:border-b-0">
-                    <div className="flex items-center gap-2.5 mb-2.5">
-                      <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: '#f59e0b' }}>
-                        <ShieldCheck size={13} className="text-white" strokeWidth={2.25} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <span className="text-text-primary text-sm">Staff tabs (mobile)</span>
-                        <p className="text-text-muted text-[11px]">Show or hide staff tabs in the mobile bottom bar</p>
-                      </div>
-                    </div>
-                    <div className="pl-[34px] space-y-1.5">
-                      {([
-                        // Albums stays editor/admin-only; the profile tab keys
-                        // off the same helpers BottomNav routes with, so the
-                        // toggle can't end up pointing at a different view than
-                        // the tab it's meant to hide.
-                        ...((account?.is_editor || account?.is_administrator)
-                          ? [{ view: 'albums-admin' as ViewType, label: 'Albums', icon: <Disc size={18} /> }]
-                          : []),
-                        { view: staffProfileView(account), label: staffProfileLabel(account), icon: <ShieldCheck size={18} /> },
-                      ]).map((item) => {
-                        const shown = navVisibility[item.view] ?? true
-                        return (
-                          <div key={item.view} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)]">
-                            <span className={`w-6 h-6 shrink-0 flex items-center justify-center transition-opacity ${shown ? 'text-text-secondary' : 'opacity-40'}`}>{item.icon}</span>
-                            <span className={`text-sm truncate transition-colors ${shown ? 'text-text-primary' : 'text-text-muted'}`}>{item.label}</span>
-                            <button
-                              onClick={() => setNavItemVisible(item.view, !shown)}
-                              title={shown ? 'Hide from menu' : 'Show in menu'}
-                              className="ml-auto shrink-0 p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-[var(--surface-raised)] transition-colors"
-                            >
-                              {shown ? <Eye size={15} /> : <EyeOff size={15} />}
-                            </button>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
                 {ctrlRows.length > 0 && (
                   <div className="py-3 border-b border-[var(--border)] last:border-b-0">
                     <div className="flex items-center gap-2.5 mb-2.5">

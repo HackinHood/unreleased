@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { getLeaderboard } from '../lib/userApi'
+import { useStrictModeSafeEffect } from './useStrictModeSafeEffect'
 
 export type LeaderboardEntry = {
   rank: number
@@ -21,12 +22,12 @@ export function useLeaderboard(refreshKey: number, activeChannel: string, discor
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
+  useStrictModeSafeEffect((isCancelled) => {
     setLoading(true)
     getLeaderboard()
-      .then((data) => setLeaderboard(data as LeaderboardEntry[]))
+      .then((data) => { if (!isCancelled()) setLeaderboard(data as LeaderboardEntry[]) })
       .catch(() => {})
-      .finally(() => setLoading(false))
+      .finally(() => { if (!isCancelled()) setLoading(false) })
   }, [refreshKey, activeChannel])
 
   const myEntry = leaderboard.find((e) => e.discord_username === discordUsername)

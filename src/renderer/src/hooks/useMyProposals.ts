@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { getMyProposals, withdrawProposal, resubmitProposal } from '../lib/userApi'
 import type { SongEditProposal } from '../lib/userApi'
 import { proposalSearchText, type ProposalFilterTab } from '../lib/proposalSearch'
+import { useStrictModeSafeEffect } from './useStrictModeSafeEffect'
 
 // Owns the "my proposals" list + filter/search/edit/resubmit/withdraw logic
 // shared by EditorProfileView.desktop.tsx and .mobile.tsx. `refreshKey` is
@@ -17,12 +18,13 @@ export function useMyProposals(activeChannel: string, refreshKey: number) {
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [resubmittingId, setResubmittingId] = useState<number | null>(null)
 
-  useEffect(() => {
+  useStrictModeSafeEffect((isCancelled) => {
     setRefreshing(true)
     getMyProposals(activeChannel)
-      .then(setProposals)
+      .then((data) => { if (!isCancelled()) setProposals(data) })
       .catch(() => {})
       .finally(() => {
+        if (isCancelled()) return
         setLoading(false)
         setRefreshing(false)
       })

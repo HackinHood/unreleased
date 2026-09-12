@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useState, useCallback } from 'react'
+import { useStrictModeSafeEffect } from '../hooks/useStrictModeSafeEffect'
 import {
   Loader2, Plus, Check, AlertCircle, Radio, Users, X as XIcon, Pencil, Power,
 } from 'lucide-react'
@@ -85,7 +86,7 @@ function MembersPanel({ channel, users }: { channel: Channel; users: AdminUser[]
       .finally(() => setLoading(false))
   }, [channel.id])
 
-  useEffect(() => { reload() }, [reload])
+  useStrictModeSafeEffect(() => { reload() }, [reload])
 
   const setFlag = async (userId: number, patch: Partial<ChannelMembershipRow>): Promise<void> => {
     setBusyUser(userId)
@@ -259,7 +260,7 @@ export default function ChannelsTab(): JSX.Element {
     loadChannels().catch(() => {})
   }, [loadChannels])
 
-  useEffect(() => { reload() }, [reload])
+  useStrictModeSafeEffect(() => { reload() }, [reload])
 
   const toggleActive = async (channel: Channel): Promise<void> => {
     setBusyId(channel.id)

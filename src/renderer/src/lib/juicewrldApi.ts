@@ -158,6 +158,27 @@ export async function apiFetch<T>(
 
 export const loadAllSongs = createTtlCache(5 * 60_000, () => apiFetch<JWApiSong[]>('/songs/', { all: 'true' }))
 
+// Shared TTL + in-flight cache for single-song lookups by id. Player's lyrics
+// fetch and RadioFmPlayer's now-playing match both resolve the full song
+// object for whatever's currently playing, and often for the same song at
+// once (e.g. the FM-matched track happens to be the one already queued).
+// apiFetch's own dedup only collapses requests that overlap in time — once
+// the first settles, a second caller a moment later still hits the network.
+// Routing both through this cache instead lets that second caller reuse the
+// still-fresh result.
+const SONG_BY_ID_TTL_MS = 60_000
+const songByIdCache = new Map<number, { promise: Promise<JWApiSong>; ts: number }>()
+
+export function getSongById(id: number): Promise<JWApiSong> {
+  const now = Date.now()
+  const cached = songByIdCache.get(id)
+  if (cached && now - cached.ts < SONG_BY_ID_TTL_MS) return cached.promise
+  const entry = { promise: apiFetch<JWApiSong>(`/songs/${id}/`), ts: now }
+  songByIdCache.set(id, entry)
+  entry.promise.catch(() => { if (songByIdCache.get(id) === entry) songByIdCache.delete(id) })
+  return entry.promise
+}
+
 
 // Synchronous read of the offline cache for a path+params — returns the last
 // successful apiFetch response for that exact key, or undefined. Lets views do
