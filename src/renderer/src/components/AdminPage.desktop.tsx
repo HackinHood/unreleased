@@ -2,9 +2,9 @@ import { useState, useMemo, useDeferredValue, memo, useEffect } from 'react'
 import {
   ChevronLeft, Users, Clock, CheckCircle, XCircle, ShieldCheck, BarChart2,
   Loader2, RefreshCw, FileEdit, KeyRound, Check, AlertCircle, RotateCcw,
-  ChevronDown, ChevronUp, Shield, TrendingUp, MessageSquare, Calendar,
+  ChevronDown, ChevronUp, Shield, MessageSquare, Calendar,
   Hash, Minus, Plus, UserCheck, FileCheck, Activity, Pencil, X as XIcon, ChevronDown as ChevronDownIcon,
-  Flag, History, Play, Radio,
+  History, Play,
 } from 'lucide-react'
 import { apiFetch, songToTrack } from '../lib/juicewrldApi'
 import type { JWApiSong } from '../lib/juicewrldApi'
@@ -17,23 +17,11 @@ import ReportsTab from './ReportsTab'
 import CompProposalsTab from './CompProposalsTab'
 import ChannelsTab from './ChannelsTab'
 import { useStaffRoles } from '../hooks/useStaffRoles'
-import { useAdminQueue, type AdminTab, type AdminNavItem } from '../hooks/useAdminQueue'
+import { useAdminQueue, type AdminTab } from '../hooks/useAdminQueue'
 import { useOtpGate } from '../hooks/useOtpGate'
-import { Tile } from './Tile'
 import RoleBadges from './RoleBadges'
 
 type Tab = AdminTab
-
-const NAV_ICONS: Record<AdminNavItem['iconKey'], React.ReactNode> = {
-  proposals: <FileEdit size={13} />,
-  'comp-proposals': <FileCheck size={13} />,
-  applications: <Clock size={13} />,
-  reports: <Flag size={13} />,
-  users: <Users size={13} />,
-  stats: <TrendingUp size={13} />,
-  channels: <Radio size={13} />,
-  security: <Shield size={13} />,
-}
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -181,17 +169,15 @@ const ProposalDiff = memo(function ProposalDiff({ proposal }: { proposal: SongEd
 // clearance, since the host view owns that chrome.
 export default function AdminPage({ embedded = false, initialTab, onExit }: {
   embedded?: boolean
-  /** Jump straight into a section's focused view on mount (skipping the
-   *  overview grid) — used by EditorProfileView's Admin tile, which now
-   *  offers one button per section instead of a single generic entry point. */
+  /** Which section to show — used by EditorProfileView's managerOnly mobile
+   *  landing (the only remaining embedded caller). Standalone falls back to
+   *  the URL-derived tab below instead. */
   initialTab?: AdminTab
-  /** When embedded, "back" from a focused section returns here instead of
-   *  this page's own overview grid — the host (EditorProfileView's Admin
-   *  tile) already shows that same one-tile-per-section overview with live
-   *  stats, so falling back to a second copy of it just doubles the page. */
+  /** Embedded-only: lets the host (EditorProfileView) close this panel and
+   *  return to its own page. */
   onExit?: () => void
 }): JSX.Element {
-  const { account, loadAccount, setActiveView, activeChannel, channels, activeAdminTab, setActiveAdminTab } = useStorePick('account', 'loadAccount', 'setActiveView', 'activeChannel', 'channels', 'activeAdminTab', 'setActiveAdminTab')
+  const { account, loadAccount, setActiveView, activeChannel, channels, activeAdminTab } = useStorePick('account', 'loadAccount', 'setActiveView', 'activeChannel', 'channels', 'activeAdminTab')
   const go = setActiveView
   // Falls back to the standalone console's own deep link (see
   // ADMIN_TAB_PATHS) when nobody passed an explicit initialTab — only
@@ -207,7 +193,7 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
   const otpEnabled = !!account?.otp_enabled
 
   const {
-    tab, setTab,
+    tab,
     loading, error,
     refreshKey,
     applications, setApplications,
@@ -229,21 +215,11 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
     managerNavIds: ['proposals', 'comp-proposals'],
   })
 
-  // Bento pivot (Visual Redesign v2): the horizontal nav bar + single-panel
-  // body is replaced by an overview tile grid (one tile per nav item, with a
-  // live count/preview) that expands into the old master-detail "focused"
-  // view on click. `tab` (from useAdminQueue) still drives which section is
-  // showing — this just adds a second axis for whether we're looking at the
-  // grid or a section's full queue. Defaults to the grid on every mount
-  // (embedded's "or the overview grid" fallback) unless a caller asked for a
-  // specific section via `initialTab`, in which case it starts there.
-  const [view, setView] = useState<'overview' | 'focused'>(effectiveInitialTab ? 'focused' : 'overview')
-  const enterSection = (id: AdminTab): void => {
-    setTab(id)
-    setView('focused')
-    if (!embedded) setActiveAdminTab(id)
-  }
-
+  // No more overview grid — every section already has its own deep link
+  // (see ADMIN_TAB_PATHS) and its own entry point on the profile page's
+  // Admin tile, so a second, in-page "pick a section" screen was a
+  // redundant extra hop rather than a real navigation aid. AdminPage now
+  // just shows whichever single section it was asked for, directly.
   const activeNavItem = nav.find(n => n.id === tab)
 
   if (!canAccessStaff) return (
@@ -274,14 +250,10 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
       {/* Header */}
       <div className={`shrink-0 flex items-center gap-3 pb-0 border-b border-[var(--border)] ${embedded ? 'px-4' : 'px-6'}`}
         style={{ paddingTop: embedded ? 4 : 16 }}>
-        {view === 'focused' ? (
-          <button onClick={() => {
-            if (embedded && onExit) { onExit(); return }
-            setView('overview')
-            if (!embedded) setActiveAdminTab(null)
-          }}
+        {embedded && onExit ? (
+          <button onClick={onExit}
             className="flex items-center gap-1.5 p-1.5 -ml-1.5 rounded-lg hover:bg-surface-overlay transition-colors text-text-muted hover:text-text-primary mb-3 text-xs font-semibold">
-            <ChevronLeft size={16} /> {embedded && onExit ? 'Dashboard' : 'Overview'}
+            <ChevronLeft size={16} /> Dashboard
           </button>
         ) : !embedded ? (
           <button onClick={() => go('api-tracker')}
@@ -290,16 +262,10 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
           </button>
         ) : null}
         <div className="mb-3 min-w-0 flex-1">
-          {view === 'focused' ? (
-            <span className="text-text-primary font-bold text-sm">{activeNavItem?.label ?? ''}</span>
-          ) : !embedded ? (
-            <>
-              <span className="text-text-primary font-bold text-sm">{isFullAdmin ? 'Admin' : 'Manager'}</span>
-              {account?.discord_username && (
-                <span className="text-text-muted text-xs ml-2">{account.discord_username}</span>
-              )}
-            </>
-          ) : null}
+          <span className="text-text-primary font-bold text-sm">{activeNavItem?.label ?? (isFullAdmin ? 'Admin' : 'Manager')}</span>
+          {!embedded && account?.discord_username && (
+            <span className="text-text-muted text-xs ml-2">{account.discord_username}</span>
+          )}
         </div>
         <button onClick={() => refresh()} disabled={loading}
           className="p-1.5 rounded-lg hover:bg-surface-overlay transition-colors text-text-muted hover:text-text-primary mb-3 disabled:opacity-40">
@@ -313,78 +279,43 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
         </div>
       )}
 
-      {view === 'overview' ? (
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 auto-rows-[minmax(88px,1fr)] gap-4">
-            {nav.map(n => {
-              const preview = navPreview(n, users)
-              return (
-                <button key={n.id} onClick={() => enterSection(n.id)} className="text-left">
-                  <Tile title={n.label} icon={NAV_ICONS[n.iconKey] as JSX.Element}
-                    span="w-full h-full hover:bg-[var(--surface-overlay)]/80 transition-colors cursor-pointer">
-                    {preview ? (
-                      <p className={`text-2xl font-bold ${n.badge ? 'text-accent' : 'text-text-primary'}`}>{preview}</p>
-                    ) : (
-                      <p className="text-xs text-text-muted">View queue</p>
-                    )}
-                  </Tile>
-                </button>
-              )
-            })}
+      {/* The tab body stays mounted through a reload (switching the reports/
+          proposals status filter, hitting refresh, etc.) instead of being
+          replaced by a spinner — that was unmounting things like the status
+          filter chips and each tab's local state (selection, draft notes,
+          cached song lookups) on every refetch. A translucent overlay signals
+          the load without tearing the UI down. */}
+      <div className="flex-1 overflow-hidden relative">
+        {loading && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--bg)]/60 backdrop-blur-[1px]">
+            <Loader2 size={20} className="animate-spin text-text-muted" />
           </div>
-        </div>
-      ) : (
-        /* The tab body stays mounted through a reload (switching the reports/
-            proposals status filter, hitting refresh, etc.) instead of being
-            replaced by a spinner — that was unmounting things like the status
-            filter chips and each tab's local state (selection, draft notes,
-            cached song lookups) on every refetch. A translucent overlay signals
-            the load without tearing the UI down. */
-        <div className="flex-1 overflow-hidden relative">
-          {loading && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--bg)]/60 backdrop-blur-[1px]">
-              <Loader2 size={20} className="animate-spin text-text-muted" />
-            </div>
-          )}
-          {tab === 'proposals'    && <ProposalsTab
-            proposals={proposals}
-            status={propStatus}
-            setStatus={setPropStatus}
-            onChanged={() => refresh()}
-            onReviewed={(updated) => setProposals(prev => {
-              const next = prev.map(p => p.id === updated.id ? updated : p)
-              return propStatus && updated.status !== propStatus ? next.filter(p => p.id !== updated.id) : next
-            })}
-            channel={activeChannel}
-          />}
-          {tab === 'comp-proposals' && <CompProposalsTab embedded onChanged={() => refresh()} />}
-          {tab === 'applications' && <ApplicationsTab
-            applications={applications}
-            onChanged={() => refresh()}
-            onReviewed={(updated) => setApplications(prev => prev.map(a => a.id === updated.id ? updated : a))}
-          />}
-          {tab === 'reports'      && <ReportsTab reports={reports} status={reportStatus} setStatus={setReportStatus} onChanged={() => refresh()} />}
-          {tab === 'users'        && <UsersTab users={users} onChanged={() => refresh()} currentUserId={account?.id} />}
-          {tab === 'stats'        && <StatsTab applications={applications} proposals={proposals} users={users} />}
-          {tab === 'channels'     && <ChannelsTab />}
-          {tab === 'security'     && <SecurityTab />}
-        </div>
-      )}
+        )}
+        {tab === 'proposals'    && <ProposalsTab
+          proposals={proposals}
+          status={propStatus}
+          setStatus={setPropStatus}
+          onChanged={() => refresh()}
+          onReviewed={(updated) => setProposals(prev => {
+            const next = prev.map(p => p.id === updated.id ? updated : p)
+            return propStatus && updated.status !== propStatus ? next.filter(p => p.id !== updated.id) : next
+          })}
+          channel={activeChannel}
+        />}
+        {tab === 'comp-proposals' && <CompProposalsTab embedded onChanged={() => refresh()} />}
+        {tab === 'applications' && <ApplicationsTab
+          applications={applications}
+          onChanged={() => refresh()}
+          onReviewed={(updated) => setApplications(prev => prev.map(a => a.id === updated.id ? updated : a))}
+        />}
+        {tab === 'reports'      && <ReportsTab reports={reports} status={reportStatus} setStatus={setReportStatus} onChanged={() => refresh()} />}
+        {tab === 'users'        && <UsersTab users={users} onChanged={() => refresh()} currentUserId={account?.id} />}
+        {tab === 'stats'        && <StatsTab applications={applications} proposals={proposals} users={users} />}
+        {tab === 'channels'     && <ChannelsTab />}
+        {tab === 'security'     && <SecurityTab />}
+      </div>
     </div>
   )
-}
-
-// Live preview shown on an overview tile: the pending count useAdminQueue
-// already computes onto nav[].badge for Song edits/Applications/Reports, or
-// (for Users, the one other tab whose data is easy to have in memory
-// already — e.g. after a visit to Stats, which fetches it too) a total
-// count. Every other tab (Comp files, Stats, Channels, Security) has no
-// already-fetched data cheap enough to summarize, so it falls back to a
-// bare label rather than force-fetching a tab that isn't active.
-function navPreview(n: AdminNavItem, users: AdminUser[]): string | null {
-  if (n.badge) return `${n.badge} pending`
-  if (n.id === 'users' && users.length > 0) return `${users.length} users`
-  return null
 }
 
 
