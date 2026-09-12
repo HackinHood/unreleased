@@ -236,6 +236,14 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
     if (!embedded) setActiveAdminTab(t)
   }
 
+  // Each tab's content, once mounted, stays mounted (just hidden) instead of
+  // being torn down and rebuilt every time you switch away and back — an
+  // unmount/remount was re-triggering every <img> in the tab (avatars, song
+  // art) on every single switch, which for a list of any size fired hundreds
+  // of redundant image requests for data that hadn't changed.
+  const [visited, setVisited] = useState<Set<AdminTab>>(() => new Set([tab]))
+  useEffect(() => { setVisited(prev => prev.has(tab) ? prev : new Set(prev).add(tab)) }, [tab])
+
   if (!canReviewStaff) return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center">
       <Shield size={28} className="text-text-muted" />
@@ -322,14 +330,46 @@ export default function AdminPage({ embedded = false, initialTab, onExit }: {
             <Loader2 size={20} className="animate-spin text-text-muted" />
           </div>
         )}
-        {tab === 'proposals'    && <ProposalsTab proposals={proposals} status={propStatus} setStatus={setPropStatus} onChanged={() => refresh()} channel={activeChannel} />}
-        {tab === 'comp-proposals' && <CompProposalsTab embedded onChanged={() => refresh()} />}
-        {tab === 'applications' && <ApplicationsTab applications={applications} onChanged={() => refresh()} />}
-        {tab === 'reports'      && <ReportsTab reports={reports} status={reportStatus} setStatus={setReportStatus} onChanged={() => refresh()} />}
-        {tab === 'users'        && <UsersTab users={users} onChanged={() => refresh()} currentUserId={account?.id} />}
-        {tab === 'stats'        && <StatsTab applications={applications} proposals={proposals} users={users} />}
-        {tab === 'channels'     && <ChannelsTab />}
-        {tab === 'security'     && <SecurityTab />}
+        {visited.has('proposals') && (
+          <div className={tab === 'proposals' ? 'h-full' : 'hidden'}>
+            <ProposalsTab proposals={proposals} status={propStatus} setStatus={setPropStatus} onChanged={() => refresh()} channel={activeChannel} />
+          </div>
+        )}
+        {visited.has('comp-proposals') && (
+          <div className={tab === 'comp-proposals' ? 'h-full' : 'hidden'}>
+            <CompProposalsTab embedded onChanged={() => refresh()} />
+          </div>
+        )}
+        {visited.has('applications') && (
+          <div className={tab === 'applications' ? 'h-full' : 'hidden'}>
+            <ApplicationsTab applications={applications} onChanged={() => refresh()} />
+          </div>
+        )}
+        {visited.has('reports') && (
+          <div className={tab === 'reports' ? 'h-full' : 'hidden'}>
+            <ReportsTab reports={reports} status={reportStatus} setStatus={setReportStatus} onChanged={() => refresh()} />
+          </div>
+        )}
+        {visited.has('users') && (
+          <div className={tab === 'users' ? 'h-full' : 'hidden'}>
+            <UsersTab users={users} onChanged={() => refresh()} currentUserId={account?.id} />
+          </div>
+        )}
+        {visited.has('stats') && (
+          <div className={tab === 'stats' ? 'h-full' : 'hidden'}>
+            <StatsTab applications={applications} proposals={proposals} users={users} />
+          </div>
+        )}
+        {visited.has('channels') && (
+          <div className={tab === 'channels' ? 'h-full' : 'hidden'}>
+            <ChannelsTab />
+          </div>
+        )}
+        {visited.has('security') && (
+          <div className={tab === 'security' ? 'h-full' : 'hidden'}>
+            <SecurityTab />
+          </div>
+        )}
       </div>
     </div>
   )
