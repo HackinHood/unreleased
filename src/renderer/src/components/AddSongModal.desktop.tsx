@@ -133,6 +133,12 @@ export default function AddSongModal({ onClose, onSubmitted, channel }: {
               </div>
               <BasicRow label="Recording locations" value={f.location} onChange={v => updateField('location', v)} rows={2} placeholder="Studio / city" suggest="recording_locations" />
               <BasicRow label="Record dates" value={f.recDate} onChange={v => updateField('recDate', v)} rows={2} placeholder="YYYY-MM-DD" mono />
+              {f.cat === 'recording_session' && (
+                <div className="grid grid-cols-2 gap-1.5">
+                  <BasicRow label="Session titles" value={f.sessionTitles} onChange={v => updateField('sessionTitles', v)} rows={2} />
+                  <BasicRow label="Session tracking" value={f.sessionTracking} onChange={v => updateField('sessionTracking', v)} rows={2} />
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-1.5">
                 <BasicRow label="Length" value={f.songLength} onChange={v => updateField('songLength', v)} placeholder="3:59" mono />
                 <BasicRow label="Bitrate" value={f.bitrate} onChange={v => updateField('bitrate', v)} placeholder="320 kbps" mono />

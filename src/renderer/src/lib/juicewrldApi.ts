@@ -4,6 +4,10 @@ import { cacheGet } from './apiCache'
 import { peekSongPref } from './songPrefs'
 import { peekRotatedCover } from './coverRotation'
 import { peekEraCover } from './eraCovers'
+import { createTtlCache } from './ttlCache'
+import { peekSessionEditOverride } from './sessionEditOverrides'
+import { peekActiveChannel } from './activeChannelState'
+import { peekSessionEditLink } from './sessionEditLinksMirror'
 
 export const JWAPI_BASE = 'https://juicewrldapi.com/juicewrld'
 
@@ -83,6 +87,7 @@ export interface JWApiFileEntry {
   type: 'file' | 'directory'
   size?: number | null
   modified?: string | null
+  duration?: string | null
 }
 
 // /files/browse/ may return { items: [...] } or a flat array
@@ -150,6 +155,9 @@ export async function apiFetch<T>(
     parseError: async (res) => `JW API error ${res.status}`,
   })
 }
+
+export const loadAllSongs = createTtlCache(5 * 60_000, () => apiFetch<JWApiSong[]>('/songs/', { all: 'true' }))
+
 
 // Synchronous read of the offline cache for a path+params — returns the last
 // successful apiFetch response for that exact key, or undefined. Lets views do
@@ -362,7 +370,7 @@ export function discordCoverUrl(
  *  up with the API's song name: drops a file extension (titles that fell back
  *  to the filename) and a leading track number, then flattens
  *  punctuation/spacing to single spaces between lowercase alphanumerics. */
-function normalizeSongTitle(title: string): string {
+export function normalizeSongTitle(title: string): string {
   return stripFileTitleCruft(title)
     .replace(/[^a-z0-9]+/gi, ' ')
     .trim()
@@ -512,6 +520,16 @@ export function parseDuration(length: string | null | undefined): number {
 // JWApiSong deliberately keeps the API's own data untouched: the editor views
 // work from that shape, so an editor never sees another user's personal rename
 // in a field they might propose upstream.
+export function resolveSessionEditSource(song: { id: number; category: string; path: string; length: string }): { path: string; length: string; channel: string | undefined } {
+  if (song.category !== 'recording_session') return { path: song.path, length: song.length, channel: undefined }
+  const channel = peekActiveChannel()
+  const override = peekSessionEditOverride(song.id, channel)
+  if (override) return { path: override.path, length: override.duration ?? song.length, channel }
+  if (song.path) return { path: song.path, length: song.length, channel }
+  const link = peekSessionEditLink(song.id, channel)
+  return link ? { path: link.path, length: link.duration ?? song.length, channel } : { path: song.path, length: song.length, channel: undefined }
+}
+
 export function songToTrack(song: JWApiSong): Track {
   const apiTitle = song.name
   const apiImageUrl = buildImageUrl(song.image_url)
@@ -522,10 +540,11 @@ export function songToTrack(song: JWApiSong): Track {
   const coverUrl = resolvePrefCoverUrl(pref?.cover_url)
     ?? peekRotatedCover(song.id)
     ?? (song.category !== 'released' ? resolvePrefCoverUrl(peekEraCover(song.era?.name)) : undefined)
+  const { path: resolvedPath, length: resolvedLength, channel: streamChannel } = resolveSessionEditSource(song)
   return {
     id: `jw-${song.id}`,
-    path: song.path,
-    streamUrl: buildStreamUrl(song.path),
+    path: resolvedPath,
+    streamUrl: buildStreamUrl(resolvedPath, streamChannel),
     imageUrl: coverUrl ?? apiImageUrl,
     title: pref?.name || apiTitle,
     apiTitle,
@@ -536,7 +555,7 @@ export function songToTrack(song: JWApiSong): Track {
     albumArtist: 'Juice WRLD',
     year: null,
     trackNumber: null,
-    duration: parseDuration(song.length),
+    duration: parseDuration(resolvedLength),
     genre: song.category,
     hasAlbumArt: !!song.image_url || !!coverUrl,
   }

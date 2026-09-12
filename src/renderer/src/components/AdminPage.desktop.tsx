@@ -754,10 +754,10 @@ function ProposalsTab({ proposals, status, setStatus, onChanged, onReviewed, cha
     setLoadingSongId(songId)
     try {
       const song = await apiFetch<JWApiSong>(`/songs/${songId}/`)
+      const track = songToTrack(song)
       // An unsurfaced song is a real catalog entry with no file behind it —
       // the proposal is still reviewable, there's just nothing to play.
-      if (!song.path) { setPlayError('No file on this song to play'); return }
-      const track = songToTrack(song)
+      if (!track.path) { setPlayError('No file on this song to play'); return }
       playTrack(track, [track])
     } catch {
       setPlayError('Could not load this song')

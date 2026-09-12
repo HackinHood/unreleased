@@ -536,6 +536,8 @@ export default function EditorPage({ initialSongId = null }: {
   const [fileNames,         setFileNames]         = useState('')
   const [instrumentals,     setInstrumentals]     = useState('')
   const [instrumentalNames, setInstrumentalNames] = useState('')
+  const [sessionTitles,   setSessionTitles]   = useState('')
+  const [sessionTracking, setSessionTracking] = useState('')
 
   const [lyricsTab,    setLyricsTab]    = useState<LyricsTab>('lyrics')
   const [lyricsLoading, setLyricsLoading] = useState(false)
@@ -623,6 +625,8 @@ export default function EditorPage({ initialSongId = null }: {
       file_names:             s.file_names || '',
       instrumentals:          s.instrumentals || '',
       instrumental_names:     s.instrumental_names || '',
+      session_titles:         s.session_titles || '',
+      session_tracking:       s.session_tracking || '',
     }
   }
 
@@ -652,6 +656,8 @@ export default function EditorPage({ initialSongId = null }: {
     setFileNames(s.file_names || '')
     setInstrumentals(s.instrumentals || '')
     setInstrumentalNames(s.instrumental_names || '')
+    setSessionTitles(s.session_titles || '')
+    setSessionTracking(s.session_tracking || '')
     setEdNotes('')
     setSubmitState('idle')
     setSubmitError(null)
@@ -853,6 +859,8 @@ export default function EditorPage({ initialSongId = null }: {
       if ('file_names' in d)             setFileNames(String(d.file_names ?? ''))
       if ('instrumentals' in d)          setInstrumentals(String(d.instrumentals ?? ''))
       if ('instrumental_names' in d)     setInstrumentalNames(String(d.instrumental_names ?? ''))
+      if ('session_titles' in d)         setSessionTitles(String(d.session_titles ?? ''))
+      if ('session_tracking' in d)       setSessionTracking(String(d.session_tracking ?? ''))
       setEdNotes(editorNotes)
     }
 
@@ -881,6 +889,7 @@ export default function EditorPage({ initialSongId = null }: {
       .finally(() => setAppLoading(false))
   }, [account, canEdit, activeChannel])
 
+  const base = baseline(song)
   const current: Record<string, unknown> = {
     name, credited_artists: artists, album, category: cat,
     era_id: eraId ? Number(eraId) : '',
@@ -898,10 +907,11 @@ export default function EditorPage({ initialSongId = null }: {
     file_names: fileNames,
     instrumentals,
     instrumental_names: instrumentalNames,
+    session_titles: cat === 'recording_session' ? sessionTitles : '',
+    session_tracking: cat === 'recording_session' ? sessionTracking : '',
   }
   const patch        = diff(baseline(song), current)
   const changedCount = Object.keys(patch).length
-  const base         = baseline(song)
   // True once changedCount > 0 has already been sent and nothing has been
   // edited since — see lastSubmittedPatchRef above.
   const alreadySubmitted = changedCount > 0 && JSON.stringify(patch) === lastSubmittedPatchRef.current
@@ -1164,6 +1174,12 @@ export default function EditorPage({ initialSongId = null }: {
                 </div>
                 <BasicRow label="Recording locations" value={loc} original={String(base.recording_locations || '')} onChange={setLoc} rows={2} suggest="recording_locations" />
                 <BasicRow label="Record dates" value={recDate} original={String(base.record_dates || '')} onChange={setRecDate} rows={2} />
+                {cat === 'recording_session' && (
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <BasicRow label="Session titles" value={sessionTitles} original={String(base.session_titles || '')} onChange={setSessionTitles} rows={2} />
+                    <BasicRow label="Session tracking" value={sessionTracking} original={String(base.session_tracking || '')} onChange={setSessionTracking} rows={2} />
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-1.5">
                   <BasicRow label="Length" value={songLength} original={String(base.length || '')} onChange={setSongLength} mono />
                   <BasicRow label="Bitrate" value={bitrate} original={String(base.bitrate || '')} onChange={setBitrate} mono />
@@ -1555,6 +1571,12 @@ export default function EditorPage({ initialSongId = null }: {
                       <FieldRow label="File names" value={fileNames}        original={String(base.file_names || '')}            onChange={setFileNames} />
                       <FieldRow label="Instrumentals" value={instrumentals} original={String(base.instrumentals || '')}       onChange={setInstrumentals} placeholder="Instrumental versions available" />
                       <FieldRow label="Inst. names" value={instrumentalNames} original={String(base.instrumental_names || '')} onChange={setInstrumentalNames} />
+                      {cat === 'recording_session' && (
+                        <>
+                          <FieldRow label="Session titles" value={sessionTitles} original={String(base.session_titles || '')} onChange={setSessionTitles} />
+                          <FieldRow label="Session tracking" value={sessionTracking} original={String(base.session_tracking || '')} onChange={setSessionTracking} />
+                        </>
+                      )}
                       <TextareaRow label="Add. info" value={addInfo} original={String(base.additional_information || '')} onChange={setAddInfo} rows={3} span={2} />
                       <TextareaRow label="Notes"     value={notes}   original={String(base.notes || '')}                  onChange={setNotes}   rows={2} span={2} />
                     </FieldGrid>

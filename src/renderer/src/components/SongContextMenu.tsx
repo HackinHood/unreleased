@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   Info, ListPlus, ListEnd, Plus, Folder, Pencil, Download, PackageOpen,
   ChevronDown, ChevronRight, ChevronLeft, Check, Loader2, CheckSquare2, Heart, Trash2, ListMusic, Flag,
-  Layers, Star,
+  Layers, Star, FileAudio2, X,
 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { useShallow } from 'zustand/react/shallow'
@@ -63,6 +63,11 @@ interface Props {
    *  contexts where switching doesn't make sense (e.g. WRLD's FM radio,
    *  which is server-driven and can't be manually redirected). */
   disableChangeVersion?: boolean
+
+  canLinkSessionFile?: boolean
+  hasSessionLinkOverride?: boolean
+  onLinkSessionFile?: () => void
+  onClearSessionLink?: () => void
 }
 
 function MenuItem({ icon, label, onClick, destructive, trailing, innerRef }: {
@@ -109,7 +114,7 @@ function SubSheetHeader({ title, onBack }: { title: string; onBack: () => void }
 
 function downloadTrack(track: Track): void {
   const a = document.createElement('a')
-  a.href = buildStreamUrl(track.path)
+  a.href = track.streamUrl ?? buildStreamUrl(track.path)
   a.download = `${track.title}.mp3`
   a.target = '_blank'
   a.rel = 'noopener noreferrer'
@@ -133,6 +138,7 @@ export default function SongContextMenu({
   state, onClose, canEdit, onInfo,
   onPlay, onPlayNext, onAddToQueue, onShowInFiles, onSelect,
   liked, onToggleLike, removeAction, song, disableChangeVersion,
+  canLinkSessionFile, hasSessionLinkOverride, onLinkSessionFile, onClearSessionLink,
 }: Props): JSX.Element {
   const { playlists, account, refreshPlaylists, setShowUserAuth, playTrack, localPlaylists, addToLocalPlaylist, createLocalPlaylist, songPrefs, setSongDefaultVersion } = useStore(
     useShallow(s => ({
@@ -304,7 +310,7 @@ export default function SongContextMenu({
   // A couple of callers use a -1 sentinel for "no real song" instead of null
   // (e.g. shared-playlist placeholder rows) — treat both as invalid.
   const hasValidSong = songId != null && songId > 0
-  const isUnplayable = ['recording_session', 'unsurfaced'].includes(track.genre)
+  const isUnplayable = track.genre === 'unsurfaced' || (track.genre === 'recording_session' && !track.path)
   // A local library file with no matching API song — it already lives on
   // disk (so "Download" is meaningless) and can't join a server playlist,
   // but it can join one of the device-local playlists instead.
@@ -730,6 +736,15 @@ export default function SongContextMenu({
                 label={zipLoading ? 'Finding files…' : 'Download session (ZIP)'}
                 onClick={loadSessionZips}
               />
+            </>
+          )}
+          {song && canLinkSessionFile && track.genre === 'recording_session' && onLinkSessionFile && (
+            <>
+              <Divider />
+              <MenuItem icon={<FileAudio2 size={14} />} label="Link session file…" onClick={() => { onLinkSessionFile(); onClose() }} />
+              {hasSessionLinkOverride && onClearSessionLink && (
+                <MenuItem icon={<X size={14} />} label="Clear manual link" onClick={() => { onClearSessionLink(); onClose() }} />
+              )}
             </>
           )}
           {track.path && !isLocalOnly && (

@@ -33,6 +33,8 @@ export interface ProposalFormState {
   relDate: string
   instrumentals: string
   instrumentalNames: string
+  sessionTitles: string
+  sessionTracking: string
   addInfo: string
   notes: string
   dateLeaked: string
@@ -46,7 +48,7 @@ export const EMPTY_PROPOSAL_FORM: ProposalFormState = {
   name: '', artists: '', cat: '', album: '', eraId: '', imageUrl: '', altNames: '',
   lyrics: '', syncedLyrics: '', prod: '', engineer: '', location: '', filePath: '',
   previewDate: '', leakType: '', recDate: '', relDate: '', instrumentals: '',
-  instrumentalNames: '', addInfo: '', notes: '', dateLeaked: '', fileNames: '',
+  instrumentalNames: '', sessionTitles: '', sessionTracking: '', addInfo: '', notes: '', dateLeaked: '', fileNames: '',
   songLength: '', bitrate: '', edNotes: '',
 }
 
@@ -87,6 +89,8 @@ function reducer(state: ProposalFormState, action: Action): ProposalFormState {
         dateLeaked: cleanDate(s.date_leaked),
         instrumentals: s.instrumentals || '',
         instrumentalNames: s.instrumental_names || '',
+        sessionTitles: s.session_titles || '',
+        sessionTracking: s.session_tracking || '',
         fileNames: s.file_names || '',
         addInfo: s.additional_information || '',
         notes: s.notes || '',
@@ -144,6 +148,8 @@ export function buildProposedData(f: ProposalFormState): Record<string, unknown>
   if (f.previewDate) proposed.preview_date    = f.previewDate
   if (f.instrumentals)     proposed.instrumentals      = f.instrumentals
   if (f.instrumentalNames) proposed.instrumental_names = f.instrumentalNames
+  if (f.cat === 'recording_session' && f.sessionTitles)   proposed.session_titles   = f.sessionTitles
+  if (f.cat === 'recording_session' && f.sessionTracking) proposed.session_tracking = f.sessionTracking
   // "Additional info" maps to additional_information — distinct from
   // `notes`, which previously had this textarea's value submitted under the
   // wrong key.

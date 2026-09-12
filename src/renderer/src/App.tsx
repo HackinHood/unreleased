@@ -5,6 +5,7 @@ import { useThemeEffects } from './lib/themeEffects'
 import { runWhenIdle, isStandalonePWA } from './lib/platform'
 import { applySeo } from './lib/seo'
 import { orderedNavItems, isNavItemVisible } from './lib/navItems'
+import { loadSessionEditLinks } from './lib/sessionEditsApi'
 import { useIsMobile, isMobileViewport } from './hooks/useIsMobile'
 import ViewSkeleton from './components/ViewSkeleton'
 import { ViewType } from './types'
@@ -83,8 +84,8 @@ import {
 } from './lib/lazyViews'
 
 export default function App(): JSX.Element {
-  const { showNowPlaying, showQueue, showDiagnostics, setShowDiagnostics, showUploadManager, setShowUploadManager, activeView, previousView, sidebarPosition, loadAccount, completeDiscordLogin, showUserAuth, setShowUserAuth, prefetchApiData, refreshPlaylists, heroBleedTop, navOrder, navVisibility } = useStorePick(
-    'showNowPlaying', 'showQueue', 'showDiagnostics', 'setShowDiagnostics', 'showUploadManager', 'setShowUploadManager', 'activeView', 'previousView', 'sidebarPosition', 'loadAccount', 'completeDiscordLogin', 'showUserAuth', 'setShowUserAuth', 'prefetchApiData', 'refreshPlaylists', 'heroBleedTop', 'navOrder', 'navVisibility')
+  const { showNowPlaying, showQueue, showDiagnostics, setShowDiagnostics, showUploadManager, setShowUploadManager, activeView, previousView, sidebarPosition, loadAccount, completeDiscordLogin, showUserAuth, setShowUserAuth, prefetchApiData, refreshPlaylists, heroBleedTop, navOrder, navVisibility, activeChannel } = useStorePick(
+    'showNowPlaying', 'showQueue', 'showDiagnostics', 'setShowDiagnostics', 'showUploadManager', 'setShowUploadManager', 'activeView', 'previousView', 'sidebarPosition', 'loadAccount', 'completeDiscordLogin', 'showUserAuth', 'setShowUserAuth', 'prefetchApiData', 'refreshPlaylists', 'heroBleedTop', 'navOrder', 'navVisibility', 'activeChannel')
   // What renders behind WRLD — WRLD is a full-screen overlay on top of
   // wherever you were (Spotify-style "now playing" sheet), not a real nav
   // destination, so dragging it down should reveal that page like a curtain
@@ -99,6 +100,8 @@ export default function App(): JSX.Element {
     const devToken = import.meta.env.VITE_AUTH_TOKEN as string | undefined
     if (devToken) { setToken(devToken); loadAccount() }
   }, [])
+
+  useEffect(() => { loadSessionEditLinks(activeChannel).catch(() => {}) }, [activeChannel])
 
   // Sync view from URL on mount + handle back/forward
   useEffect(() => {
